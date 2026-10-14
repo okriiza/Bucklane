@@ -3,7 +3,7 @@
 **Document ID:** BUCK-TSD-001  
 **Version:** 1.0  
 **Status:** Draft for Implementation  
-**Related Document:** Bucklane PRD v1.0  
+**Related Documents:** Bucklane PRD v1.0, [Database Design v1.0](database_design.md)  
 **Architecture:** Local-first Desktop Application  
 **Primary Stack:** Tauri 2 / Vue 3 / TypeScript / Rust
 
@@ -100,6 +100,7 @@ Menangani data lokal.
 Repositories:
 
 - ConnectionRepository
+- BucketBookmarkRepository
 - TransferRepository
 - SettingsRepository
 
@@ -138,7 +139,8 @@ src-tauri/src/
 │   ├── connection_service.rs
 │   ├── storage_service.rs
 │   ├── object_service.rs
-│   └── transfer_service.rs
+│   ├── transfer_service.rs
+│   └── settings_service.rs
 │
 ├── providers/
 │   ├── mod.rs
@@ -151,13 +153,14 @@ src-tauri/src/
 ├── repositories/
 │   ├── mod.rs
 │   ├── connection_repository.rs
+│   ├── bucket_bookmark_repository.rs
 │   ├── transfer_repository.rs
 │   └── settings_repository.rs
 │
 ├── database/
 │   ├── mod.rs
 │   ├── sqlite.rs
-│   └── migrations.rs
+│   └── migrations.rs        # embeds src-tauri/migrations/*.sql
 │
 ├── security/
 │   ├── mod.rs
@@ -204,9 +207,12 @@ pub enum ProviderType {
     Minio,
     CloudflareR2,
     Wasabi,
+    DigitalOceanSpaces,
     Custom,
 }
 ```
+
+Representasi string (IPC dan SQLite): `aws`, `supabase`, `minio`, `cloudflare_r2`, `wasabi`, `digitalocean_spaces`, `custom`.
 
 Connection identifiers menggunakan UUID v7.
 
@@ -246,7 +252,7 @@ pub enum TransferStatus {
 }
 ```
 
-Transfer menyimpan connection ID, bucket, object key, local path, jumlah bytes, status, dan error jika ada.
+Transfer menyimpan connection ID (nullable setelah koneksi dihapus), snapshot nama koneksi, bucket, object key, local path, jumlah bytes, status, retry count, error code/message jika ada, dan multipart upload ID bila relevan.
 
 # 5. Storage Provider Abstraction
 
@@ -291,12 +297,48 @@ pub trait StorageProvider: Send + Sync {
         bucket: &str,
         key: &str,
     ) -> Result<(), AppError>;
+
+    // Single-request upload: small files and folder marker objects.
+    async fn put_object(
+        &self,
+        request: PutObjectRequest, // body: streaming source, not Vec<u8>
+    ) -> Result<PutObjectResult, AppError>;
+
+    // Returns a streaming body; caller writes it to a temporary file.
+    async fn get_object(
+        &self,
+        bucket: &str,
+        key: &str,
+    ) -> Result<ObjectStream, AppError>;
+
+    async fn create_multipart_upload(
+        &self,
+        bucket: &str,
+        key: &str,
+    ) -> Result<String, AppError>; // upload ID
+
+    async fn upload_part(
+        &self,
+        request: UploadPartRequest,
+    ) -> Result<CompletedPart, AppError>; // part number + ETag
+
+    async fn complete_multipart_upload(
+        &self,
+        request: CompleteMultipartRequest,
+    ) -> Result<(), AppError>;
+
+    async fn abort_multipart_upload(
+        &self,
+        bucket: &str,
+        key: &str,
+        upload_id: &str,
+    ) -> Result<(), AppError>;
 }
 ```
 
-File transfer menggunakan TransferService dan streaming API yang memanfaatkan S3 client melalui provider adapter.
+File transfer diorkestrasi oleh TransferService (scheduler, progress, retry, cancel), sedangkan StorageProvider hanya menyediakan operasi S3 primitif di atas.
 
-Operasi upload/download tidak harus mengembalikan konten file dalam memory.
+Operasi upload/download tidak boleh memuat seluruh konten file ke memory; body request/response bersifat streaming.
 
 ## 5.2 Client Factory
 
@@ -347,6 +389,20 @@ Provider profiles menentukan default konfigurasi, tetapi tidak menggantikan vali
 
 - Account-specific endpoint.
 - Region dan S3 settings mengikuti ketentuan Cloudflare.
+- Compatibility testing wajib.
+
+**Wasabi**
+
+- Endpoint region-specific milik Wasabi.
+- Region wajib dan harus sesuai endpoint.
+- HTTPS enabled.
+- Compatibility testing wajib.
+
+**DigitalOcean Spaces**
+
+- Endpoint berbasis region Spaces.
+- Region mengikuti datacenter Spaces.
+- HTTPS enabled.
 - Compatibility testing wajib.
 
 **Custom S3**
@@ -410,20 +466,24 @@ Input CreateConnection:
 
 Output menggunakan DTO connection tanpa secret.
 
-TestConnection harus dapat menggunakan konfigurasi sementara tanpa menyimpan credentials secara permanen.
+TestConnection harus dapat menggunakan konfigurasi sementara tanpa menyimpan credentials secara permanen. TestConnection menerima `testBucket` opsional; jika ListBuckets ditolak dan `testBucket` diisi, pengujian menggunakan HeadBucket pada bucket tersebut.
 
 ## 6.2 Bucket Commands
 
 ```text
 list_buckets
 head_bucket
+list_bucket_bookmarks
+add_bucket_bookmark
+update_bucket_bookmark
+remove_bucket_bookmark
 ```
 
 `list_buckets` menerima connection ID.
 
 `head_bucket` menerima connection ID dan nama bucket.
 
-Jika ListBuckets ditolak, pengguna tetap dapat menggunakan bucket yang telah dikonfigurasi secara manual.
+Bookmark commands mengelola tabel `connection_buckets`. Jika ListBuckets ditolak, pengguna tetap dapat membuka bucket melalui bookmark; akses diverifikasi dengan `head_bucket` saat dibuka.
 
 ## 6.3 Object Commands
 
@@ -435,6 +495,8 @@ copy_object
 move_object
 delete_objects
 ```
+
+Rename adalah `move_object` dengan bucket yang sama dan key tujuan baru; tidak ada command rename terpisah.
 
 ListObjectsRequest:
 
@@ -515,63 +577,30 @@ Frontend harus melakukan refresh status melalui command ketika startup atau reco
 
 # 7. Local Database Design
 
-Database: SQLite.
+Database: SQLite via SQLx.
 
 Lokasi database mengikuti application data directory masing-masing OS.
 
-## 7.1 connections
+Skema lengkap, constraint, index, migration awal, dan data lifecycle didefinisikan di **[Database Design](database_design.md)**, yang menjadi sumber kebenaran tunggal untuk skema. Bagian ini hanya meringkas.
 
-```sql
-CREATE TABLE connections (
-    id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    provider TEXT NOT NULL,
-    endpoint TEXT,
-    region TEXT NOT NULL,
-    access_key_id TEXT NOT NULL,
-    credential_ref TEXT NOT NULL,
-    force_path_style INTEGER NOT NULL DEFAULT 0,
-    allow_insecure_http INTEGER NOT NULL DEFAULT 0,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-);
-```
+## 7.1 Tables
 
-## 7.2 transfers
+| Table                | Purpose                                                      |
+| -------------------- | ------------------------------------------------------------ |
+| `connections`        | Profil koneksi non-secret + `credential_ref` (UNIQUE, 1:1)   |
+| `connection_buckets` | Bookmark bucket per koneksi (cascade saat koneksi dihapus)   |
+| `transfers`          | Riwayat dan status transfer                                  |
+| `transfer_parts`     | Part multipart upload yang sudah selesai (cascade)           |
+| `settings`           | Preferensi aplikasi dalam JSON-encoded value                 |
 
-```sql
-CREATE TABLE transfers (
-    id TEXT PRIMARY KEY,
-    connection_id TEXT NOT NULL,
-    direction TEXT NOT NULL,
-    bucket TEXT NOT NULL,
-    object_key TEXT NOT NULL,
-    local_path TEXT NOT NULL,
-    bytes_total INTEGER,
-    bytes_transferred INTEGER NOT NULL DEFAULT 0,
-    status TEXT NOT NULL,
-    error_code TEXT,
-    error_message TEXT,
-    created_at TEXT NOT NULL,
-    started_at TEXT,
-    completed_at TEXT,
-    FOREIGN KEY (connection_id)
-        REFERENCES connections(id)
-);
-```
+## 7.2 Connection Deletion Policy
 
-Kebijakan penghapusan connection dengan transfer history harus ditentukan secara eksplisit. MVP dapat mensyaratkan transfer aktif dihentikan sebelum connection dihapus dan menghapus history terkait dalam transaksi database.
+1. Transfer aktif (`QUEUED`/`RUNNING`) milik koneksi harus dibatalkan atau dihentikan terlebih dahulu.
+2. Koneksi dihapus; bookmark ikut terhapus (`ON DELETE CASCADE`).
+3. Riwayat transfer **dipertahankan**: `transfers.connection_id` menjadi `NULL` (`ON DELETE SET NULL`) dan `connection_name_snapshot` tetap menampilkan nama koneksi.
+4. Secret dihapus dari OS credential store.
 
-## 7.3 settings
-
-```sql
-CREATE TABLE settings (
-    key TEXT PRIMARY KEY,
-    value TEXT NOT NULL
-);
-```
-
-## 7.4 Migration Strategy
+## 7.3 Migration Strategy
 
 - Setiap perubahan skema dibuat dalam versioned migration.
 - Migration dijalankan ketika aplikasi startup.
@@ -686,7 +715,7 @@ Cancellation dapat diminta ketika transfer queued maupun running.
 
 Task completion dan cancellation harus disinkronkan untuk mencegah status contradictory.
 
-Ketika aplikasi restart, status RUNNING dari sesi sebelumnya direkonsiliasi menjadi FAILED dengan reason INTERRUPTED, kecuali tersedia mekanisme resume yang telah diverifikasi.
+Ketika aplikasi restart, status RUNNING dari sesi sebelumnya direkonsiliasi menjadi FAILED dengan `error_code = INTERRUPTED`, kecuali tersedia mekanisme resume yang telah diverifikasi.
 
 ## 9.3 Upload Strategy
 
@@ -872,6 +901,7 @@ Error codes utama:
 - OPERATION_UNSUPPORTED
 - TRANSFER_FAILED
 - TRANSFER_CANCELED
+- INTERRUPTED
 - LOCAL_FILE_ERROR
 - STORAGE_QUOTA_ERROR
 - INTERNAL_ERROR

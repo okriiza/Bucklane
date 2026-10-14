@@ -5,7 +5,7 @@
 > **Status:** Draft for Implementation  
 > **Date:** 2026-10-14  
 > **Product:** Bucklane — Desktop S3 Storage Manager  
-> **Related:** PRD v1.0, TSD v1.0
+> **Related:** [PRD v1.0](prd.md), [TSD v1.0](tsd.md)
 
 ## 1. Overview
 
@@ -114,7 +114,7 @@ Stores user-defined connection profiles. The `credential_ref` is an opaque key i
 | --------------------- | ------- | -------------------------- | --------------------------------------------------------------- |
 | `id`                  | TEXT    | PK                         | Connection UUID v7                                              |
 | `name`                | TEXT    | NOT NULL                   | Friendly display name                                           |
-| `provider`            | TEXT    | NOT NULL, CHECK            | `aws`, `supabase`, `minio`, `cloudflare_r2`, `wasabi`, `custom` |
+| `provider`            | TEXT    | NOT NULL, CHECK            | `aws`, `supabase`, `minio`, `cloudflare_r2`, `wasabi`, `digitalocean_spaces`, `custom` |
 | `endpoint`            | TEXT    | NULL                       | Custom S3 endpoint; optional for AWS                            |
 | `region`              | TEXT    | NOT NULL                   | Provider region or signing region                               |
 | `access_key_id`       | TEXT    | NOT NULL                   | Access key identifier, not secret key                           |
@@ -128,6 +128,7 @@ Stores user-defined connection profiles. The `credential_ref` is an opaque key i
 
 - Never store `secret_access_key`, session token, authorization header, or presigned URL in this table.
 - Connection configuration validation is enforced by the application service, including URL scheme and region.
+- Each connection owns exactly one `credential_ref` (1:1); credentials are never shared between connections, so deleting a connection always deletes its secret.
 - Renaming a connection does not rotate credentials.
 - Credential rotation requires coordinated updates to SQLite and the OS credential store; those systems do not share an atomic transaction.
 
@@ -212,7 +213,8 @@ CREATE TABLE connections (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     provider TEXT NOT NULL CHECK (provider IN (
-        'aws', 'supabase', 'minio', 'cloudflare_r2', 'wasabi', 'custom'
+        'aws', 'supabase', 'minio', 'cloudflare_r2', 'wasabi',
+        'digitalocean_spaces', 'custom'
     )),
     endpoint TEXT,
     region TEXT NOT NULL,
