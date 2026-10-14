@@ -4,9 +4,10 @@ use serde::Serialize;
 use specta::Type;
 use sqlx::SqlitePool;
 
+use crate::domain::bucket::validate_bucket_name;
 use crate::domain::connection::{
-    ConnectionConfigInput, ConnectionDto, ResolvedConfig, StorageConnection, TestConnectionInput,
-    TestConnectionResult, TestMethod, UpdateConnectionInput,
+    ConnectionConfigInput, ConnectionDto, ProviderType, ResolvedConfig, StorageConnection,
+    TestConnectionInput, TestConnectionResult, TestMethod, UpdateConnectionInput,
 };
 use crate::errors::{AppError, ErrorCode};
 use crate::providers::provider_profiles::profile;
@@ -171,8 +172,7 @@ impl<'a> ConnectionService<'a> {
         let test_bucket = input
             .test_bucket
             .as_deref()
-            .map(str::trim)
-            .filter(|b| !b.is_empty())
+            .filter(|b| !b.trim().is_empty())
             .map(validate_bucket_name)
             .transpose()?;
 
@@ -180,7 +180,7 @@ impl<'a> ConnectionService<'a> {
             (Some(config), saved_id) => {
                 self.client_for_unsaved(config, saved_id.as_deref()).await?
             }
-            (None, Some(id)) => self.client_for_saved(&self.load(id).await?)?,
+            (None, Some(id)) => self.client_for_saved(&self.load(id).await?, None)?,
             (None, None) => return Err(invalid("Nothing to test.")),
         };
         let provider = S3StorageProvider::new(client);
@@ -208,15 +208,68 @@ impl<'a> ConnectionService<'a> {
     }
 
     /// Returns a cached client for a saved connection, building one on miss.
-    pub fn client_for_saved(&self, connection: &StorageConnection) -> Result<Client, AppError> {
-        if let Some(client) = self.clients.get(&connection.id, &connection.updated_at) {
+    /// `region` overrides the connection's region (AWS buckets elsewhere).
+    fn client_for_saved(
+        &self,
+        connection: &StorageConnection,
+        region: Option<&str>,
+    ) -> Result<Client, AppError> {
+        let revision = &connection.updated_at;
+        if let Some(client) = self.clients.get(&connection.id, region, revision) {
             return Ok(client);
         }
         let secret = self.credentials.get(&connection.credential_ref)?;
-        let client = build_client(&resolved_from(connection), &secret);
+        let mut config = resolved_from(connection);
+        if let Some(region) = region {
+            config.region = region.to_owned();
+        }
+        let client = build_client(&config, &secret);
         self.clients
-            .insert(&connection.id, &connection.updated_at, client.clone());
+            .insert(&connection.id, region, revision, client.clone());
         Ok(client)
+    }
+
+    /// Client for connection-wide operations such as ListBuckets.
+    pub async fn client(&self, connection_id: &str) -> Result<Client, AppError> {
+        self.client_for_saved(&self.load(connection_id).await?, None)
+    }
+
+    /// Client able to reach `bucket`. On AWS a bucket may live outside the
+    /// connection's region; its region is discovered once and cached, so the
+    /// user never has to create one connection per region.
+    pub async fn client_for_bucket(
+        &self,
+        connection_id: &str,
+        bucket: &str,
+    ) -> Result<Client, AppError> {
+        let connection = self.load(connection_id).await?;
+        let default_client = self.client_for_saved(&connection, None)?;
+        if connection.provider != ProviderType::Aws || connection.endpoint.is_some() {
+            return Ok(default_client);
+        }
+
+        let region = match self.clients.bucket_region(connection_id, bucket) {
+            Some(region) => region,
+            None => match S3StorageProvider::new(default_client.clone())
+                .bucket_region(bucket)
+                .await
+            {
+                Ok(Some(region)) => {
+                    self.clients
+                        .set_bucket_region(connection_id, bucket, &region);
+                    region
+                }
+                // Unknown region: use the default client and let the actual
+                // request report the precise error.
+                Ok(None) | Err(_) => return Ok(default_client),
+            },
+        };
+
+        if region == connection.region {
+            Ok(default_client)
+        } else {
+            self.client_for_saved(&connection, Some(&region))
+        }
     }
 
     /// Unsaved settings may reuse a saved connection's secret while editing,
@@ -326,13 +379,6 @@ fn validate_name(name: &str) -> Result<String, AppError> {
     Ok(name.to_owned())
 }
 
-fn validate_bucket_name(bucket: &str) -> Result<&str, AppError> {
-    if bucket.len() > 255 || bucket.contains('/') || bucket.chars().any(char::is_whitespace) {
-        return Err(invalid("The bucket name is not valid."));
-    }
-    Ok(bucket)
-}
-
 fn now() -> String {
     Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true)
 }
@@ -352,7 +398,6 @@ fn not_found() -> AppError {
 mod tests {
     use super::*;
     use crate::database::test_pool;
-    use crate::domain::connection::ProviderType;
     use crate::security::SecretString;
     use crate::security::credential_store::memory::MemoryCredentialStore;
 
@@ -549,7 +594,6 @@ mod tests {
 mod minio_tests {
     use super::*;
     use crate::database::test_pool;
-    use crate::domain::connection::ProviderType;
     use crate::security::SecretString;
     use crate::security::credential_store::memory::MemoryCredentialStore;
 
@@ -624,6 +668,76 @@ mod minio_tests {
             .await
             .unwrap_err();
         assert_eq!(err.code, ErrorCode::EndpointUnreachable, "{err:?}");
+    }
+
+    /// Seeds a bucket with 3 folders and 5 files at the root of `docs/`, then
+    /// pages through it two entries at a time.
+    #[tokio::test]
+    async fn list_objects_paginates_folder_listing() {
+        use crate::providers::storage_provider::ListQuery;
+        use aws_sdk_s3::primitives::ByteStream;
+
+        let Some(endpoint) = minio_endpoint() else {
+            return;
+        };
+        let resolved = resolve_config(&config(&endpoint, SECRET_KEY)).unwrap();
+        let client = build_client(&resolved, &SecretString::new(SECRET_KEY));
+        let bucket = format!("bucklane-test-{}", uuid::Uuid::now_v7().simple());
+        client.create_bucket().bucket(&bucket).send().await.unwrap();
+
+        let keys = [
+            "docs/",
+            "docs/a/one.txt",
+            "docs/b/two.txt",
+            "docs/c/",
+            "docs/1.txt",
+            "docs/2.txt",
+            "docs/3.txt",
+            "docs/4.txt",
+            "docs/5.txt",
+        ];
+        for key in keys {
+            client
+                .put_object()
+                .bucket(&bucket)
+                .key(key)
+                .body(ByteStream::from_static(b"x"))
+                .send()
+                .await
+                .unwrap();
+        }
+
+        let provider = S3StorageProvider::new(client);
+        let mut token: Option<String> = None;
+        let mut names = Vec::new();
+        let mut pages = 0;
+        loop {
+            let page = provider
+                .list_objects(ListQuery {
+                    bucket: &bucket,
+                    prefix: "docs/",
+                    delimiter: "/",
+                    continuation_token: token.as_deref(),
+                    page_size: Some(2),
+                })
+                .await
+                .unwrap();
+            pages += 1;
+            names.extend(page.objects.into_iter().map(|o| o.name));
+            if !page.is_truncated {
+                break;
+            }
+            token = page.next_continuation_token;
+        }
+
+        names.sort();
+        assert_eq!(
+            names,
+            [
+                "1.txt", "2.txt", "3.txt", "4.txt", "5.txt", "a/", "b/", "c/"
+            ]
+        );
+        assert!(pages >= 4, "expected several pages, got {pages}");
     }
 
     #[tokio::test]

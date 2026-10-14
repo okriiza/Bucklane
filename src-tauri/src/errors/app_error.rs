@@ -8,6 +8,7 @@ use specta::Type;
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum ErrorCode {
     ConnectionInvalid,
+    InvalidInput,
     AuthenticationFailed,
     AccessDenied,
     EndpointUnreachable,

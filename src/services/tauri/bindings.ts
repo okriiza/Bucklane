@@ -16,9 +16,27 @@ export const commands = {
 	/**  Removes the connection and its secret. Remote buckets are never touched. */
 	deleteConnection: (id: string) => typedError<DeleteConnectionResult, AppError>(__TAURI_INVOKE("delete_connection", { id })),
 	testConnection: (input: TestConnectionInput) => typedError<TestConnectionResult, AppError>(__TAURI_INVOKE("test_connection", { input })),
+	/**
+	 *  Fails with `ACCESS_DENIED` when the credentials may not list buckets; the
+	 *  UI then falls back to bookmarked buckets.
+	 */
+	listBuckets: (connectionId: string) => typedError<BucketInfo[], AppError>(__TAURI_INVOKE("list_buckets", { connectionId })),
+	headBucket: (connectionId: string, bucket: string) => typedError<null, AppError>(__TAURI_INVOKE("head_bucket", { connectionId, bucket })),
+	listBucketBookmarks: (connectionId: string) => typedError<BucketBookmark[], AppError>(__TAURI_INVOKE("list_bucket_bookmarks", { connectionId })),
+	addBucketBookmark: (input: AddBucketBookmarkInput) => typedError<BucketBookmark, AppError>(__TAURI_INVOKE("add_bucket_bookmark", { input })),
+	updateBucketBookmark: (input: UpdateBucketBookmarkInput) => typedError<BucketBookmark, AppError>(__TAURI_INVOKE("update_bucket_bookmark", { input })),
+	removeBucketBookmark: (id: string) => typedError<null, AppError>(__TAURI_INVOKE("remove_bucket_bookmark", { id })),
+	listObjects: (request: ListObjectsRequest) => typedError<ListObjectsResponse, AppError>(__TAURI_INVOKE("list_objects", { request })),
+	headObject: (connectionId: string, bucket: string, key: string) => typedError<ObjectMetadata, AppError>(__TAURI_INVOKE("head_object", { connectionId, bucket, key })),
 };
 
 /* Types */
+export type AddBucketBookmarkInput = {
+	connectionId: string,
+	bucketName: string,
+	displayName: string | null,
+};
+
 /**
  *  Structured error returned by every IPC command.
  * 
@@ -30,6 +48,25 @@ export type AppError = {
 	message: string,
 	details: string | null,
 	retryable: boolean,
+};
+
+/**
+ *  A bucket the user saved by name so it can be opened without ListBuckets
+ *  permission (BKT-005). Not evidence that the bucket exists.
+ */
+export type BucketBookmark = {
+	id: string,
+	connectionId: string,
+	bucketName: string,
+	displayName: string | null,
+	createdAt: string,
+};
+
+export type BucketInfo = {
+	name: string,
+	createdAt: string | null,
+	/**  Reported by AWS ListBuckets; other providers usually omit it. */
+	region: string | null,
 };
 
 /**  Connection settings shared by create, update, and test requests. */
@@ -68,12 +105,42 @@ export type DeleteConnectionResult = {
 };
 
 /**  Machine-readable error codes exposed to the frontend (TSD §11). */
-export type ErrorCode = "CONNECTION_INVALID" | "AUTHENTICATION_FAILED" | "ACCESS_DENIED" | "ENDPOINT_UNREACHABLE" | "TLS_ERROR" | "BUCKET_NOT_FOUND" | "OBJECT_NOT_FOUND" | "OPERATION_UNSUPPORTED" | "TRANSFER_FAILED" | "TRANSFER_CANCELED" | "INTERRUPTED" | "LOCAL_FILE_ERROR" | "STORAGE_QUOTA_ERROR" | "DATABASE_UNAVAILABLE" | "INTERNAL_ERROR";
+export type ErrorCode = "CONNECTION_INVALID" | "INVALID_INPUT" | "AUTHENTICATION_FAILED" | "ACCESS_DENIED" | "ENDPOINT_UNREACHABLE" | "TLS_ERROR" | "BUCKET_NOT_FOUND" | "OBJECT_NOT_FOUND" | "OPERATION_UNSUPPORTED" | "TRANSFER_FAILED" | "TRANSFER_CANCELED" | "INTERRUPTED" | "LOCAL_FILE_ERROR" | "STORAGE_QUOTA_ERROR" | "DATABASE_UNAVAILABLE" | "INTERNAL_ERROR";
 
 export type HealthStatus = {
 	appVersion: string,
 	databaseOk: boolean,
 	databaseError: AppError | null,
+};
+
+export type ListObjectsRequest = {
+	connectionId: string,
+	bucket: string,
+	prefix: string | null,
+	/**  Defaults to `/` for folder-style navigation. */
+	delimiter: string | null,
+	/**  Opaque; passed back exactly as received. */
+	continuationToken: string | null,
+	pageSize: number | null,
+};
+
+export type ListObjectsResponse = {
+	/**  Folders first, then objects, each in the provider's key order. */
+	objects: StorageObject[],
+	nextContinuationToken: string | null,
+	isTruncated: boolean,
+};
+
+export type ObjectMetadata = {
+	key: string,
+	size: number | null,
+	lastModified: string | null,
+	contentType: string | null,
+	/**  Not necessarily an MD5 of the content (TSD §9.6). */
+	etag: string | null,
+	storageClass: string | null,
+	/**  User-defined `x-amz-meta-*` headers. */
+	metadata: { [key in string]: string },
 };
 
 /**
@@ -102,6 +169,23 @@ export type ProviderType = "aws" | "supabase" | "minio" | "cloudflare_r2" | "was
 export type SecretString = string;
 
 /**
+ *  An entry in a listing: either an object or a virtual folder (common prefix).
+ * 
+ *  `key` is an opaque S3 identifier, never a local filesystem path (TSD §4.2).
+ */
+export type StorageObject = {
+	key: string,
+	/**  Display name relative to the listed prefix; folders keep a trailing `/`. */
+	name: string,
+	/**  Sizes stay well below 2^53, so a JS number is lossless. */
+	size: number | null,
+	lastModified: string | null,
+	etag: string | null,
+	storageClass: string | null,
+	isPrefix: boolean,
+};
+
+/**
  *  Tests either a saved connection, an unsaved configuration, or (while
  *  editing) an unsaved configuration that reuses the saved connection's secret.
  */
@@ -118,6 +202,11 @@ export type TestConnectionResult = {
 };
 
 export type TestMethod = "LIST_BUCKETS" | "HEAD_BUCKET";
+
+export type UpdateBucketBookmarkInput = {
+	id: string,
+	displayName: string | null,
+};
 
 export type UpdateConnectionInput = {
 	id: string,

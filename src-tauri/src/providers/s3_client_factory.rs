@@ -55,33 +55,69 @@ pub fn build_client(config: &ResolvedConfig, secret: &SecretString) -> Client {
     Client::from_conf(builder.build())
 }
 
-/// In-memory clients keyed by connection ID and its `updated_at` revision, so
-/// an edited connection never reuses a client built from stale settings.
+/// In-memory clients keyed by connection ID, the connection's `updated_at`
+/// revision, and an optional region override (for AWS buckets outside the
+/// connection's region). An edited connection never reuses a stale client.
 #[derive(Default)]
 pub struct ClientCache {
-    clients: Mutex<HashMap<String, (String, Client)>>,
+    clients: Mutex<HashMap<ClientKey, (String, Client)>>,
+    /// AWS bucket regions discovered via `x-amz-bucket-region`.
+    bucket_regions: Mutex<HashMap<(String, String), String>>,
 }
 
+type ClientKey = (String, Option<String>);
+
 impl ClientCache {
-    pub fn get(&self, connection_id: &str, revision: &str) -> Option<Client> {
+    pub fn get(&self, connection_id: &str, region: Option<&str>, revision: &str) -> Option<Client> {
+        let key = (connection_id.to_owned(), region.map(str::to_owned));
         let clients = self.clients.lock().expect("client cache poisoned");
         clients
-            .get(connection_id)
+            .get(&key)
             .filter(|(cached_revision, _)| cached_revision == revision)
             .map(|(_, client)| client.clone())
     }
 
-    pub fn insert(&self, connection_id: &str, revision: &str, client: Client) {
+    pub fn insert(
+        &self,
+        connection_id: &str,
+        region: Option<&str>,
+        revision: &str,
+        client: Client,
+    ) {
+        let key = (connection_id.to_owned(), region.map(str::to_owned));
         self.clients
             .lock()
             .expect("client cache poisoned")
-            .insert(connection_id.to_owned(), (revision.to_owned(), client));
+            .insert(key, (revision.to_owned(), client));
     }
 
+    pub fn bucket_region(&self, connection_id: &str, bucket: &str) -> Option<String> {
+        self.bucket_regions
+            .lock()
+            .expect("client cache poisoned")
+            .get(&(connection_id.to_owned(), bucket.to_owned()))
+            .cloned()
+    }
+
+    pub fn set_bucket_region(&self, connection_id: &str, bucket: &str, region: &str) {
+        self.bucket_regions
+            .lock()
+            .expect("client cache poisoned")
+            .insert(
+                (connection_id.to_owned(), bucket.to_owned()),
+                region.to_owned(),
+            );
+    }
+
+    /// Drops every client and bucket-region entry for a connection.
     pub fn invalidate(&self, connection_id: &str) {
         self.clients
             .lock()
             .expect("client cache poisoned")
-            .remove(connection_id);
+            .retain(|(id, _), _| id != connection_id);
+        self.bucket_regions
+            .lock()
+            .expect("client cache poisoned")
+            .retain(|(id, _), _| id != connection_id);
     }
 }

@@ -33,6 +33,14 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
         commands::connections::update_connection,
         commands::connections::delete_connection,
         commands::connections::test_connection,
+        commands::buckets::list_buckets,
+        commands::buckets::head_bucket,
+        commands::buckets::list_bucket_bookmarks,
+        commands::buckets::add_bucket_bookmark,
+        commands::buckets::update_bucket_bookmark,
+        commands::buckets::remove_bucket_bookmark,
+        commands::objects::list_objects,
+        commands::objects::head_object,
     ])
 }
 

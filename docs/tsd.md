@@ -391,6 +391,8 @@ Client boleh di-cache secara in-memory menggunakan key `(connection_id, updated_
 
 Cache harus diinvalidasi ketika connection diperbarui, credential dirotasi, atau connection dihapus.
 
+**AWS bucket region resolution:** ListBuckets pada AWS mengembalikan bucket dari semua region, sedangkan client dikonfigurasi untuk satu region. Untuk koneksi AWS tanpa custom endpoint, region bucket dideteksi sekali melalui header `x-amz-bucket-region` dari HeadBucket (header ini tetap dikirim pada respons 301/403), di-cache per `(connection_id, bucket)`, dan client untuk region tersebut dibuat dengan credentials yang sama. Pengguna tidak perlu membuat satu koneksi per region.
+
 Tidak diperbolehkan menggunakan default credential chain secara tidak sengaja untuk connection dengan kredensial eksplisit.
 
 ## 5.3 Provider Profiles
@@ -1152,6 +1154,7 @@ interface AppError {
 Error codes utama:
 
 - CONNECTION_INVALID
+- INVALID_INPUT
 - AUTHENTICATION_FAILED
 - ACCESS_DENIED
 - ENDPOINT_UNREACHABLE

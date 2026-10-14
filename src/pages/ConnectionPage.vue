@@ -5,6 +5,7 @@ import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
 import { toast } from "vue-sonner";
 
+import BucketList from "@/components/buckets/BucketList.vue";
 import ConfirmDialog from "@/components/common/ConfirmDialog.vue";
 import { Button } from "@/components/ui/button";
 import { toAppError, type AppError, type TestConnectionResult } from "@/services/tauri";
@@ -119,7 +120,7 @@ async function remove() {
       </template>
     </dl>
 
-    <p class="text-muted-foreground mt-10 text-sm">{{ $t("connection.explorerComingSoon") }}</p>
+    <BucketList :connection-id="connection.id" />
 
     <ConfirmDialog
       v-model:open="confirmDelete"
