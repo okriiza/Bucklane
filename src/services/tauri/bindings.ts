@@ -6,6 +6,16 @@ import { invoke as __TAURI_INVOKE } from "@tauri-apps/api/core";
 export const commands = {
 	/**  Reports whether the backend and its local database are usable. */
 	health: () => typedError<HealthStatus, AppError>(__TAURI_INVOKE("health")),
+	/**  Provider defaults and form hints, so the frontend has no hardcoded copy. */
+	listProviderProfiles: () => __TAURI_INVOKE<ProviderProfile[]>("list_provider_profiles"),
+	listConnections: () => typedError<ConnectionDto[], AppError>(__TAURI_INVOKE("list_connections")),
+	getConnection: (id: string) => typedError<ConnectionDto, AppError>(__TAURI_INVOKE("get_connection", { id })),
+	createConnection: (input: ConnectionConfigInput) => typedError<ConnectionDto, AppError>(__TAURI_INVOKE("create_connection", { input })),
+	/**  Leaving `secretAccessKey` blank keeps the stored secret. */
+	updateConnection: (input: UpdateConnectionInput) => typedError<ConnectionDto, AppError>(__TAURI_INVOKE("update_connection", { input })),
+	/**  Removes the connection and its secret. Remote buckets are never touched. */
+	deleteConnection: (id: string) => typedError<DeleteConnectionResult, AppError>(__TAURI_INVOKE("delete_connection", { id })),
+	testConnection: (input: TestConnectionInput) => typedError<TestConnectionResult, AppError>(__TAURI_INVOKE("test_connection", { input })),
 };
 
 /* Types */
@@ -22,6 +32,41 @@ export type AppError = {
 	retryable: boolean,
 };
 
+/**  Connection settings shared by create, update, and test requests. */
+export type ConnectionConfigInput = {
+	name: string,
+	provider: ProviderType,
+	endpoint: string | null,
+	region: string,
+	accessKeyId: string,
+	/**  Required on create. On update, absent or blank keeps the stored secret. */
+	secretAccessKey: SecretString | null,
+	forcePathStyle: boolean,
+	allowInsecureHttp: boolean,
+};
+
+/**  Connection data sent to the frontend; excludes the secret and its reference. */
+export type ConnectionDto = {
+	id: string,
+	name: string,
+	provider: ProviderType,
+	endpoint: string | null,
+	region: string,
+	accessKeyId: string,
+	forcePathStyle: boolean,
+	allowInsecureHttp: boolean,
+	createdAt: string,
+	updatedAt: string,
+};
+
+export type DeleteConnectionResult = {
+	/**
+	 *  `false` if the connection was removed but its keychain entry could not
+	 *  be; the UI should warn the user (DB design §6.3).
+	 */
+	secretRemoved: boolean,
+};
+
 /**  Machine-readable error codes exposed to the frontend (TSD §11). */
 export type ErrorCode = "CONNECTION_INVALID" | "AUTHENTICATION_FAILED" | "ACCESS_DENIED" | "ENDPOINT_UNREACHABLE" | "TLS_ERROR" | "BUCKET_NOT_FOUND" | "OBJECT_NOT_FOUND" | "OPERATION_UNSUPPORTED" | "TRANSFER_FAILED" | "TRANSFER_CANCELED" | "INTERRUPTED" | "LOCAL_FILE_ERROR" | "STORAGE_QUOTA_ERROR" | "DATABASE_UNAVAILABLE" | "INTERNAL_ERROR";
 
@@ -30,6 +75,53 @@ export type HealthStatus = {
 	databaseOk: boolean,
 	databaseError: AppError | null,
 };
+
+/**
+ *  Defaults and form hints for a provider (TSD §5.3). Profiles never replace
+ *  endpoint validation or capability checks.
+ */
+export type ProviderProfile = {
+	provider: ProviderType,
+	label: string,
+	/**  The user must supply an endpoint; otherwise it may be derived. */
+	endpointRequired: boolean,
+	endpointPlaceholder: string | null,
+	defaultRegion: string | null,
+	regionPlaceholder: string,
+	defaultForcePathStyle: boolean,
+};
+
+export type ProviderType = "aws" | "supabase" | "minio" | "cloudflare_r2" | "wasabi" | "digitalocean_spaces" | "custom";
+
+/**
+ *  A secret received over IPC (e.g. a secret access key).
+ * 
+ *  It can be deserialized but never serialized, and its `Debug` output is
+ *  redacted so it cannot leak through logs or error formatting (SEC-004).
+ */
+export type SecretString = string;
+
+/**
+ *  Tests either a saved connection, an unsaved configuration, or (while
+ *  editing) an unsaved configuration that reuses the saved connection's secret.
+ */
+export type TestConnectionInput = {
+	connectionId: string | null,
+	config: ConnectionConfigInput | null,
+	testBucket: string | null,
+};
+
+export type TestConnectionResult = {
+	method: TestMethod,
+	/**  Number of visible buckets when `method` is `LIST_BUCKETS`. */
+	bucketCount: number | null,
+};
+
+export type TestMethod = "LIST_BUCKETS" | "HEAD_BUCKET";
+
+export type UpdateConnectionInput = {
+	id: string,
+} & ConnectionConfigInput;
 
 /* Tauri Specta runtime */
 async function typedError<T, E>(result: Promise<T>): Promise<{ status: "ok"; data: T } | { status: "error"; error: E }> {

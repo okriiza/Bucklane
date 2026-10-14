@@ -46,6 +46,11 @@ jobs:
           workspaces: src-tauri
       - run: cargo fmt --check
       - run: cargo clippy --all-targets -- -D warnings
+      - name: Start MinIO for integration tests
+        working-directory: .
+        run: docker compose up -d --wait minio
       - run: cargo test
+        env:
+          BUCKLANE_MINIO_ENDPOINT: http://localhost:9000
       - name: Check generated TypeScript bindings are committed
         run: git diff --exit-code -- ../src/services/tauri/bindings.ts

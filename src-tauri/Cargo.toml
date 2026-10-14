@@ -3,7 +3,7 @@ name = "bucklane"
 version = "0.1.0"
 description = "Desktop S3 storage manager"
 edition = "2024"
-rust-version = "1.94"
+rust-version = "1.94.1"
 license = "UNLICENSED"
 publish = false
 
@@ -25,6 +25,12 @@ sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio",
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 tracing-appender = "0.2"
+aws-sdk-s3 = { version = "1.152", default-features = false, features = ["rt-tokio", "default-https-client", "http-1x", "behavior-version-latest"] }
+async-trait = "0.1"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+keyring = "4.2"
+url = "2.5"
+uuid = { version = "1.28", features = ["v7"] }
 specta = { version = "=2.0.0-rc.25", features = ["derive"] }
 specta-typescript = "=0.0.12"
 tauri-specta = { version = "=2.0.0-rc.25", features = ["derive", "typescript"] }

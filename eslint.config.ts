@@ -14,6 +14,11 @@ export default defineConfigWithVueTs(
   },
   pluginVue.configs["flat/recommended"],
   vueTsConfigs.recommended,
+  {
+    // shadcn-style primitives use single-word names (Button, Input, Label).
+    files: ["src/components/ui/**/*.vue"],
+    rules: { "vue/multi-word-component-names": "off" },
+  },
   // Formatting is owned by Prettier.
   skipFormatting,
 );

@@ -55,14 +55,20 @@ fn create_private_dir(dir: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
+/// Migrated in-memory database for service and repository tests.
+#[cfg(test)]
+pub async fn test_pool() -> SqlitePool {
+    let pool = sqlite::open_in_memory().await.unwrap();
+    migrations::run(&pool).await.unwrap();
+    pool
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     async fn migrated_pool() -> SqlitePool {
-        let pool = sqlite::open_in_memory().await.unwrap();
-        migrations::run(&pool).await.unwrap();
-        pool
+        test_pool().await
     }
 
     async fn insert_connection(

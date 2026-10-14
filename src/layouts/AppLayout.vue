@@ -1,5 +1,9 @@
 <script setup lang="ts">
+import { Toaster } from "vue-sonner";
+import "vue-sonner/style.css";
+
 import AppSidebar from "@/components/common/AppSidebar.vue";
+import ConnectionFormDialog from "@/components/connections/ConnectionFormDialog.vue";
 import TransferPanel from "@/components/transfers/TransferPanel.vue";
 </script>
 
@@ -14,4 +18,6 @@ import TransferPanel from "@/components/transfers/TransferPanel.vue";
       <TransferPanel class="h-40 shrink-0" />
     </div>
   </div>
+  <ConnectionFormDialog />
+  <Toaster position="bottom-right" rich-colors />
 </template>

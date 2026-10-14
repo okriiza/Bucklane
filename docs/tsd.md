@@ -492,7 +492,12 @@ delete_connection
 list_connections
 get_connection
 test_connection
+list_provider_profiles
 ```
+
+`list_provider_profiles` mengembalikan default dan petunjuk form per provider (label, endpoint wajib/opsional, placeholder, default region, default path-style), sehingga frontend tidak menyimpan salinan konfigurasi provider sendiri.
+
+`delete_connection` mengembalikan `{ secretRemoved: boolean }`; jika `false`, koneksi sudah terhapus tetapi entri credential store gagal dibersihkan dan UI menampilkan peringatan.
 
 ```typescript
 type ProviderType =

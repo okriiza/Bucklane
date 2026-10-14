@@ -17,9 +17,9 @@ const dotClass = computed(() => {
     case "ready":
       return "bg-success";
     case "checking":
-      return "bg-fg-muted animate-pulse";
+      return "bg-muted-foreground animate-pulse";
     default:
-      return "bg-danger";
+      return "bg-destructive";
   }
 });
 
@@ -27,7 +27,7 @@ onMounted(() => app.checkHealth());
 </script>
 
 <template>
-  <div class="text-fg-muted flex items-center gap-2 text-xs" role="status">
+  <div class="text-muted-foreground flex items-center gap-2 text-xs" role="status">
     <span class="size-2 rounded-full" :class="dotClass" />
     <span>{{ $t(labels[app.status]) }}</span>
     <span v-if="app.health" class="ml-auto font-mono">
