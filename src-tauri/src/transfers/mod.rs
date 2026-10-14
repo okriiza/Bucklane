@@ -694,10 +694,10 @@ pub(crate) fn now() -> String {
     Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true)
 }
 
-/// Upload/download round trips against MinIO when `BUCKLANE_MINIO_ENDPOINT`
+/// Upload/download round trips against an S3-compatible server when `BUCKLANE_S3_TEST_ENDPOINT`
 /// is set; skipped otherwise.
 #[cfg(test)]
-mod minio_tests {
+mod s3_integration_tests {
     use std::path::PathBuf;
 
     use super::*;
@@ -716,8 +716,8 @@ mod minio_tests {
 
     impl Fixture {
         async fn new() -> Option<Self> {
-            let Ok(endpoint) = std::env::var("BUCKLANE_MINIO_ENDPOINT") else {
-                eprintln!("skipped: BUCKLANE_MINIO_ENDPOINT not set");
+            let Ok(endpoint) = std::env::var("BUCKLANE_S3_TEST_ENDPOINT") else {
+                eprintln!("skipped: BUCKLANE_S3_TEST_ENDPOINT not set");
                 return None;
             };
             let client = build_client(

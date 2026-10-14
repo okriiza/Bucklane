@@ -1194,7 +1194,8 @@ Provider target dan cara eksekusi:
 
 | Provider         | Eksekusi                                                        |
 | ---------------- | --------------------------------------------------------------- |
-| MinIO            | Setiap PR di CI melalui docker-compose / service container      |
+| S3-compatible lokal (RustFS) | Setiap PR di CI melalui `docker compose` (`BUCKLANE_S3_TEST_ENDPOINT`) |
+| MinIO            | Manual terhadap server MinIO; image Docker MinIO tidak lagi dipublikasikan |
 | AWS S3           | Nightly atau manual, credentials dari GitHub repository secrets |
 | Supabase Storage | Nightly atau manual, credentials dari GitHub repository secrets |
 

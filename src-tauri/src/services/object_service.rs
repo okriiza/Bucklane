@@ -96,7 +96,14 @@ impl<'a> ObjectService<'a> {
         validate_key(&key)?;
 
         let provider = self.provider(&input.connection_id, bucket).await?;
-        // A folder exists if anything is stored under it, marker or not.
+        // A folder exists if its marker exists or anything is stored under
+        // it. Listings hide the listed folder's own marker, so check the
+        // marker directly first.
+        match provider.head_object(bucket, &key).await {
+            Ok(_) => return Err(invalid("A folder with this name already exists.")),
+            Err(err) if err.code == ErrorCode::ObjectNotFound => {}
+            Err(err) => return Err(err),
+        }
         let existing = provider
             .list_objects(ListQuery {
                 bucket,
@@ -238,7 +245,10 @@ impl<'a> ObjectService<'a> {
         // only if it really exists so the confirmed count stays exact.
         if !keys.iter().any(|k| k == prefix) {
             match provider.head_object(bucket, prefix).await {
-                Ok(_) => keys.push(prefix.to_owned()),
+                Ok(marker) => {
+                    total_bytes += marker.size.unwrap_or(0);
+                    keys.push(prefix.to_owned());
+                }
                 Err(err) if err.code == ErrorCode::ObjectNotFound => {}
                 Err(err) => return Err(err),
             }
@@ -459,10 +469,10 @@ mod tests {
     }
 }
 
-/// Data-safety checks against a real MinIO server when
-/// `BUCKLANE_MINIO_ENDPOINT` is set; skipped otherwise.
+/// Data-safety checks against a real S3-compatible server when
+/// `BUCKLANE_S3_TEST_ENDPOINT` is set; skipped otherwise.
 #[cfg(test)]
-mod minio_tests {
+mod s3_integration_tests {
     use aws_sdk_s3::primitives::ByteStream;
     use sqlx::SqlitePool;
 
@@ -484,8 +494,8 @@ mod minio_tests {
 
     impl Fixture {
         async fn new() -> Option<Self> {
-            let Ok(endpoint) = std::env::var("BUCKLANE_MINIO_ENDPOINT") else {
-                eprintln!("skipped: BUCKLANE_MINIO_ENDPOINT not set");
+            let Ok(endpoint) = std::env::var("BUCKLANE_S3_TEST_ENDPOINT") else {
+                eprintln!("skipped: BUCKLANE_S3_TEST_ENDPOINT not set");
                 return None;
             };
             let pool = test_pool().await;

@@ -588,10 +588,10 @@ mod tests {
     }
 }
 
-/// Runs against a real MinIO server when `BUCKLANE_MINIO_ENDPOINT` is set
+/// Runs against a real S3-compatible server when `BUCKLANE_S3_TEST_ENDPOINT` is set
 /// (see docker-compose.yml); otherwise each test returns early as skipped.
 #[cfg(test)]
-mod minio_tests {
+mod s3_integration_tests {
     use super::*;
     use crate::database::test_pool;
     use crate::security::SecretString;
@@ -600,10 +600,10 @@ mod minio_tests {
     const ACCESS_KEY: &str = "bucklane-test";
     const SECRET_KEY: &str = "bucklane-test-secret";
 
-    fn minio_endpoint() -> Option<String> {
-        let endpoint = std::env::var("BUCKLANE_MINIO_ENDPOINT").ok();
+    fn s3_test_endpoint() -> Option<String> {
+        let endpoint = std::env::var("BUCKLANE_S3_TEST_ENDPOINT").ok();
         if endpoint.is_none() {
-            eprintln!("skipped: BUCKLANE_MINIO_ENDPOINT not set");
+            eprintln!("skipped: BUCKLANE_S3_TEST_ENDPOINT not set");
         }
         endpoint
     }
@@ -639,7 +639,7 @@ mod minio_tests {
 
     #[tokio::test]
     async fn valid_credentials_list_buckets() {
-        let Some(endpoint) = minio_endpoint() else {
+        let Some(endpoint) = s3_test_endpoint() else {
             return;
         };
         let result = test_with(config(&endpoint, SECRET_KEY), None)
@@ -650,7 +650,7 @@ mod minio_tests {
 
     #[tokio::test]
     async fn wrong_secret_is_an_authentication_error() {
-        let Some(endpoint) = minio_endpoint() else {
+        let Some(endpoint) = s3_test_endpoint() else {
             return;
         };
         let err = test_with(config(&endpoint, "wrong-secret"), None)
@@ -661,7 +661,7 @@ mod minio_tests {
 
     #[tokio::test]
     async fn closed_port_is_unreachable() {
-        if minio_endpoint().is_none() {
+        if s3_test_endpoint().is_none() {
             return;
         }
         let err = test_with(config("http://127.0.0.1:1", SECRET_KEY), None)
@@ -677,7 +677,7 @@ mod minio_tests {
         use crate::providers::storage_provider::ListQuery;
         use aws_sdk_s3::primitives::ByteStream;
 
-        let Some(endpoint) = minio_endpoint() else {
+        let Some(endpoint) = s3_test_endpoint() else {
             return;
         };
         let resolved = resolve_config(&config(&endpoint, SECRET_KEY)).unwrap();
@@ -742,7 +742,7 @@ mod minio_tests {
 
     #[tokio::test]
     async fn head_bucket_reports_missing_bucket() {
-        let Some(endpoint) = minio_endpoint() else {
+        let Some(endpoint) = s3_test_endpoint() else {
             return;
         };
         let resolved = resolve_config(&config(&endpoint, SECRET_KEY)).unwrap();
