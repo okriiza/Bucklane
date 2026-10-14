@@ -41,6 +41,12 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
         commands::buckets::remove_bucket_bookmark,
         commands::objects::list_objects,
         commands::objects::head_object,
+        commands::objects::create_folder,
+        commands::objects::copy_object,
+        commands::objects::move_object,
+        commands::objects::delete_objects,
+        commands::objects::prepare_prefix_delete,
+        commands::objects::execute_prefix_delete,
     ])
 }
 

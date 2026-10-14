@@ -716,7 +716,7 @@ mod minio_tests {
                 .list_objects(ListQuery {
                     bucket: &bucket,
                     prefix: "docs/",
-                    delimiter: "/",
+                    delimiter: Some("/"),
                     continuation_token: token.as_deref(),
                     page_size: Some(2),
                 })

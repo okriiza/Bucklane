@@ -1,7 +1,11 @@
 use tauri::State;
 
 use crate::app_state::AppState;
-use crate::domain::object::{ListObjectsRequest, ListObjectsResponse, ObjectMetadata};
+use crate::domain::object::{
+    CopyObjectInput, CreateFolderInput, DeleteObjectsInput, DeleteObjectsResult,
+    ListObjectsRequest, ListObjectsResponse, ObjectMetadata, ObjectOperationOutcome,
+    PrefixDeletePlan,
+};
 use crate::errors::AppError;
 
 #[tauri::command]
@@ -25,4 +29,65 @@ pub async fn head_object(
         .objects()?
         .head_object(&connection_id, &bucket, &key)
         .await
+}
+
+/// Returns the key of the created folder marker.
+#[tauri::command]
+#[specta::specta]
+pub async fn create_folder(
+    state: State<'_, AppState>,
+    input: CreateFolderInput,
+) -> Result<String, AppError> {
+    state.objects()?.create_folder(input).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn copy_object(
+    state: State<'_, AppState>,
+    input: CopyObjectInput,
+) -> Result<ObjectOperationOutcome, AppError> {
+    state.objects()?.copy_object(input).await
+}
+
+/// Also used for rename (same folder, new name).
+#[tauri::command]
+#[specta::specta]
+pub async fn move_object(
+    state: State<'_, AppState>,
+    input: CopyObjectInput,
+) -> Result<ObjectOperationOutcome, AppError> {
+    state.objects()?.move_object(input).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn delete_objects(
+    state: State<'_, AppState>,
+    input: DeleteObjectsInput,
+) -> Result<DeleteObjectsResult, AppError> {
+    state.objects()?.delete_objects(input).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn prepare_prefix_delete(
+    state: State<'_, AppState>,
+    connection_id: String,
+    bucket: String,
+    prefix: String,
+) -> Result<PrefixDeletePlan, AppError> {
+    state
+        .objects()?
+        .prepare_prefix_delete(&connection_id, &bucket, &prefix)
+        .await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn execute_prefix_delete(
+    state: State<'_, AppState>,
+    plan_id: String,
+) -> Result<DeleteObjectsResult, AppError> {
+    state.objects()?.execute_prefix_delete(&plan_id).await
 }

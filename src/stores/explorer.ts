@@ -6,7 +6,11 @@ import {
   toAppError,
   unwrap,
   type AppError,
+  type ConflictPolicy,
+  type DeleteObjectsResult,
   type ObjectMetadata,
+  type ObjectOperationOutcome,
+  type PrefixDeletePlan,
   type StorageObject,
 } from "@/services/tauri";
 
@@ -37,8 +41,13 @@ export const useExplorerStore = defineStore("explorer", () => {
   const metadataError = ref<AppError | null>(null);
   const metadataLoading = ref(false);
 
+  /** Multi-selection for bulk actions (FIL-007); separate from the details selection. */
+  const checkedKeys = ref<Set<string>>(new Set());
+
   let listSeq = 0;
   let metadataSeq = 0;
+
+  const checkedEntries = computed(() => entries.value.filter((e) => checkedKeys.value.has(e.key)));
 
   const selected = computed(
     () => entries.value.find((e) => e.key === selectedKey.value && !e.isPrefix) ?? null,
@@ -66,6 +75,7 @@ export const useExplorerStore = defineStore("explorer", () => {
     error.value = null;
     loading.value = true;
     clearSelection();
+    checkedKeys.value = new Set();
 
     try {
       const page = await fetchPage(loc, null);
@@ -131,8 +141,102 @@ export const useExplorerStore = defineStore("explorer", () => {
     metadataLoading.value = false;
   }
 
+  function toggleChecked(key: string, checked: boolean) {
+    const next = new Set(checkedKeys.value);
+    if (checked) next.add(key);
+    else next.delete(key);
+    checkedKeys.value = next;
+  }
+
+  function setAllChecked(keys: string[], checked: boolean) {
+    checkedKeys.value = checked ? new Set(keys) : new Set();
+  }
+
+  function requireLocation() {
+    if (!location.value) throw new Error("No folder is open.");
+    return location.value;
+  }
+
+  async function createFolder(name: string) {
+    const loc = requireLocation();
+    const key = await unwrap(
+      commands.createFolder({
+        connectionId: loc.connectionId,
+        bucket: loc.bucket,
+        prefix: loc.prefix,
+        name,
+      }),
+    );
+    await refresh();
+    return key;
+  }
+
+  /** Copy or move one object; a `conflict` outcome changes nothing. */
+  async function relocate(
+    mode: "copy" | "move",
+    sourceKey: string,
+    destinationKey: string,
+    conflictPolicy: ConflictPolicy,
+    { refresh: refreshAfter = true } = {},
+  ): Promise<ObjectOperationOutcome> {
+    const loc = requireLocation();
+    const input = {
+      connectionId: loc.connectionId,
+      bucket: loc.bucket,
+      sourceKey,
+      destinationKey,
+      conflictPolicy,
+    };
+    const outcome = await unwrap(
+      mode === "copy" ? commands.copyObject(input) : commands.moveObject(input),
+    );
+    if (refreshAfter && outcome.kind !== "conflict") await refresh();
+    return outcome;
+  }
+
+  function prepareFolderDelete(prefix: string): Promise<PrefixDeletePlan> {
+    const loc = requireLocation();
+    return unwrap(commands.preparePrefixDelete(loc.connectionId, loc.bucket, prefix));
+  }
+
+  /** Deletes files directly and folders through their confirmed plans. */
+  async function deleteEntries(
+    fileKeys: string[],
+    planIds: string[],
+  ): Promise<DeleteObjectsResult> {
+    const loc = requireLocation();
+    const results: DeleteObjectsResult[] = [];
+    if (fileKeys.length) {
+      results.push(
+        await unwrap(
+          commands.deleteObjects({
+            connectionId: loc.connectionId,
+            bucket: loc.bucket,
+            keys: fileKeys,
+          }),
+        ),
+      );
+    }
+    for (const planId of planIds) {
+      results.push(await unwrap(commands.executePrefixDelete(planId)));
+    }
+    await refresh();
+    return {
+      deleted: results.flatMap((r) => r.deleted),
+      failed: results.flatMap((r) => r.failed),
+    };
+  }
+
   return {
     location,
+    checkedKeys,
+    checkedEntries,
+    toggleChecked,
+    setAllChecked,
+    createFolder,
+    relocate,
+    prepareFolderDelete,
+    deleteEntries,
     entries,
     isTruncated,
     loading,

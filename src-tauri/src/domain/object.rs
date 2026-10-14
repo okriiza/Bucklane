@@ -57,3 +57,90 @@ pub struct ObjectMetadata {
     /// User-defined `x-amz-meta-*` headers.
     pub metadata: BTreeMap<String, String>,
 }
+
+/// What to do when the destination key already exists (ADR-013).
+/// `SKIP` and `RENAME` are added with transfers in M04.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Type)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum ConflictPolicy {
+    /// Do nothing and report the conflict so the user can decide.
+    Ask,
+    Overwrite,
+}
+
+#[derive(Debug, Clone, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateFolderInput {
+    pub connection_id: String,
+    pub bucket: String,
+    /// Parent folder prefix; empty for the bucket root.
+    pub prefix: String,
+    pub name: String,
+}
+
+/// Copy, move, or rename (a move within the same folder) of a single object.
+#[derive(Debug, Clone, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct CopyObjectInput {
+    pub connection_id: String,
+    pub bucket: String,
+    pub source_key: String,
+    pub destination_key: String,
+    pub conflict_policy: ConflictPolicy,
+}
+
+#[derive(Debug, Clone, Serialize, Type)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum ObjectOperationOutcome {
+    Completed,
+    /// Nothing was changed because the destination exists.
+    #[serde(rename_all = "camelCase")]
+    Conflict {
+        #[specta(type = Option<f64>)]
+        existing_size: Option<i64>,
+        existing_last_modified: Option<String>,
+    },
+    /// Move only: the copy succeeded but the source was deliberately kept.
+    #[serde(rename_all = "camelCase")]
+    SourceKept {
+        reason: String,
+    },
+}
+
+#[derive(Debug, Clone, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct DeleteObjectsInput {
+    pub connection_id: String,
+    pub bucket: String,
+    pub keys: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct DeleteFailure {
+    pub key: String,
+    pub error: crate::errors::AppError,
+}
+
+/// Partial failure is normal; the UI must never report full success when
+/// `failed` is non-empty (FIL-006).
+#[derive(Debug, Clone, Default, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct DeleteObjectsResult {
+    pub deleted: Vec<String>,
+    pub failed: Vec<DeleteFailure>,
+}
+
+/// Snapshot of the keys a folder delete will remove (TSD §6.3.2).
+#[derive(Debug, Clone, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct PrefixDeletePlan {
+    pub plan_id: String,
+    pub bucket: String,
+    pub prefix: String,
+    pub object_count: u32,
+    #[specta(type = f64)]
+    pub total_bytes: i64,
+    pub sample_keys: Vec<String>,
+    pub expires_at: String,
+}

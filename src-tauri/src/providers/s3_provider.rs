@@ -4,11 +4,14 @@ use async_trait::async_trait;
 use aws_sdk_s3::Client;
 use aws_sdk_s3::config::http::HttpResponse;
 use aws_sdk_s3::error::{ProvideErrorMetadata, SdkError};
+use aws_sdk_s3::primitives::ByteStream;
 use aws_sdk_s3::primitives::{DateTime, DateTimeFormat};
-use aws_sdk_s3::types::{CommonPrefix, Object};
+use aws_sdk_s3::types::{CommonPrefix, Delete, Object, ObjectIdentifier};
 
 use crate::domain::bucket::BucketInfo;
-use crate::domain::object::{ListObjectsResponse, ObjectMetadata, StorageObject};
+use crate::domain::object::{
+    DeleteFailure, DeleteObjectsResult, ListObjectsResponse, ObjectMetadata, StorageObject,
+};
 use crate::errors::{AppError, ErrorCode};
 use crate::providers::storage_provider::{ListQuery, StorageProvider};
 
@@ -89,7 +92,7 @@ impl StorageProvider for S3StorageProvider {
             .list_objects_v2()
             .bucket(query.bucket)
             .prefix(query.prefix)
-            .delimiter(query.delimiter)
+            .set_delimiter(query.delimiter.map(str::to_owned))
             .set_continuation_token(query.continuation_token.map(str::to_owned))
             .max_keys(page_size)
             .send()
@@ -126,6 +129,105 @@ impl StorageProvider for S3StorageProvider {
                 .unwrap_or_default(),
         })
     }
+
+    async fn put_empty_object(&self, bucket: &str, key: &str) -> Result<(), AppError> {
+        self.client
+            .put_object()
+            .bucket(bucket)
+            .key(key)
+            .body(ByteStream::from_static(b""))
+            .send()
+            .await
+            .map(|_| ())
+            .map_err(|e| map_sdk_error(e, ErrorCode::BucketNotFound))
+    }
+
+    async fn copy_object(
+        &self,
+        bucket: &str,
+        source_key: &str,
+        destination_key: &str,
+        if_match: Option<&str>,
+    ) -> Result<(), AppError> {
+        self.client
+            .copy_object()
+            .bucket(bucket)
+            .key(destination_key)
+            .copy_source(copy_source(bucket, source_key))
+            .set_copy_source_if_match(if_match.map(str::to_owned))
+            .send()
+            .await
+            .map(|_| ())
+            .map_err(|e| map_sdk_error(e, ErrorCode::ObjectNotFound))
+    }
+
+    async fn delete_object(&self, bucket: &str, key: &str) -> Result<(), AppError> {
+        self.client
+            .delete_object()
+            .bucket(bucket)
+            .key(key)
+            .send()
+            .await
+            .map(|_| ())
+            .map_err(|e| map_sdk_error(e, ErrorCode::ObjectNotFound))
+    }
+
+    async fn delete_objects(
+        &self,
+        bucket: &str,
+        keys: &[String],
+    ) -> Result<DeleteObjectsResult, AppError> {
+        let objects = keys
+            .iter()
+            .map(|key| ObjectIdentifier::builder().key(key).build())
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|_| AppError::internal("Could not build the delete request."))?;
+        let delete = Delete::builder()
+            .set_objects(Some(objects))
+            .quiet(true)
+            .build()
+            .map_err(|_| AppError::internal("Could not build the delete request."))?;
+
+        let output = self
+            .client
+            .delete_objects()
+            .bucket(bucket)
+            .delete(delete)
+            .send()
+            .await
+            .map_err(|e| map_sdk_error(e, ErrorCode::BucketNotFound))?;
+
+        // Quiet mode only reports failures; every other key was deleted.
+        let failed: Vec<DeleteFailure> = output
+            .errors()
+            .iter()
+            .map(|e| DeleteFailure {
+                key: e.key().unwrap_or_default().to_owned(),
+                error: map_service_error(e.code(), 0, ErrorCode::ObjectNotFound)
+                    .with_details(e.code().unwrap_or("no error code").to_owned()),
+            })
+            .collect();
+        let deleted = keys
+            .iter()
+            .filter(|k| !failed.iter().any(|f| &f.key == *k))
+            .cloned()
+            .collect();
+        Ok(DeleteObjectsResult { deleted, failed })
+    }
+}
+
+/// `x-amz-copy-source` value: bucket and URL-encoded key. `/` is kept so the
+/// key's folder structure is preserved.
+fn copy_source(bucket: &str, key: &str) -> String {
+    let mut encoded = String::with_capacity(key.len());
+    for byte in key.bytes() {
+        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'~' | b'/') {
+            encoded.push(byte as char);
+        } else {
+            encoded.push_str(&format!("%{byte:02X}"));
+        }
+    }
+    format!("{bucket}/{encoded}")
 }
 
 /// Converts one ListObjectsV2 page into explorer entries: folders first, then
@@ -222,7 +324,7 @@ where
     }
 }
 
-fn map_service_error(code: Option<&str>, status: u16, not_found: ErrorCode) -> AppError {
+pub(crate) fn map_service_error(code: Option<&str>, status: u16, not_found: ErrorCode) -> AppError {
     use ErrorCode::*;
 
     let (error_code, message) = match (code, status) {
@@ -357,6 +459,15 @@ mod tests {
         let contents = [Object::builder().key("readme.txt").build()];
         let entries = listing_entries("", &[], &contents);
         assert_eq!(entries[0].name, "readme.txt");
+    }
+
+    #[test]
+    fn copy_source_encodes_keys_but_keeps_slashes() {
+        assert_eq!(
+            copy_source("photos", "2026/Summer trip/café #1.jpg"),
+            "photos/2026/Summer%20trip/caf%C3%A9%20%231.jpg"
+        );
+        assert_eq!(copy_source("b", "a+b=c?.txt"), "b/a%2Bb%3Dc%3F.txt");
     }
 
     #[test]

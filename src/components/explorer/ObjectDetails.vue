@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { X } from "@lucide/vue";
+import { Copy, FolderInput, Pencil, Trash2, X } from "@lucide/vue";
 
 import { Button } from "@/components/ui/button";
 import { useExplorerStore } from "@/stores/explorer";
 import { formatBytes, formatDateTime } from "@/utils/format";
 
 const explorer = useExplorerStore();
+const emit = defineEmits<{ action: [action: "rename" | "copy" | "move" | "delete"] }>();
 </script>
 
 <!-- Object metadata panel (EXP-005). Metadata comes from HeadObject, not the listing. -->
@@ -24,7 +25,27 @@ const explorer = useExplorerStore();
     </header>
 
     <div class="min-h-0 flex-1 overflow-auto p-4 text-sm">
-      <p class="mb-4 font-medium break-all select-text">{{ explorer.selected?.name }}</p>
+      <p class="mb-3 font-medium break-all select-text">{{ explorer.selected?.name }}</p>
+      <div class="mb-5 flex flex-wrap gap-1.5">
+        <Button variant="outline" size="sm" @click="emit('action', 'rename')">
+          <Pencil /> {{ $t("ops.rename") }}
+        </Button>
+        <Button variant="outline" size="sm" @click="emit('action', 'copy')">
+          <Copy /> {{ $t("ops.copy") }}
+        </Button>
+        <Button variant="outline" size="sm" @click="emit('action', 'move')">
+          <FolderInput /> {{ $t("ops.move") }}
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          :aria-label="$t('common.delete')"
+          :title="$t('common.delete')"
+          @click="emit('action', 'delete')"
+        >
+          <Trash2 />
+        </Button>
+      </div>
 
       <p v-if="explorer.metadataLoading" class="text-muted-foreground">
         {{ $t("explorer.loading") }}

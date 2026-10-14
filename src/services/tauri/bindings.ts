@@ -28,6 +28,14 @@ export const commands = {
 	removeBucketBookmark: (id: string) => typedError<null, AppError>(__TAURI_INVOKE("remove_bucket_bookmark", { id })),
 	listObjects: (request: ListObjectsRequest) => typedError<ListObjectsResponse, AppError>(__TAURI_INVOKE("list_objects", { request })),
 	headObject: (connectionId: string, bucket: string, key: string) => typedError<ObjectMetadata, AppError>(__TAURI_INVOKE("head_object", { connectionId, bucket, key })),
+	/**  Returns the key of the created folder marker. */
+	createFolder: (input: CreateFolderInput) => typedError<string, AppError>(__TAURI_INVOKE("create_folder", { input })),
+	copyObject: (input: CopyObjectInput) => typedError<ObjectOperationOutcome, AppError>(__TAURI_INVOKE("copy_object", { input })),
+	/**  Also used for rename (same folder, new name). */
+	moveObject: (input: CopyObjectInput) => typedError<ObjectOperationOutcome, AppError>(__TAURI_INVOKE("move_object", { input })),
+	deleteObjects: (input: DeleteObjectsInput) => typedError<DeleteObjectsResult, AppError>(__TAURI_INVOKE("delete_objects", { input })),
+	preparePrefixDelete: (connectionId: string, bucket: string, prefix: string) => typedError<PrefixDeletePlan, AppError>(__TAURI_INVOKE("prepare_prefix_delete", { connectionId, bucket, prefix })),
+	executePrefixDelete: (planId: string) => typedError<DeleteObjectsResult, AppError>(__TAURI_INVOKE("execute_prefix_delete", { planId })),
 };
 
 /* Types */
@@ -69,6 +77,14 @@ export type BucketInfo = {
 	region: string | null,
 };
 
+/**
+ *  What to do when the destination key already exists (ADR-013).
+ *  `SKIP` and `RENAME` are added with transfers in M04.
+ */
+export type ConflictPolicy = 
+/**  Do nothing and report the conflict so the user can decide. */
+"ASK" | "OVERWRITE";
+
 /**  Connection settings shared by create, update, and test requests. */
 export type ConnectionConfigInput = {
 	name: string,
@@ -96,12 +112,49 @@ export type ConnectionDto = {
 	updatedAt: string,
 };
 
+/**  Copy, move, or rename (a move within the same folder) of a single object. */
+export type CopyObjectInput = {
+	connectionId: string,
+	bucket: string,
+	sourceKey: string,
+	destinationKey: string,
+	conflictPolicy: ConflictPolicy,
+};
+
+export type CreateFolderInput = {
+	connectionId: string,
+	bucket: string,
+	/**  Parent folder prefix; empty for the bucket root. */
+	prefix: string,
+	name: string,
+};
+
 export type DeleteConnectionResult = {
 	/**
 	 *  `false` if the connection was removed but its keychain entry could not
 	 *  be; the UI should warn the user (DB design §6.3).
 	 */
 	secretRemoved: boolean,
+};
+
+export type DeleteFailure = {
+	key: string,
+	error: AppError,
+};
+
+export type DeleteObjectsInput = {
+	connectionId: string,
+	bucket: string,
+	keys: string[],
+};
+
+/**
+ *  Partial failure is normal; the UI must never report full success when
+ *  `failed` is non-empty (FIL-006).
+ */
+export type DeleteObjectsResult = {
+	deleted: string[],
+	failed: DeleteFailure[],
 };
 
 /**  Machine-readable error codes exposed to the frontend (TSD §11). */
@@ -141,6 +194,23 @@ export type ObjectMetadata = {
 	storageClass: string | null,
 	/**  User-defined `x-amz-meta-*` headers. */
 	metadata: { [key in string]: string },
+};
+
+export type ObjectOperationOutcome = { kind: "completed" } | 
+/**  Nothing was changed because the destination exists. */
+{ kind: "conflict"; existingSize: number | null; existingLastModified: string | null } | 
+/**  Move only: the copy succeeded but the source was deliberately kept. */
+{ kind: "sourceKept"; reason: string };
+
+/**  Snapshot of the keys a folder delete will remove (TSD §6.3.2). */
+export type PrefixDeletePlan = {
+	planId: string,
+	bucket: string,
+	prefix: string,
+	objectCount: number,
+	totalBytes: number | null,
+	sampleKeys: string[],
+	expiresAt: string,
 };
 
 /**

@@ -591,6 +591,17 @@ execute_prefix_delete
 
 Rename adalah `move_object` dengan bucket yang sama dan key tujuan baru; tidak ada command rename terpisah.
 
+`copy_object` dan `move_object` menerima `conflictPolicy` (`ASK` | `OVERWRITE`) dan mengembalikan union berlabel:
+
+```typescript
+type ObjectOperationOutcome =
+  | { kind: "completed" }
+  | { kind: "conflict"; existingSize: number | null; existingLastModified: string | null } // tidak ada yang diubah
+  | { kind: "sourceKept"; reason: string }; // move: copy berhasil, sumber sengaja dipertahankan
+```
+
+Copy menggunakan `x-amz-copy-source-if-match` dengan ETag sumber agar sumber yang berubah di tengah proses tidak tersalin. Move hanya menghapus sumber setelah tujuan terverifikasi (ukuran sama) dan ETag sumber dicek ulang tidak berubah; jika ragu, hasilnya `sourceKept`.
+
 `copy_object` dan `move_object` hanya berlaku untuk objek tunggal pada MVP. Copy/move folder (prefix) termasuk Post-MVP. Objek berukuran di atas 5 GiB ditolak dengan `OPERATION_UNSUPPORTED` karena membutuhkan multipart copy (lihat §9.6).
 
 ListObjectsRequest:
@@ -1349,9 +1360,10 @@ Acceptance:
 
 ## M03 — Object Operations
 
+Upload/download dipindahkan ke M04 karena bergantung pada transfer engine (antrean, progress, cancel, multipart).
+
 Deliverables:
 
-- Upload/download.
 - Create folder marker.
 - Copy.
 - Rename.
@@ -1369,6 +1381,7 @@ Acceptance:
 
 Deliverables:
 
+- Upload/download (dengan conflict policy dan local file selection registry).
 - Transfer scheduler.
 - Progress events.
 - Queue.

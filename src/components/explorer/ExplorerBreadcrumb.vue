@@ -38,7 +38,8 @@ function folderRoute(prefix: string) {
         <RouterLink
           v-if="segments.length"
           :to="folderRoute('')"
-          class="text-muted-foreground hover:text-foreground"
+          data-drop-prefix=""
+          class="text-muted-foreground hover:text-foreground rounded px-1"
         >
           {{ bucket }}
         </RouterLink>
@@ -57,7 +58,8 @@ function folderRoute(prefix: string) {
           <RouterLink
             v-else
             :to="folderRoute(segment.prefix)"
-            class="text-muted-foreground hover:text-foreground block truncate"
+            :data-drop-prefix="segment.prefix"
+            class="text-muted-foreground hover:text-foreground block truncate rounded px-1"
           >
             {{ segment.name || "∅" }}
           </RouterLink>

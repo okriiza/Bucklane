@@ -7,6 +7,7 @@ use crate::providers::s3_client_factory::ClientCache;
 use crate::repositories::bucket_bookmark_repository::BucketBookmarkRepository;
 use crate::security::credential_store::CredentialStore;
 use crate::services::connection_service::ConnectionService;
+use crate::services::delete_plans::DeletePlanRegistry;
 use crate::services::object_service::ObjectService;
 use crate::services::storage_service::StorageService;
 
@@ -17,6 +18,7 @@ pub struct AppState {
     db: Result<SqlitePool, AppError>,
     credentials: Arc<dyn CredentialStore>,
     clients: ClientCache,
+    delete_plans: DeletePlanRegistry,
 }
 
 impl AppState {
@@ -25,6 +27,7 @@ impl AppState {
             db,
             credentials,
             clients: ClientCache::default(),
+            delete_plans: DeletePlanRegistry::default(),
         }
     }
 
@@ -48,6 +51,6 @@ impl AppState {
     }
 
     pub fn objects(&self) -> Result<ObjectService<'_>, AppError> {
-        Ok(ObjectService::new(self.connections()?))
+        Ok(ObjectService::new(self.connections()?, &self.delete_plans))
     }
 }
