@@ -72,6 +72,9 @@ MVP tidak mencakup:
 - Object replication.
 - Transfer langsung antar-provider.
 - Koneksi SFTP, FTP, atau WebDAV.
+- Kredensial selain static access key (session token/STS, AWS profiles, SSO).
+- Copy/move folder (prefix) secara rekursif.
+- Copy/move objek berukuran di atas 5 GiB.
 
 # 3. Target Users
 
@@ -319,7 +322,7 @@ Pengguna dapat mengunggah satu atau beberapa file lokal ke bucket.
 - Tujuan bucket dan prefix dapat dipilih.
 - Transfer progress ditampilkan.
 - Kegagalan upload dapat diketahui.
-- File dengan key yang sama memerlukan keputusan overwrite sesuai kebijakan.
+- Jika key tujuan sudah ada, pengguna memilih Overwrite, Skip, atau Rename (`name (1).ext`), dengan opsi "terapkan ke semua". Default: tanya pengguna; tidak ada overwrite tanpa pilihan eksplisit.
 - UI tetap responsif selama transfer.
 
 ### FIL-002 — Download File
@@ -332,7 +335,7 @@ Pengguna dapat mengunduh objek ke filesystem lokal.
 
 - Pengguna memilih lokasi penyimpanan.
 - Progress transfer ditampilkan.
-- File lokal yang sudah ada tidak ditimpa diam-diam.
+- File lokal yang sudah ada tidak ditimpa diam-diam; pengguna memilih Overwrite, Skip, atau Rename seperti pada upload.
 - Kegagalan download ditangani dengan aman.
 - File parsial tidak diperlakukan sebagai download berhasil.
 
@@ -358,11 +361,15 @@ Rename dilakukan dengan copy object ke key baru, lalu menghapus key lama setelah
 
 Pengguna dapat menyalin objek dalam storage yang sama.
 
+**Batasan MVP:** hanya objek tunggal; objek di atas 5 GiB ditolak dengan pesan yang jelas.
+
 ### FIL-005 — Move Object
 
 **Priority:** P0
 
 Pengguna dapat memindahkan objek ke prefix lain menggunakan proses copy lalu delete.
+
+**Batasan MVP:** sama dengan FIL-004.
 
 ### FIL-006 — Delete Object
 
@@ -376,6 +383,13 @@ Pengguna dapat menghapus satu atau beberapa objek.
 - Nama bucket dan jumlah objek ditampilkan.
 - Operasi partial failure dilaporkan.
 - Sistem tidak mengklaim seluruh operasi berhasil jika sebagian gagal.
+
+**Hapus folder (prefix):**
+
+- Sistem terlebih dahulu menghitung seluruh objek di bawah prefix, lalu menampilkan jumlah objek dan total ukuran sebelum konfirmasi.
+- Hanya objek yang terhitung saat konfirmasi yang dihapus; objek baru yang muncul setelahnya tidak ikut terhapus.
+- Penghapusan root bucket (prefix kosong) tidak diizinkan.
+- Folder dengan lebih dari 100.000 objek tidak dapat dihapus melalui MVP.
 
 ### FIL-007 — Bulk Selection
 
@@ -864,6 +878,8 @@ MVP dinyatakan siap apabila:
 
 - Transfer between providers.
 - Folder upload/download.
+- Copy/move folder dan multipart copy untuk objek di atas 5 GiB.
+- Session token / temporary credentials.
 - Connection grouping.
 - Local configuration backup/export.
 - Keyboard shortcuts.

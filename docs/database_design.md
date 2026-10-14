@@ -372,7 +372,8 @@ Because SQLite and the OS credential store are separate systems, this is **not**
 ### 6.5 Retention
 
 - Connection metadata: until user deletes the connection.
-- Transfer history: retained until manually cleared or a future user-configurable retention policy applies.
+- Transfer history: retained until manually cleared or a future user-configurable retention policy applies. Clearing deletes only terminal-state rows (`COMPLETED`, `FAILED`, `CANCELED`) and skips rows whose `multipart_upload_id` has not been cleaned up.
+- Retrying a failed multipart upload resets the same row to `QUEUED`, increments `retry_count`, clears `multipart_upload_id` after a best-effort abort, and deletes its `transfer_parts`.
 - Multipart metadata: retain while necessary for cleanup and delete after successful completion/abort and record reconciliation.
 - Temporary downloads: controlled by the transfer engine, not SQLite.
 
