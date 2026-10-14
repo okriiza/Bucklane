@@ -1,0 +1,56 @@
+@import "tailwindcss";
+
+/* Dark mode is driven by a `dark` class on <html> so the user setting
+   (system / light / dark) can override the OS preference. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  --color-surface: var(--surface);
+  --color-surface-muted: var(--surface-muted);
+  --color-border: var(--border);
+  --color-fg: var(--fg);
+  --color-fg-muted: var(--fg-muted);
+  --color-accent: var(--accent);
+  --color-danger: var(--danger);
+  --color-success: var(--success);
+}
+
+:root {
+  --surface: #ffffff;
+  --surface-muted: #f6f7f9;
+  --border: #e3e6eb;
+  --fg: #111827;
+  --fg-muted: #6b7280;
+  --accent: #0284c7;
+  --danger: #dc2626;
+  --success: #16a34a;
+  color-scheme: light;
+}
+
+.dark {
+  --surface: #0f1115;
+  --surface-muted: #161a20;
+  --border: #262b33;
+  --fg: #e5e7eb;
+  --fg-muted: #9ca3af;
+  --accent: #38bdf8;
+  --danger: #f87171;
+  --success: #4ade80;
+  color-scheme: dark;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+}
+
+body {
+  @apply bg-surface text-fg font-sans antialiased;
+  /* Desktop app: no rubber-band scrolling or accidental text selection in chrome. */
+  overscroll-behavior: none;
+  user-select: none;
+}

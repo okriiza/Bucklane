@@ -1159,6 +1159,7 @@ Error codes utama:
 - INTERRUPTED
 - LOCAL_FILE_ERROR
 - STORAGE_QUOTA_ERROR
+- DATABASE_UNAVAILABLE
 - INTERNAL_ERROR
 
 Pesan detail yang ditampilkan atau disimpan harus disanitasi agar tidak membocorkan secret maupun signed URL.
