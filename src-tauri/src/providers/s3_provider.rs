@@ -343,7 +343,7 @@ pub(crate) fn map_service_error(code: Option<&str>, status: u16, not_found: Erro
             "Access denied. The credentials are valid but lack permission for this operation.",
         ),
         (Some("NoSuchBucket"), _) => (BucketNotFound, "The bucket does not exist."),
-        (Some("NoSuchKey" | "NotFound"), _) | (None, 404) => (
+        (Some("NoSuchKey" | "NotFound" | "NoSuchUpload"), _) | (None, 404) => (
             not_found,
             if not_found == BucketNotFound {
                 "The bucket does not exist or is not accessible."

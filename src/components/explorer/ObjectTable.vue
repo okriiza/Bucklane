@@ -18,7 +18,7 @@ const emit = defineEmits<{
   select: [key: string];
   toggle: [key: string, checked: boolean];
   toggleAll: [checked: boolean];
-  action: [action: "rename" | "copy" | "move" | "delete", entry: StorageObject];
+  action: [action: "download" | "rename" | "copy" | "move" | "delete", entry: StorageObject];
 }>();
 
 const ICONS: Record<string, typeof File> = {
@@ -123,6 +123,7 @@ function activate(entry: StorageObject) {
           <RowActions
             :entry="entry"
             @details="emit('select', entry.key)"
+            @download="emit('action', 'download', entry)"
             @rename="emit('action', 'rename', entry)"
             @copy="emit('action', 'copy', entry)"
             @move="emit('action', 'move', entry)"

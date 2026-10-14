@@ -155,7 +155,7 @@ impl<'a> ConnectionService<'a> {
         Ok(updated.into())
     }
 
-    // TODO(M04): refuse or cancel active transfers before deleting (TSD §7.2).
+    /// Callers must ensure no transfer for this connection is active.
     pub async fn delete(&self, id: &str) -> Result<DeleteConnectionResult, AppError> {
         let existing = self.load(id).await?;
         if !self.repo().delete(id).await? {

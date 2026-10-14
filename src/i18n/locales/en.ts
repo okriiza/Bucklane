@@ -152,6 +152,38 @@ export default {
   transfers: {
     title: "Transfers",
     empty: "No transfers yet",
+    active: "{count} active",
+    failed: "{count} failed",
+    clearFinished: "Clear finished",
+    upload: "Upload",
+    download: "Download",
+    uploadAction: "Upload",
+    downloadAction: "Download",
+    cancel: "Cancel transfer",
+    retry: "Retry transfer",
+    queued: "Queued {count} transfer | Queued {count} transfers",
+    skipped: "Skipped {count} existing item | Skipped {count} existing items",
+    status: {
+      QUEUED: "Queued",
+      RUNNING: "Running",
+      COMPLETED: "Done",
+      FAILED: "Failed",
+      CANCELED: "Canceled",
+    },
+  },
+  conflict: {
+    title: "{count} item already exists | {count} items already exist",
+    uploadDescription: "Objects with these names already exist in this folder.",
+    downloadDescription: "Files with these names already exist in the chosen folder.",
+    skip: "Skip",
+    keepBoth: "Keep both",
+    replace: "Replace",
+  },
+  drop: {
+    title: "Drop to upload to",
+    openFolderFirst: "Open a bucket folder to upload files by dropping them.",
+    skippedFolders:
+      "{count} dropped folder was skipped. Folder upload isn't available yet. | {count} dropped folders were skipped. Folder upload isn't available yet.",
   },
   status: {
     checking: "Checking backend…",

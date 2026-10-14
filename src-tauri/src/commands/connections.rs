@@ -57,6 +57,13 @@ pub async fn delete_connection(
     state: State<'_, AppState>,
     id: String,
 ) -> Result<DeleteConnectionResult, AppError> {
+    // Active transfers must finish or be canceled first (TSD §7.2).
+    if state.transfers().is_ok_and(|t| t.has_active(&id)) {
+        return Err(AppError::new(
+            crate::errors::ErrorCode::InvalidInput,
+            "This connection has active transfers. Cancel them or wait for them to finish before deleting it.",
+        ));
+    }
     state.connections()?.delete(&id).await
 }
 

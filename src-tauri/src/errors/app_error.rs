@@ -4,7 +4,7 @@ use specta::Type;
 /// Machine-readable error codes exposed to the frontend (TSD §11).
 // Most variants are produced by services added from M01 onward.
 #[allow(dead_code)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Type)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, serde::Deserialize, Type)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum ErrorCode {
     ConnectionInvalid,
@@ -40,7 +40,7 @@ impl ErrorCode {
 ///
 /// `message` and `details` must already be sanitized: never include secrets,
 /// authorization headers, or signed URLs (SEC-004).
-#[derive(Debug, Clone, Serialize, Type, thiserror::Error)]
+#[derive(Debug, Clone, Serialize, serde::Deserialize, Type, thiserror::Error)]
 #[serde(rename_all = "camelCase")]
 #[error("{code:?}: {message}")]
 pub struct AppError {
@@ -68,6 +68,22 @@ impl AppError {
 
     pub fn internal(message: impl Into<String>) -> Self {
         Self::new(ErrorCode::InternalError, message)
+    }
+
+    /// Rebuilds an error persisted as `error_code` + `error_message`.
+    pub fn stored(code: Option<&str>, message: &str) -> Self {
+        let code = code
+            .and_then(|c| serde_json::from_value(serde_json::Value::String(c.to_owned())).ok())
+            .unwrap_or(ErrorCode::InternalError);
+        Self::new(code, message)
+    }
+
+    /// Code as stored in `transfers.error_code`.
+    pub fn code_str(&self) -> String {
+        serde_json::to_value(self.code)
+            .ok()
+            .and_then(|v| v.as_str().map(str::to_owned))
+            .unwrap_or_else(|| "INTERNAL_ERROR".to_owned())
     }
 }
 

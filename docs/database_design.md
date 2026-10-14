@@ -166,6 +166,7 @@ Stores local transfer history and durable operational metadata. Runtime progress
 | `error_code`               | TEXT    | NULL                | Sanitized machine-readable error code                  |
 | `error_message`            | TEXT    | NULL                | Sanitized diagnostic message                           |
 | `multipart_upload_id`      | TEXT    | NULL                | Remote multipart upload ID for recovery/cleanup        |
+| `overwrite`                | INTEGER | NOT NULL, DEFAULT 0 | User chose to replace an existing destination (0/1)    |
 | `created_at`               | TEXT    | NOT NULL            | Queued timestamp                                       |
 | `started_at`               | TEXT    | NULL                | Start timestamp                                        |
 | `completed_at`             | TEXT    | NULL                | Terminal-state timestamp                               |
@@ -311,6 +312,12 @@ At application startup:
 
 > Do not place SQLx runtime pool configuration inside the migration file. The SQL schema must remain portable and testable with SQLite itself.
 
+### 4.2 Subsequent migrations
+
+| File | Change |
+| --- | --- |
+| `202610150001_transfer_overwrite.sql` | Adds `transfers.overwrite` so the user's conflict decision is honored at download finalization and on retry. |
+
 ## 5. Default Settings
 
 The following keys are seeded by the application settings service (or an explicit seed routine), **not** hardcoded into the schema migration:
@@ -365,7 +372,7 @@ Because SQLite and the OS credential store are separate systems, this is **not**
 ### 6.4 Restart recovery
 
 1. Load non-terminal transfers from SQLite.
-2. Reconcile stale `RUNNING` state to `FAILED / INTERRUPTED` for MVP.
+2. Reconcile stale `QUEUED` and `RUNNING` state to `FAILED / INTERRUPTED` for MVP; nothing restarts without user action.
 3. Identify orphaned multipart uploads for best-effort cleanup.
 4. Never automatically overwrite local or remote files on recovery.
 

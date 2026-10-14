@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Copy, FolderInput, Info, MoreHorizontal, Pencil, Trash2 } from "@lucide/vue";
+import { Copy, Download, FolderInput, Info, MoreHorizontal, Pencil, Trash2 } from "@lucide/vue";
 import {
   DropdownMenuContent,
   DropdownMenuItem,
@@ -14,6 +14,7 @@ import type { StorageObject } from "@/services/tauri";
 defineProps<{ entry: StorageObject }>();
 const emit = defineEmits<{
   details: [];
+  download: [];
   rename: [];
   copy: [];
   move: [];
@@ -43,6 +44,9 @@ const itemClass =
         <template v-if="!entry.isPrefix">
           <DropdownMenuItem :class="itemClass" @select="emit('details')">
             <Info /> {{ $t("explorer.details") }}
+          </DropdownMenuItem>
+          <DropdownMenuItem :class="itemClass" @select="emit('download')">
+            <Download /> {{ $t("transfers.downloadAction") }}
           </DropdownMenuItem>
           <DropdownMenuItem :class="itemClass" @select="emit('rename')">
             <Pencil /> {{ $t("ops.rename") }}

@@ -1,12 +1,14 @@
 <script setup lang="ts">
-import { Copy, FolderInput, Pencil, Trash2, X } from "@lucide/vue";
+import { Copy, Download, FolderInput, Pencil, Trash2, X } from "@lucide/vue";
 
 import { Button } from "@/components/ui/button";
 import { useExplorerStore } from "@/stores/explorer";
 import { formatBytes, formatDateTime } from "@/utils/format";
 
 const explorer = useExplorerStore();
-const emit = defineEmits<{ action: [action: "rename" | "copy" | "move" | "delete"] }>();
+const emit = defineEmits<{
+  action: [action: "download" | "rename" | "copy" | "move" | "delete"];
+}>();
 </script>
 
 <!-- Object metadata panel (EXP-005). Metadata comes from HeadObject, not the listing. -->
@@ -27,6 +29,9 @@ const emit = defineEmits<{ action: [action: "rename" | "copy" | "move" | "delete
     <div class="min-h-0 flex-1 overflow-auto p-4 text-sm">
       <p class="mb-3 font-medium break-all select-text">{{ explorer.selected?.name }}</p>
       <div class="mb-5 flex flex-wrap gap-1.5">
+        <Button size="sm" @click="emit('action', 'download')">
+          <Download /> {{ $t("transfers.downloadAction") }}
+        </Button>
         <Button variant="outline" size="sm" @click="emit('action', 'rename')">
           <Pencil /> {{ $t("ops.rename") }}
         </Button>

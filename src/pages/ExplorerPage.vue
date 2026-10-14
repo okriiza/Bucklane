@@ -3,12 +3,14 @@ import {
   ArrowUp,
   CircleAlert,
   Copy,
+  Download,
   FolderInput,
   FolderPlus,
   Pencil,
   RefreshCw,
   Search,
   Trash2,
+  Upload,
   X,
 } from "@lucide/vue";
 import { computed, ref, watch } from "vue";
@@ -25,6 +27,7 @@ import ObjectTable from "@/components/explorer/ObjectTable.vue";
 import { Button } from "@/components/ui/button";
 import { CommandError, type ObjectOperationOutcome, type StorageObject } from "@/services/tauri";
 import { useObjectDrag } from "@/composables/useObjectDrag";
+import { useTransferActions } from "@/composables/useTransferActions";
 import { toAppError } from "@/services/tauri";
 import { useConnectionStore } from "@/stores/connections";
 import { useExplorerStore } from "@/stores/explorer";
@@ -34,6 +37,7 @@ import { extensionOf, parentPrefix } from "@/utils/prefix";
 const props = defineProps<{ id: string; bucket: string; prefix: string }>();
 
 const router = useRouter();
+const { pickAndUpload, pickAndDownload } = useTransferActions();
 const { t } = useI18n();
 const connections = useConnectionStore();
 const explorer = useExplorerStore();
@@ -184,8 +188,19 @@ function openDelete(entries: StorageObject[]) {
   deleteOpen.value = true;
 }
 
-function onRowAction(action: "rename" | "copy" | "move" | "delete", entry: StorageObject) {
-  if (action === "delete") {
+function downloadEntries(entries: StorageObject[]) {
+  const keys = entries.filter((e) => !e.isPrefix).map((e) => e.key);
+  return pickAndDownload(props.id, props.bucket, keys);
+}
+
+function onRowAction(
+  action: "download" | "rename" | "copy" | "move" | "delete",
+  entry: StorageObject,
+) {
+  if (action === "download") {
+    // Downloading a checked row acts on the whole selection.
+    void downloadEntries(explorer.checkedKeys.has(entry.key) ? explorer.checkedEntries : [entry]);
+  } else if (action === "delete") {
     // Deleting a checked row acts on the whole selection.
     openDelete(explorer.checkedKeys.has(entry.key) ? explorer.checkedEntries : [entry]);
   } else {
@@ -307,6 +322,14 @@ function goTo(prefix: string) {
               <FolderInput /> {{ $t("ops.move") }}
             </Button>
           </template>
+          <Button
+            v-if="explorer.checkedEntries.some((e) => !e.isPrefix)"
+            variant="outline"
+            size="sm"
+            @click="downloadEntries(explorer.checkedEntries)"
+          >
+            <Download /> {{ $t("transfers.downloadAction") }}
+          </Button>
           <Button variant="outline" size="sm" @click="openDelete(explorer.checkedEntries)">
             <Trash2 /> {{ $t("common.delete") }}
           </Button>
@@ -319,15 +342,24 @@ function goTo(prefix: string) {
             <X />
           </Button>
         </template>
-        <Button
-          v-else
-          variant="ghost"
-          size="sm"
-          :disabled="explorer.loading || !!explorer.error"
-          @click="openPrompt('newFolder')"
-        >
-          <FolderPlus /> {{ $t("ops.newFolder") }}
-        </Button>
+        <template v-else>
+          <Button
+            variant="ghost"
+            size="sm"
+            :disabled="explorer.loading || !!explorer.error"
+            @click="pickAndUpload({ connectionId: id, bucket, prefix })"
+          >
+            <Upload /> {{ $t("transfers.uploadAction") }}
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            :disabled="explorer.loading || !!explorer.error"
+            @click="openPrompt('newFolder')"
+          >
+            <FolderPlus /> {{ $t("ops.newFolder") }}
+          </Button>
+        </template>
         <label class="relative">
           <Search
             class="text-muted-foreground absolute top-1/2 left-2 size-3.5 -translate-y-1/2"

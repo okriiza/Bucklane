@@ -790,58 +790,21 @@ reset_settings
 
 `get_settings` mengembalikan seluruh setting yang dikenal beserta default-nya. `update_setting(key, value)` divalidasi oleh SettingsService terhadap daftar key dan tipe yang diketahui; key tidak dikenal ditolak.
 
-## 6.7 Transfer Events
+## 6.7 Events
 
-Event namespace:
+Event didefinisikan sebagai struct Rust dan di-generate oleh `tauri-specta` (`events.*` di `bindings.ts`); nama event diturunkan dari nama struct.
 
-```text
-transfer://started
-transfer://progress
-transfer://completed
-transfer://failed
-transfer://canceled
-```
+| Event | Payload | Kapan |
+| --- | --- | --- |
+| `transfer-update` | `TransferDto` lengkap | Setiap perubahan status dan berkala selama RUNNING |
+| `files-dropped` | `{ files: LocalFileSelection[], skipped: number }` | File dari OS di-drop ke jendela; sudah terdaftar di selection registry |
+| `file-drag-hover` | `boolean` | File dari OS mulai/berhenti diseret di atas jendela |
 
-Payload:
+Satu event `transfer-update` dengan DTO lengkap menggantikan lima event terpisah (`started`/`progress`/`completed`/`failed`/`canceled`): frontend cukup melakukan upsert berdasarkan `id`, dan tidak ada kemungkinan urutan event yang membuat status kontradiktif.
 
-```typescript
-interface TransferProgressEvent {   // started, progress
-  transferId: string;
-  connectionId?: string;
-  status: "RUNNING";
-  bytesTransferred: number;
-  bytesTotal?: number;
-  percentage?: number;
-}
+Progress dikirim setiap 300 ms dan dipersistenkan ke SQLite sekitar setiap 2 detik.
 
-interface TransferCompletedEvent {
-  transferId: string;
-  connectionId?: string;
-  status: "COMPLETED";
-  bytesTotal: number;
-  bucket: string;
-  objectKey: string; // final key, may differ when RENAME was applied
-}
-
-interface TransferFailedEvent {
-  transferId: string;
-  connectionId?: string;
-  status: "FAILED";
-  error: AppError;
-}
-
-interface TransferCanceledEvent {
-  transferId: string;
-  connectionId?: string;
-  status: "CANCELED";
-}
-```
-
-Progress events dikirim secara terbatas sesuai setting `transfers.progress_interval_ms` (default 300 ms) agar transfer besar tidak membanjiri frontend.
-
-Event bersifat informasi sementara. SQLite dan runtime transfer manager menjadi sumber status otoritatif.
-
-Frontend harus melakukan refresh status melalui command ketika startup atau reconnect.
+Event bersifat informasi sementara. SQLite dan runtime transfer manager menjadi sumber status otoritatif. Frontend memuat ulang status melalui `list_transfers` saat startup.
 
 # 7. Local Database Design
 
@@ -963,9 +926,9 @@ Tokio digunakan untuk asynchronous task execution.
 
 Semaphore mengontrol jumlah transfer aktif.
 
-Default concurrency: 3 transfer.
+Default concurrency: 3 transfer; di dalam satu multipart upload, maksimal 4 part diunggah paralel.
 
-Concurrency dapat diubah melalui Settings.
+Concurrency, threshold multipart (64 MiB), dan ukuran part (16 MiB, dinaikkan otomatis agar ≤ 10.000 part) saat ini konstanta; akan dibaca dari Settings setelah SettingsService tersedia.
 
 ## 9.2 Transfer Lifecycle
 
@@ -986,7 +949,7 @@ Cancellation dapat diminta ketika transfer queued maupun running.
 
 Task completion dan cancellation harus disinkronkan untuk mencegah status contradictory.
 
-Ketika aplikasi restart, status RUNNING dari sesi sebelumnya direkonsiliasi menjadi FAILED dengan `error_code = INTERRUPTED`, kecuali tersedia mekanisme resume yang telah diverifikasi.
+Ketika aplikasi restart, status QUEUED dan RUNNING dari sesi sebelumnya direkonsiliasi menjadi FAILED dengan `error_code = INTERRUPTED` (transfer tidak dimulai otomatis tanpa tindakan pengguna), kecuali tersedia mekanisme resume yang telah diverifikasi.
 
 ## 9.3 Upload Strategy
 
