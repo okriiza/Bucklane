@@ -338,6 +338,8 @@ The following keys are seeded by the application settings service (or an explici
 }
 ```
 
+Implemented in v1.0: `appearance.theme`, `transfers.max_concurrent`, `transfers.multipart_threshold_mb`, `transfers.multipart_part_size_mb`, `explorer.page_size`. The remaining keys are not exposed: `explorer.confirm_*` would weaken SEC-005, and `transfers.max_retries`, `transfers.progress_interval_ms`, `appearance.language`, and `logging.level` have no runtime effect yet.
+
 These are initial development defaults, **not benchmarked performance targets**. Multipart sizing must be validated against the target provider's API limits.
 
 ## 6. Data Lifecycle

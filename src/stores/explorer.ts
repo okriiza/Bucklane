@@ -13,8 +13,7 @@ import {
   type PrefixDeletePlan,
   type StorageObject,
 } from "@/services/tauri";
-
-export const PAGE_SIZE = 100;
+import { useSettingsStore } from "@/stores/settings";
 
 export interface ExplorerLocation {
   connectionId: string;
@@ -61,7 +60,7 @@ export const useExplorerStore = defineStore("explorer", () => {
         prefix: loc.prefix || null,
         delimiter: "/",
         continuationToken: token,
-        pageSize: PAGE_SIZE,
+        pageSize: useSettingsStore().settings.explorerPageSize,
       }),
     );
   }

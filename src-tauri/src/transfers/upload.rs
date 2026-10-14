@@ -15,20 +15,42 @@ use super::Progress;
 use super::body::counting_file_body;
 
 const MIB: u64 = 1024 * 1024;
-/// Files at or above this size use multipart upload (settings default).
-const MULTIPART_THRESHOLD: u64 = 64 * MIB;
-const DEFAULT_PART_SIZE: u64 = 16 * MIB;
 /// S3 limits: parts ≥ 5 MiB (except the last) and at most 10,000 parts.
 const MIN_PART_SIZE: u64 = 5 * MIB;
 const MAX_PARTS: u64 = 10_000;
 /// Parts uploaded concurrently within one transfer.
 const PART_CONCURRENCY: usize = 4;
 
+/// Multipart parameters from settings.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct UploadTuning {
+    /// Files at or above this size use multipart upload.
+    pub threshold: u64,
+    /// Preferred part size; raised automatically for very large files.
+    pub part_size: u64,
+}
+
+impl UploadTuning {
+    pub(crate) fn from_settings(settings: &crate::domain::settings::AppSettings) -> Self {
+        Self {
+            threshold: u64::from(settings.multipart_threshold_mb) * MIB,
+            part_size: u64::from(settings.multipart_part_size_mb) * MIB,
+        }
+    }
+}
+
+impl Default for UploadTuning {
+    fn default() -> Self {
+        Self::from_settings(&crate::domain::settings::AppSettings::default())
+    }
+}
+
 pub(super) async fn run(
     client: &Client,
     repo: &TransferRepository,
     t: &mut StoredTransfer,
     progress: &Progress,
+    tuning: UploadTuning,
 ) -> Result<(), AppError> {
     let path = PathBuf::from(&t.local_path);
     let size = tokio::fs::metadata(&path)
@@ -62,7 +84,7 @@ pub(super) async fn run(
     }
 
     let content_type = mime_guess::from_path(&path).first_raw().map(str::to_owned);
-    if size < MULTIPART_THRESHOLD {
+    if size < tuning.threshold {
         client
             .put_object()
             .bucket(&t.bucket)
@@ -79,7 +101,18 @@ pub(super) async fn run(
             .await
             .map_err(|e| map_sdk_error(e, ErrorCode::BucketNotFound))?;
     } else {
-        multipart(client, repo, t, &path, size, content_type, progress).await?;
+        let part_size = part_size_for(size, tuning.part_size);
+        multipart(
+            client,
+            repo,
+            t,
+            &path,
+            size,
+            part_size,
+            content_type,
+            progress,
+        )
+        .await?;
     }
 
     // Verify the stored object has the expected size.
@@ -93,23 +126,21 @@ pub(super) async fn run(
     Ok(())
 }
 
-/// Part size ≥ the default, large enough to stay within 10,000 parts, and
-/// rounded up to a whole MiB.
-pub(super) fn part_size_for(size: u64) -> u64 {
+/// Part size ≥ the preferred size, large enough to stay within 10,000
+/// parts, and rounded up to a whole MiB.
+pub(super) fn part_size_for(size: u64, preferred: u64) -> u64 {
     let needed = size.div_ceil(MAX_PARTS);
-    needed
-        .max(DEFAULT_PART_SIZE)
-        .max(MIN_PART_SIZE)
-        .div_ceil(MIB)
-        * MIB
+    needed.max(preferred).max(MIN_PART_SIZE).div_ceil(MIB) * MIB
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn multipart(
     client: &Client,
     repo: &TransferRepository,
     t: &mut StoredTransfer,
     path: &Path,
     size: u64,
+    part_size: u64,
     content_type: Option<String>,
     progress: &Progress,
 ) -> Result<(), AppError> {
@@ -129,7 +160,6 @@ async fn multipart(
     t.multipart_upload_id = Some(upload_id.clone());
     repo.update(t).await?;
 
-    let part_size = part_size_for(size);
     let part_count = size.div_ceil(part_size);
     let transfer_id = t.id.clone();
     let (bucket, key) = (t.bucket.clone(), t.object_key.clone());
@@ -236,13 +266,16 @@ mod tests {
 
     #[test]
     fn part_size_respects_s3_limits() {
-        assert_eq!(part_size_for(100 * MIB), DEFAULT_PART_SIZE);
+        let preferred = 16 * MIB;
+        assert_eq!(part_size_for(100 * MIB, preferred), preferred);
+        // Never below the S3 minimum, whatever the preference.
+        assert_eq!(part_size_for(100 * MIB, MIB), MIN_PART_SIZE);
         // 1 TiB / 10,000 parts ≈ 105 MiB → rounded up to whole MiB.
         let tib = 1024 * 1024 * MIB;
-        let size = part_size_for(tib);
+        let size = part_size_for(tib, preferred);
         assert!(tib.div_ceil(size) <= MAX_PARTS);
         assert_eq!(size % MIB, 0);
         // 5 TiB (S3 maximum object size) still fits.
-        assert!((5 * tib).div_ceil(part_size_for(5 * tib)) <= MAX_PARTS);
+        assert!((5 * tib).div_ceil(part_size_for(5 * tib, preferred)) <= MAX_PARTS);
     }
 }

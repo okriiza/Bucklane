@@ -16,6 +16,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::domain::bucket::validate_bucket_name;
 use crate::domain::object::ObjectMetadata;
+use crate::domain::settings::AppSettings;
 use crate::domain::transfer::{
     EnqueueDownloadInput, EnqueueItemResult, EnqueueUploadInput, StoredTransfer,
     TransferConflictPolicy, TransferDirection, TransferDto, TransferStatus,
@@ -32,8 +33,6 @@ use crate::security::local_selection::{
 };
 use crate::services::connection_service::ConnectionService;
 
-/// Default number of transfers running at once (PRD §9.1).
-const MAX_CONCURRENT_TRANSFERS: usize = 3;
 /// Progress events are throttled so large transfers don't flood the UI.
 const PROGRESS_INTERVAL: Duration = Duration::from_millis(300);
 /// Progress is persisted less often than it is emitted.
@@ -58,6 +57,9 @@ struct Inner {
     credentials: Arc<dyn CredentialStore>,
     clients: Arc<ClientCache>,
     semaphore: Arc<Semaphore>,
+    /// Permits currently granted to the semaphore (the concurrency limit).
+    limit: Mutex<usize>,
+    tuning: Mutex<upload::UploadTuning>,
     active: Mutex<HashMap<String, ActiveTransfer>>,
 }
 
@@ -107,6 +109,8 @@ impl TransferManager {
         credentials: Arc<dyn CredentialStore>,
         clients: Arc<ClientCache>,
     ) -> Self {
+        let defaults = AppSettings::default();
+        let limit = defaults.max_concurrent_transfers as usize;
         Self {
             inner: Arc::new(Inner {
                 app,
@@ -114,10 +118,34 @@ impl TransferManager {
                 pool,
                 credentials,
                 clients,
-                semaphore: Arc::new(Semaphore::new(MAX_CONCURRENT_TRANSFERS)),
+                semaphore: Arc::new(Semaphore::new(limit)),
+                limit: Mutex::new(limit),
+                tuning: Mutex::new(upload::UploadTuning::from_settings(&defaults)),
                 active: Mutex::new(HashMap::new()),
             }),
         }
+    }
+
+    /// Applies transfer settings at runtime. Lowering the limit never stops
+    /// running transfers; the surplus slots are withdrawn as they free up.
+    pub fn apply_settings(&self, settings: &AppSettings) {
+        *self.inner.tuning.lock().expect("tuning poisoned") =
+            upload::UploadTuning::from_settings(settings);
+
+        let new_limit = settings.max_concurrent_transfers as usize;
+        let mut limit = self.inner.limit.lock().expect("limit poisoned");
+        if new_limit > *limit {
+            self.inner.semaphore.add_permits(new_limit - *limit);
+        } else if new_limit < *limit {
+            let surplus = u32::try_from(*limit - new_limit).unwrap_or(u32::MAX);
+            let semaphore = self.inner.semaphore.clone();
+            tauri::async_runtime::spawn(async move {
+                if let Ok(permits) = semaphore.acquire_many_owned(surplus).await {
+                    permits.forget();
+                }
+            });
+        }
+        *limit = new_limit;
     }
 
     pub async fn list(&self) -> Result<Vec<TransferDto>, AppError> {
@@ -576,7 +604,10 @@ impl Inner {
             .client_for_bucket(&connection_id, &t.bucket)
             .await?;
         match t.direction {
-            TransferDirection::Upload => upload::run(&client, &self.repo, t, progress).await,
+            TransferDirection::Upload => {
+                let tuning = *self.tuning.lock().expect("tuning poisoned");
+                upload::run(&client, &self.repo, t, progress, tuning).await
+            }
             TransferDirection::Download => download::run(&client, &self.repo, t, progress).await,
         }
     }
@@ -793,9 +824,15 @@ mod s3_integration_tests {
             .transfer(TransferDirection::Upload, "docs/hello.txt", &source, false)
             .await;
         let progress = Progress::default();
-        upload::run(&f.client, &f.repo, &mut up, &progress)
-            .await
-            .unwrap();
+        upload::run(
+            &f.client,
+            &f.repo,
+            &mut up,
+            &progress,
+            upload::UploadTuning::default(),
+        )
+        .await
+        .unwrap();
         assert_eq!(progress.total(), 14);
 
         let target = f.dir.join("copy.txt");
@@ -827,9 +864,15 @@ mod s3_integration_tests {
             .transfer(TransferDirection::Upload, "big.bin", &source, false)
             .await;
         let progress = Progress::default();
-        upload::run(&f.client, &f.repo, &mut up, &progress)
-            .await
-            .unwrap();
+        upload::run(
+            &f.client,
+            &f.repo,
+            &mut up,
+            &progress,
+            upload::UploadTuning::default(),
+        )
+        .await
+        .unwrap();
 
         assert_eq!(progress.total(), data.len() as i64);
         assert_eq!(
@@ -859,17 +902,29 @@ mod s3_integration_tests {
         let mut first = f
             .transfer(TransferDirection::Upload, "a.txt", &source, false)
             .await;
-        upload::run(&f.client, &f.repo, &mut first, &Progress::default())
-            .await
-            .unwrap();
+        upload::run(
+            &f.client,
+            &f.repo,
+            &mut first,
+            &Progress::default(),
+            upload::UploadTuning::default(),
+        )
+        .await
+        .unwrap();
 
         std::fs::write(&source, b"second").unwrap();
         let mut second = f
             .transfer(TransferDirection::Upload, "a.txt", &source, false)
             .await;
-        let err = upload::run(&f.client, &f.repo, &mut second, &Progress::default())
-            .await
-            .unwrap_err();
+        let err = upload::run(
+            &f.client,
+            &f.repo,
+            &mut second,
+            &Progress::default(),
+            upload::UploadTuning::default(),
+        )
+        .await
+        .unwrap_err();
         assert_eq!(err.code, ErrorCode::TransferFailed);
     }
 }

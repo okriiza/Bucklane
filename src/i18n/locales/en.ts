@@ -194,7 +194,34 @@ export default {
   },
   settings: {
     title: "Settings",
-    placeholder: "Settings will be available in a later milestone.",
+    appearance: "Appearance",
+    transfers: "Transfers",
+    explorer: "Explorer",
+    theme: "Theme",
+    themes: { system: "Match system", light: "Light", dark: "Dark" },
+    fields: {
+      maxConcurrentTransfers: {
+        label: "Concurrent transfers",
+        hint: "How many uploads and downloads run at the same time ({min}–{max}).",
+      },
+      multipartThresholdMb: {
+        label: "Multipart threshold (MB)",
+        hint: "Files this size or larger are uploaded in parts ({min}–{max}).",
+      },
+      multipartPartSizeMb: {
+        label: "Part size (MB)",
+        hint: "Preferred size of each part; raised automatically for very large files ({min}–{max}).",
+      },
+      explorerPageSize: {
+        label: "Items per page",
+        hint: "How many items the explorer loads at a time ({min}–{max}).",
+      },
+    },
+    saved: "Settings saved",
+    reset: "Reset to defaults",
+    resetTitle: "Reset all settings?",
+    resetDescription: "Every setting returns to its default value. Connections are not affected.",
+    resetDone: "Settings reset to defaults",
   },
   about: {
     title: "About Bucklane",

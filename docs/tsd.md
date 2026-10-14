@@ -784,11 +784,23 @@ Pengecekan konflik upload bersifat best-effort, bukan atomic, karena conditional
 
 ```text
 get_settings
-update_setting
+update_settings
 reset_settings
 ```
 
-`get_settings` mengembalikan seluruh setting yang dikenal beserta default-nya. `update_setting(key, value)` divalidasi oleh SettingsService terhadap daftar key dan tipe yang diketahui; key tidak dikenal ditolak.
+```typescript
+interface AppSettings {
+  theme: "system" | "light" | "dark";
+  maxConcurrentTransfers: number; // 1–10
+  multipartThresholdMb: number; // 5–5120
+  multipartPartSizeMb: number; // 5–5120
+  explorerPageSize: number; // 50–1000
+}
+```
+
+Settings dikirim sebagai satu objek bertipe dan divalidasi oleh SettingsService; penyimpanan tetap key/value JSON di tabel `settings` (DB design §5). Nilai tersimpan yang tidak valid diabaikan dan diganti default. `update_settings` langsung menerapkan setting transfer ke TransferManager; menurunkan batas concurrency tidak menghentikan transfer yang sedang berjalan.
+
+Hanya setting yang benar-benar diterapkan aplikasi yang dapat diubah. Opsi yang melemahkan keamanan data (misalnya menonaktifkan konfirmasi delete/overwrite, SEC-005) sengaja tidak disediakan.
 
 ## 6.7 Events
 
@@ -928,7 +940,7 @@ Semaphore mengontrol jumlah transfer aktif.
 
 Default concurrency: 3 transfer; di dalam satu multipart upload, maksimal 4 part diunggah paralel.
 
-Concurrency, threshold multipart (64 MiB), dan ukuran part (16 MiB, dinaikkan otomatis agar ≤ 10.000 part) saat ini konstanta; akan dibaca dari Settings setelah SettingsService tersedia.
+Concurrency, threshold multipart (default 64 MiB), dan ukuran part (default 16 MiB, dinaikkan otomatis agar ≤ 10.000 part dan tidak di bawah 5 MiB) dibaca dari Settings dan dapat diubah saat aplikasi berjalan.
 
 ## 9.2 Transfer Lifecycle
 

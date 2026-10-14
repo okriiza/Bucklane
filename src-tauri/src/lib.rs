@@ -65,6 +65,9 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::transfers::cancel_transfer,
             commands::transfers::retry_transfer,
             commands::transfers::clear_transfer_history,
+            commands::settings::get_settings,
+            commands::settings::update_settings,
+            commands::settings::reset_settings,
         ])
 }
 
@@ -99,6 +102,12 @@ pub fn run() {
             }
             let state = AppState::new(db, Arc::new(KeyringCredentialStore), app.handle().clone());
             if let Ok(transfers) = state.transfers() {
+                if let Ok(settings) = state.settings() {
+                    match tauri::async_runtime::block_on(settings.get()) {
+                        Ok(saved) => transfers.apply_settings(&saved),
+                        Err(err) => tracing::warn!(error = %err, "using default settings"),
+                    }
+                }
                 tauri::async_runtime::block_on(transfers.reconcile_on_startup());
             }
             app.manage(state);

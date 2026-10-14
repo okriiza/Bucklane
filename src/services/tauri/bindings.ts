@@ -59,6 +59,10 @@ export const commands = {
 	retryTransfer: (id: string) => typedError<TransferDto, AppError>(__TAURI_INVOKE("retry_transfer", { id })),
 	/**  Removes finished transfers from history; returns how many were removed. */
 	clearTransferHistory: () => typedError<number, AppError>(__TAURI_INVOKE("clear_transfer_history")),
+	getSettings: () => typedError<AppSettings, AppError>(__TAURI_INVOKE("get_settings")),
+	/**  Validates, saves, and applies the settings immediately. */
+	updateSettings: (settings: AppSettings) => typedError<AppSettings, AppError>(__TAURI_INVOKE("update_settings", { settings })),
+	resetSettings: () => typedError<AppSettings, AppError>(__TAURI_INVOKE("reset_settings")),
 };
 
 /** Events */
@@ -86,6 +90,19 @@ export type AppError = {
 	message: string,
 	details: string | null,
 	retryable: boolean,
+};
+
+/**
+ *  User preferences (DB design §5). Every field here is applied by the app;
+ *  options that would weaken safety (e.g. skipping delete confirmations) are
+ *  intentionally not configurable.
+ */
+export type AppSettings = {
+	theme: Theme,
+	maxConcurrentTransfers: number,
+	multipartThresholdMb: number,
+	multipartPartSizeMb: number,
+	explorerPageSize: number,
 };
 
 /**
@@ -352,6 +369,8 @@ export type TestConnectionResult = {
 };
 
 export type TestMethod = "LIST_BUCKETS" | "HEAD_BUCKET";
+
+export type Theme = "system" | "light" | "dark";
 
 /**  What to do when a transfer's destination already exists (TSD §6.5.1). */
 export type TransferConflictPolicy = "ASK" | "OVERWRITE" | "SKIP" | "RENAME";

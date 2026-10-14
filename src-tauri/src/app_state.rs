@@ -6,11 +6,13 @@ use tauri::AppHandle;
 use crate::errors::{AppError, ErrorCode};
 use crate::providers::s3_client_factory::ClientCache;
 use crate::repositories::bucket_bookmark_repository::BucketBookmarkRepository;
+use crate::repositories::settings_repository::SettingsRepository;
 use crate::security::credential_store::CredentialStore;
 use crate::security::local_selection::SelectionRegistry;
 use crate::services::connection_service::ConnectionService;
 use crate::services::delete_plans::DeletePlanRegistry;
 use crate::services::object_service::ObjectService;
+use crate::services::settings_service::SettingsService;
 use crate::services::storage_service::StorageService;
 use crate::transfers::TransferManager;
 
@@ -67,6 +69,10 @@ impl AppState {
 
     pub fn objects(&self) -> Result<ObjectService<'_>, AppError> {
         Ok(ObjectService::new(self.connections()?, &self.delete_plans))
+    }
+
+    pub fn settings(&self) -> Result<SettingsService<'_>, AppError> {
+        Ok(SettingsService::new(SettingsRepository::new(self.db()?)))
     }
 
     pub fn transfers(&self) -> Result<&TransferManager, AppError> {
