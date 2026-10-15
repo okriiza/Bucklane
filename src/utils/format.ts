@@ -26,3 +26,37 @@ export function formatDateTime(iso: string | null | undefined): string {
   const date = new Date(iso);
   return Number.isNaN(date.getTime()) ? "—" : dateTimeFormat.format(date);
 }
+
+const relativeFormat = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
+const RELATIVE_STEPS: [Intl.RelativeTimeFormatUnit, number][] = [
+  ["second", 60],
+  ["minute", 60],
+  ["hour", 24],
+  ["day", 7],
+  ["week", 4.35],
+  ["month", 12],
+  ["year", Infinity],
+];
+
+/** "3 minutes ago", "yesterday"; falls back to a dash for invalid input. */
+export function formatRelative(iso: string | null | undefined, now = Date.now()): string {
+  if (!iso) return "—";
+  const time = new Date(iso).getTime();
+  if (Number.isNaN(time)) return "—";
+  let value = (time - now) / 1000;
+  for (const [unit, size] of RELATIVE_STEPS) {
+    if (Math.abs(value) < size) return relativeFormat.format(Math.round(value), unit);
+    value /= size;
+  }
+  return "—";
+}
+
+/** Host of an endpoint URL, or the AWS regional host when none is set. */
+export function endpointHost(endpoint: string | null, region: string): string {
+  if (!endpoint) return `s3.${region}.amazonaws.com`;
+  try {
+    return new URL(endpoint).host;
+  } catch {
+    return endpoint;
+  }
+}

@@ -13,9 +13,12 @@ const emit = defineEmits<{
 
 <!-- Object metadata panel (EXP-005). Metadata comes from HeadObject, not the listing. -->
 <template>
-  <aside class="flex w-80 shrink-0 flex-col border-l" :aria-label="$t('explorer.details')">
-    <header class="flex h-11 items-center justify-between border-b pr-2 pl-4">
-      <h2 class="text-sm font-semibold">{{ $t("explorer.details") }}</h2>
+  <aside
+    class="bg-sidebar/60 flex w-80 shrink-0 flex-col border-l"
+    :aria-label="$t('explorer.details')"
+  >
+    <header class="flex h-12 items-center justify-between pr-2 pl-4">
+      <h2 class="text-muted-foreground text-[13px] font-medium">{{ $t("explorer.details") }}</h2>
       <Button
         variant="ghost"
         size="icon"
@@ -26,8 +29,10 @@ const emit = defineEmits<{
       </Button>
     </header>
 
-    <div class="min-h-0 flex-1 overflow-auto p-4 text-sm">
-      <p class="mb-3 font-medium break-all select-text">{{ explorer.selected?.name }}</p>
+    <div class="min-h-0 flex-1 overflow-auto px-4 pb-4 text-[13px]">
+      <p class="mb-3 text-[15px] leading-snug font-semibold tracking-tight break-all select-text">
+        {{ explorer.selected?.name }}
+      </p>
       <div class="mb-5 flex flex-wrap gap-1.5">
         <Button size="sm" @click="emit('action', 'download')">
           <Download /> {{ $t("transfers.downloadAction") }}

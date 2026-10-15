@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Database, Plus, RefreshCw, Star } from "@lucide/vue";
+import { ChevronRight, Database, Plus, RefreshCw, Star } from "@lucide/vue";
 import { ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
@@ -52,11 +52,18 @@ function bookmarkLabel(entry: BucketEntry) {
 
 <template>
   <section class="mt-8">
-    <header class="mb-3 flex items-center justify-between">
-      <h2 class="text-sm font-semibold">{{ $t("buckets.title") }}</h2>
+    <header class="mb-2 flex items-center gap-2">
+      <h2 class="text-[15px] font-semibold tracking-tight">{{ $t("buckets.title") }}</h2>
+      <span
+        v-if="store.entries.length"
+        class="bg-secondary text-muted-foreground tabular rounded px-1.5 text-[11px] font-medium"
+      >
+        {{ store.entries.length }}
+      </span>
       <Button
         variant="ghost"
-        size="icon"
+        size="icon-sm"
+        class="ml-auto"
         :disabled="store.loading"
         :title="$t('explorer.refresh')"
         :aria-label="$t('explorer.refresh')"
@@ -68,7 +75,7 @@ function bookmarkLabel(entry: BucketEntry) {
 
     <p
       v-if="store.listError"
-      class="text-muted-foreground mb-3 rounded-md border border-dashed p-3 text-sm"
+      class="bg-muted text-muted-foreground mb-3 rounded-lg px-3.5 py-3 text-[13px]"
       role="note"
     >
       <template v-if="store.listError.code === 'ACCESS_DENIED'">
@@ -77,43 +84,76 @@ function bookmarkLabel(entry: BucketEntry) {
       <template v-else>{{ store.listError.message }}</template>
     </p>
 
+    <ul v-if="store.loading && !store.entries.length" class="divide-y rounded-lg border">
+      <li v-for="n in 4" :key="n" class="flex items-center gap-3 px-3 py-2.5">
+        <span class="skeleton size-7 rounded-md" />
+        <span class="skeleton h-3 rounded" :style="{ width: `${28 + n * 9}%` }" />
+      </li>
+    </ul>
+
     <p
-      v-if="!store.loading && !store.entries.length && !store.listError"
-      class="text-muted-foreground mb-3 text-sm"
+      v-else-if="!store.entries.length && !store.listError"
+      class="text-muted-foreground rounded-lg border border-dashed px-4 py-6 text-center text-[13px]"
     >
       {{ $t("buckets.empty") }}
     </p>
 
-    <ul class="divide-y rounded-md border" :class="{ hidden: !store.entries.length }">
-      <li v-for="entry in store.entries" :key="entry.name" class="flex items-center gap-1 pr-1">
+    <ul
+      v-if="store.entries.length"
+      class="bg-card divide-y overflow-hidden rounded-lg border shadow-[var(--shadow-soft)]"
+    >
+      <li
+        v-for="entry in store.entries"
+        :key="entry.name"
+        class="group hover:bg-accent/60 flex items-center transition-colors"
+      >
         <RouterLink
           :to="{ name: 'explorer', params: { id: connectionId, bucket: entry.name } }"
-          class="hover:bg-accent flex min-w-0 flex-1 items-center gap-3 px-3 py-2"
+          class="flex min-w-0 flex-1 items-center gap-3 px-3 py-2"
         >
-          <Database class="text-muted-foreground size-4 shrink-0" />
-          <span class="truncate text-sm">{{ entry.label }}</span>
           <span
-            v-if="entry.label !== entry.name"
-            class="text-muted-foreground truncate font-mono text-xs"
+            class="bg-primary/10 text-primary inline-flex size-7 shrink-0 items-center justify-center rounded-md"
           >
-            {{ entry.name }}
+            <Database class="size-3.5" />
           </span>
-          <span v-if="entry.region" class="text-muted-foreground ml-auto font-mono text-xs">
+          <span class="min-w-0">
+            <span class="block truncate text-[13px] font-medium">{{ entry.label }}</span>
+            <span
+              v-if="entry.label !== entry.name || !entry.listed"
+              class="text-muted-foreground block truncate text-[11px]"
+            >
+              <span class="font-mono">{{ entry.name }}</span>
+              <template v-if="!entry.listed"> · {{ $t("buckets.bookmarkedOnly") }}</template>
+            </span>
+          </span>
+          <span
+            v-if="entry.region"
+            class="bg-secondary text-muted-foreground ml-auto rounded px-1.5 py-0.5 font-mono text-[11px]"
+          >
             {{ entry.region }}
           </span>
+          <ChevronRight
+            class="text-muted-foreground size-4 shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
+            :class="{ 'ml-auto': !entry.region }"
+          />
         </RouterLink>
-        <Button
-          variant="ghost"
-          size="icon"
+        <button
+          type="button"
+          class="hover:bg-accent mr-2 inline-flex size-7 items-center justify-center rounded-md transition-colors active:scale-90"
           :title="bookmarkLabel(entry)"
           :aria-label="bookmarkLabel(entry)"
           :aria-pressed="!!entry.bookmark"
           @click="toggleBookmark(entry)"
         >
           <Star
-            :class="entry.bookmark ? 'fill-amber-400 text-amber-400' : 'text-muted-foreground'"
+            class="size-3.5 transition-colors"
+            :class="
+              entry.bookmark
+                ? 'fill-warning text-warning'
+                : 'text-muted-foreground/60 group-hover:text-muted-foreground'
+            "
           />
-        </Button>
+        </button>
       </li>
     </ul>
 

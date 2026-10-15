@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { CircleAlert, CircleCheck, Pencil, Trash2 } from "@lucide/vue";
+import { CircleAlert, CircleCheck, Pencil, PlugZap, Trash2 } from "@lucide/vue";
 import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
@@ -7,6 +7,7 @@ import { toast } from "vue-sonner";
 
 import BucketList from "@/components/buckets/BucketList.vue";
 import ConfirmDialog from "@/components/common/ConfirmDialog.vue";
+import ProviderMark from "@/components/connections/ProviderMark.vue";
 import { Button } from "@/components/ui/button";
 import { toAppError, type AppError, type TestConnectionResult } from "@/services/tauri";
 import { useConnectionStore } from "@/stores/connections";
@@ -51,7 +52,7 @@ async function remove() {
     const result = await store.remove(props.id);
     if (result.secretRemoved) toast.success(t("connection.deleted"));
     else toast.warning(t("connection.secretNotRemoved"));
-    await router.push({ name: "welcome" });
+    await router.push({ name: "home" });
   } catch (err) {
     toast.error(toAppError(err).message);
   }
@@ -59,26 +60,50 @@ async function remove() {
 </script>
 
 <template>
-  <div v-if="connection" class="p-8">
-    <header class="flex items-start justify-between gap-4">
-      <div class="min-w-0">
-        <h1 class="truncate text-xl font-semibold tracking-tight">{{ connection.name }}</h1>
-        <p class="text-muted-foreground text-sm">{{ profile?.label ?? connection.provider }}</p>
+  <div v-if="connection" class="mx-auto max-w-4xl px-10 pt-6 pb-12">
+    <header class="flex items-start gap-4">
+      <ProviderMark :provider="connection.provider" size="lg" />
+      <div class="min-w-0 flex-1">
+        <h1 class="truncate text-2xl font-semibold tracking-[-0.015em]">{{ connection.name }}</h1>
+        <p class="text-muted-foreground mt-0.5 truncate text-[13px]">
+          {{ profile?.label ?? connection.provider }}
+          <span class="mx-1.5 opacity-50">·</span>
+          <span class="font-mono text-xs select-text">
+            {{ connection.endpoint ?? $t("connection.defaultEndpoint") }}
+          </span>
+        </p>
       </div>
-      <div class="flex shrink-0 gap-2">
-        <Button variant="outline" size="sm" :disabled="testing" @click="runTest">
-          {{ testing ? $t("form.testing") : $t("connection.test") }}
+      <div class="flex shrink-0 items-center gap-1">
+        <Button variant="outline" :disabled="testing" @click="runTest">
+          <PlugZap /> {{ testing ? $t("form.testing") : $t("connection.test") }}
         </Button>
-        <Button variant="outline" size="sm" @click="store.openEditForm(connection.id)">
-          <Pencil /> {{ $t("common.edit") }}
+        <Button
+          variant="ghost"
+          size="icon"
+          :title="$t('common.edit')"
+          :aria-label="$t('common.edit')"
+          @click="store.openEditForm(connection.id)"
+        >
+          <Pencil />
         </Button>
-        <Button variant="outline" size="sm" @click="confirmDelete = true">
-          <Trash2 /> {{ $t("common.delete") }}
+        <Button
+          variant="ghost"
+          size="icon"
+          class="hover:text-destructive"
+          :title="$t('common.delete')"
+          :aria-label="$t('common.delete')"
+          @click="confirmDelete = true"
+        >
+          <Trash2 />
         </Button>
       </div>
     </header>
 
-    <div v-if="testResult" class="text-success mt-4 flex items-center gap-2 text-sm" role="status">
+    <div
+      v-if="testResult"
+      class="bg-success/10 text-success mt-5 inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-[13px] font-medium"
+      role="status"
+    >
       <CircleCheck class="size-4" />
       <span v-if="testResult.method === 'LIST_BUCKETS'">
         {{
@@ -89,7 +114,7 @@ async function remove() {
     </div>
     <div
       v-if="testError"
-      class="border-destructive/40 bg-destructive/10 text-destructive mt-4 grid gap-1 rounded-md border p-3 text-sm"
+      class="border-destructive/30 bg-destructive/8 text-destructive mt-5 grid gap-1 rounded-lg border p-3 text-[13px]"
       role="alert"
     >
       <div class="flex gap-2">
@@ -101,23 +126,32 @@ async function remove() {
       </code>
     </div>
 
-    <dl class="mt-6 grid max-w-xl grid-cols-[10rem_1fr] gap-x-4 gap-y-2 text-sm">
-      <dt class="text-muted-foreground">{{ $t("connection.endpoint") }}</dt>
-      <dd class="truncate font-mono text-xs leading-5 select-text">
-        {{ connection.endpoint ?? $t("connection.defaultEndpoint") }}
-      </dd>
-      <dt class="text-muted-foreground">{{ $t("connection.region") }}</dt>
-      <dd class="font-mono text-xs leading-5 select-text">{{ connection.region }}</dd>
-      <dt class="text-muted-foreground">{{ $t("connection.accessKeyId") }}</dt>
-      <dd class="font-mono text-xs leading-5 select-text">{{ connection.accessKeyId }}</dd>
-      <template v-if="connection.forcePathStyle">
-        <dt class="text-muted-foreground">{{ $t("connection.pathStyle") }}</dt>
-        <dd>✓</dd>
-      </template>
-      <template v-if="connection.allowInsecureHttp">
-        <dt class="text-muted-foreground">{{ $t("connection.insecureHttp") }}</dt>
-        <dd class="text-amber-600 dark:text-amber-400">✓</dd>
-      </template>
+    <dl class="mt-6 flex flex-wrap gap-x-8 gap-y-3 border-y py-4 text-[13px]">
+      <div>
+        <dt class="text-muted-foreground text-[11px]">{{ $t("connection.region") }}</dt>
+        <dd class="mt-0.5 font-mono text-xs select-text">{{ connection.region }}</dd>
+      </div>
+      <div class="min-w-0">
+        <dt class="text-muted-foreground text-[11px]">{{ $t("connection.accessKeyId") }}</dt>
+        <dd class="mt-0.5 truncate font-mono text-xs select-text">{{ connection.accessKeyId }}</dd>
+      </div>
+      <div v-if="connection.forcePathStyle || connection.allowInsecureHttp">
+        <dt class="text-muted-foreground text-[11px]">{{ $t("connection.options") }}</dt>
+        <dd class="mt-1 flex gap-1.5">
+          <span
+            v-if="connection.forcePathStyle"
+            class="bg-secondary text-secondary-foreground rounded px-1.5 py-0.5 text-[11px]"
+          >
+            {{ $t("connection.pathStyle") }}
+          </span>
+          <span
+            v-if="connection.allowInsecureHttp"
+            class="bg-warning/15 text-warning rounded px-1.5 py-0.5 text-[11px] font-medium"
+          >
+            {{ $t("connection.insecureHttp") }}
+          </span>
+        </dd>
+      </div>
     </dl>
 
     <BucketList :connection-id="connection.id" />
@@ -131,7 +165,7 @@ async function remove() {
       @confirm="remove"
     />
   </div>
-  <p v-else-if="!store.loading" class="text-muted-foreground p-8 text-sm">
+  <p v-else-if="!store.loading" class="text-muted-foreground p-10 text-sm">
     {{ $t("connection.notFound") }}
   </p>
 </template>

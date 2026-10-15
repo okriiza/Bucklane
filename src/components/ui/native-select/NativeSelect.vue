@@ -13,7 +13,7 @@ const model = defineModel<T>({ required: true });
     v-model="model"
     :class="
       cn(
-        'border-input focus-visible:border-ring focus-visible:ring-ring/50 h-9 w-full rounded-md border bg-transparent px-2.5 text-sm shadow-xs outline-none focus-visible:ring-[3px] disabled:opacity-50 dark:bg-transparent [&>option]:bg-popover',
+        'border-input bg-background focus-visible:border-ring focus-visible:ring-ring/25 dark:bg-input/30 h-8 w-full rounded-md border px-2 text-[13px] shadow-[var(--shadow-soft)] outline-none focus-visible:ring-[3px] disabled:opacity-50 [&>option]:bg-popover',
         props.class,
       )
     "

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ArrowDown, ArrowUp, ChevronDown, ChevronUp, RotateCw, X } from "@lucide/vue";
-import { ref } from "vue";
+import { onUnmounted, ref, watch } from "vue";
 import { toast } from "vue-sonner";
 
 import { Button } from "@/components/ui/button";
@@ -9,7 +9,38 @@ import { useTransferStore } from "@/stores/transfers";
 import { formatBytes } from "@/utils/format";
 
 const store = useTransferStore();
-const collapsed = ref(false);
+// Collapsed while idle so it doesn't take space from the page. It opens when
+// a transfer starts, and closes again shortly after a batch finishes cleanly.
+// Failures keep it open, and a manual toggle always wins.
+const AUTO_COLLAPSE_MS = 3000;
+const collapsed = ref(store.activeCount === 0);
+let userToggled = false;
+let failedAtBatchStart = store.failedCount;
+let collapseTimer: ReturnType<typeof setTimeout> | undefined;
+
+watch(
+  () => store.activeCount,
+  (count, previous = 0) => {
+    if (count > 0 && previous === 0) {
+      failedAtBatchStart = store.failedCount;
+      userToggled = false;
+      clearTimeout(collapseTimer);
+      collapsed.value = false;
+    } else if (count === 0 && previous > 0 && store.failedCount <= failedAtBatchStart) {
+      collapseTimer = setTimeout(() => {
+        if (!userToggled && store.activeCount === 0) collapsed.value = true;
+      }, AUTO_COLLAPSE_MS);
+    }
+  },
+);
+
+function toggle() {
+  userToggled = true;
+  clearTimeout(collapseTimer);
+  collapsed.value = !collapsed.value;
+}
+
+onUnmounted(() => clearTimeout(collapseTimer));
 
 function percent(t: TransferDto) {
   if (t.status === "COMPLETED") return 100;
@@ -31,7 +62,7 @@ async function run(action: () => Promise<void>) {
 
 const STATUS_CLASS: Record<TransferDto["status"], string> = {
   QUEUED: "text-muted-foreground",
-  RUNNING: "text-sky-600 dark:text-sky-400",
+  RUNNING: "text-primary",
   COMPLETED: "text-success",
   FAILED: "text-destructive",
   CANCELED: "text-muted-foreground",
@@ -39,22 +70,31 @@ const STATUS_CLASS: Record<TransferDto["status"], string> = {
 </script>
 
 <template>
-  <section class="flex flex-col border-t" :class="collapsed ? 'h-9' : 'h-48'">
+  <section
+    class="bg-sidebar/50 flex flex-col border-t transition-[height] duration-200"
+    :class="collapsed ? 'h-9' : 'h-52'"
+  >
     <header class="flex h-9 shrink-0 items-center gap-3 border-b px-4 text-xs">
       <button
         type="button"
         class="flex items-center gap-1.5 font-medium"
         :aria-expanded="!collapsed"
-        @click="collapsed = !collapsed"
+        @click="toggle"
       >
         <ChevronDown v-if="!collapsed" class="size-3.5" />
         <ChevronUp v-else class="size-3.5" />
         {{ $t("transfers.title") }}
       </button>
-      <span v-if="store.activeCount" class="text-muted-foreground">
+      <span
+        v-if="store.activeCount"
+        class="bg-primary/12 text-primary tabular rounded px-1.5 py-0.5 text-[11px] font-medium"
+      >
         {{ $t("transfers.active", { count: store.activeCount }) }}
       </span>
-      <span v-if="store.failedCount" class="text-destructive">
+      <span
+        v-if="store.failedCount"
+        class="bg-destructive/12 text-destructive tabular rounded px-1.5 py-0.5 text-[11px] font-medium"
+      >
         {{ $t("transfers.failed", { count: store.failedCount }) }}
       </span>
       <Button
@@ -82,7 +122,7 @@ const STATUS_CLASS: Record<TransferDto["status"], string> = {
         <li
           v-for="t in store.transfers"
           :key="t.id"
-          class="grid grid-cols-[1rem_minmax(0,1fr)_10rem_7rem_3.5rem] items-center gap-3 px-4 py-1.5"
+          class="hover:bg-accent/40 grid grid-cols-[1rem_minmax(0,1fr)_10rem_7rem_3.5rem] items-center gap-3 px-4 py-2 transition-colors"
         >
           <component
             :is="t.direction === 'UPLOAD' ? ArrowUp : ArrowDown"
@@ -104,7 +144,7 @@ const STATUS_CLASS: Record<TransferDto["status"], string> = {
           </div>
           <div>
             <div
-              class="bg-muted h-1.5 overflow-hidden rounded-full"
+              class="bg-muted h-1 overflow-hidden rounded-full"
               role="progressbar"
               :aria-valuenow="percent(t) ?? undefined"
               aria-valuemin="0"
@@ -116,7 +156,7 @@ const STATUS_CLASS: Record<TransferDto["status"], string> = {
                 :style="{ width: `${percent(t) ?? 0}%` }"
               />
             </div>
-            <div class="text-muted-foreground mt-0.5 tabular-nums">
+            <div class="text-muted-foreground tabular mt-1 font-mono text-[11px]">
               {{ formatBytes(t.bytesTransferred) }}
               <template v-if="t.bytesTotal != null">/ {{ formatBytes(t.bytesTotal) }}</template>
             </div>

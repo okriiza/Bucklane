@@ -77,12 +77,12 @@ async function setTheme(value: Theme) {
 </script>
 
 <template>
-  <div class="max-w-2xl p-8">
-    <h1 class="text-lg font-semibold">{{ $t("settings.title") }}</h1>
+  <div class="mx-auto max-w-2xl px-10 pt-6 pb-12">
+    <h1 class="text-2xl font-semibold tracking-[-0.015em]">{{ $t("settings.title") }}</h1>
 
-    <form class="mt-6 grid gap-8" @submit.prevent="save">
+    <form class="mt-8 grid gap-10" @submit.prevent="save">
       <section class="grid gap-4">
-        <h2 class="text-muted-foreground text-xs font-medium tracking-wide uppercase">
+        <h2 class="text-[15px] font-semibold tracking-tight">
           {{ $t("settings.appearance") }}
         </h2>
         <div class="grid max-w-xs gap-2">
@@ -104,7 +104,7 @@ async function setTheme(value: Theme) {
         :key="section"
         class="grid gap-4"
       >
-        <h2 class="text-muted-foreground text-xs font-medium tracking-wide uppercase">
+        <h2 class="text-[15px] font-semibold tracking-tight">
           {{ $t(`settings.${section}`) }}
         </h2>
         <div
@@ -120,7 +120,7 @@ async function setTheme(value: Theme) {
             :min="field.min"
             :max="field.max"
             required
-            class="border-input focus-visible:border-ring focus-visible:ring-ring/50 h-9 rounded-md border bg-transparent px-3 text-right text-sm tabular-nums outline-none focus-visible:ring-[3px]"
+            class="border-input bg-background focus-visible:border-ring focus-visible:ring-ring/25 dark:bg-input/30 tabular h-8 rounded-md border px-2.5 text-right font-mono text-[13px] shadow-[var(--shadow-soft)] outline-none focus-visible:ring-[3px]"
           />
           <p class="text-muted-foreground col-span-2 text-xs">
             {{ $t(`settings.fields.${field.key}.hint`, { min: field.min, max: field.max }) }}
