@@ -1,0 +1,351 @@
+/**
+ * Development-only demo mode for screenshots (`pnpm screenshots`).
+ *
+ * Enabled with `?demo` on the dev server. It replaces Tauri IPC with canned,
+ * realistic data so every page can be rendered in a plain browser. This
+ * module is only imported behind `import.meta.env.DEV`, so it never ships in
+ * production builds.
+ *
+ * Query parameters:
+ * - `theme=light|dark`: theme returned by settings (default: dark)
+ * - `select=<object key>`: object to open in the explorer details panel
+ */
+import type { App } from "vue";
+import type { Router } from "vue-router";
+
+const MINUTE = 60_000;
+const ago = (minutes: number) => new Date(Date.now() - minutes * MINUTE).toISOString();
+
+const params = new URLSearchParams(location.search);
+
+const profiles = (
+  [
+    ["aws", "Amazon S3"],
+    ["supabase", "Supabase Storage"],
+    ["minio", "MinIO"],
+    ["cloudflare_r2", "Cloudflare R2"],
+    ["wasabi", "Wasabi"],
+    ["digitalocean_spaces", "DigitalOcean Spaces"],
+    ["custom", "Custom S3-compatible"],
+  ] as const
+).map(([provider, label]) => ({
+  provider,
+  label,
+  endpointRequired:
+    provider !== "aws" && provider !== "wasabi" && provider !== "digitalocean_spaces",
+  endpointPlaceholder: null,
+  defaultRegion: null,
+  regionPlaceholder: "us-east-1",
+  defaultForcePathStyle: provider !== "aws",
+}));
+
+const connections = [
+  {
+    id: "c-aws",
+    name: "Production assets",
+    provider: "aws",
+    endpoint: null,
+    region: "ap-southeast-1",
+    accessKeyId: "AKIA4T7XQ2MPLRV3",
+    forcePathStyle: false,
+    allowInsecureHttp: false,
+    createdAt: ago(60 * 24 * 40),
+    updatedAt: ago(60 * 24 * 3),
+  },
+  {
+    id: "c-supabase",
+    name: "Supabase · app uploads",
+    provider: "supabase",
+    endpoint: "https://vqzkfjrm.supabase.co/storage/v1/s3",
+    region: "ap-southeast-1",
+    accessKeyId: "8f3c1e0a52d4",
+    forcePathStyle: true,
+    allowInsecureHttp: false,
+    createdAt: ago(60 * 24 * 21),
+    updatedAt: ago(60 * 24 * 21),
+  },
+  {
+    id: "c-r2",
+    name: "Website CDN",
+    provider: "cloudflare_r2",
+    endpoint: "https://4b8e1f0c9a.r2.cloudflarestorage.com",
+    region: "auto",
+    accessKeyId: "e91a07c4d3",
+    forcePathStyle: true,
+    allowInsecureHttp: false,
+    createdAt: ago(60 * 24 * 12),
+    updatedAt: ago(60 * 24 * 12),
+  },
+  {
+    id: "c-minio",
+    name: "Local MinIO",
+    provider: "minio",
+    endpoint: "http://localhost:9000",
+    region: "us-east-1",
+    accessKeyId: "minio-dev",
+    forcePathStyle: true,
+    allowInsecureHttp: true,
+    createdAt: ago(60 * 24 * 5),
+    updatedAt: ago(60 * 24 * 5),
+  },
+];
+
+const buckets = [
+  { name: "backups-cold", createdAt: ago(60 * 24 * 400), region: "eu-central-1" },
+  { name: "invoices-2026", createdAt: ago(60 * 24 * 280), region: "ap-southeast-1" },
+  { name: "media-originals", createdAt: ago(60 * 24 * 500), region: "ap-southeast-1" },
+  { name: "static-site", createdAt: ago(60 * 24 * 90), region: "us-east-1" },
+  { name: "user-avatars", createdAt: ago(60 * 24 * 60), region: "ap-southeast-1" },
+];
+
+const bookmarks: Record<string, object[]> = {
+  "c-aws": [
+    {
+      id: "b1",
+      connectionId: "c-aws",
+      bucketName: "media-originals",
+      displayName: "Media",
+      createdAt: ago(9000),
+    },
+    {
+      id: "b2",
+      connectionId: "c-aws",
+      bucketName: "invoices-2026",
+      displayName: null,
+      createdAt: ago(8000),
+    },
+  ],
+  "c-r2": [
+    {
+      id: "b3",
+      connectionId: "c-r2",
+      bucketName: "site-assets",
+      displayName: null,
+      createdAt: ago(7000),
+    },
+  ],
+};
+
+type Entry = [name: string, size: number | null, minutesAgo: number];
+const folders: Record<string, Entry[]> = {
+  "": [
+    ["brand/", null, 0],
+    ["campaigns/", null, 0],
+    ["marketing/", null, 0],
+    ["product-shots/", null, 0],
+    ["README.txt", 2_148, 60 * 24 * 30],
+  ],
+  "marketing/": [
+    ["exports/", null, 0],
+    ["reports/", null, 0],
+    ["thumbnails/", null, 0],
+    ["Q3-board-deck.pdf", 4_823_114, 20],
+    ["hero-banner@2x.png", 1_288_412, 140],
+    ["customer-export-2026-10.csv", 73_821, 410],
+    ["launch-video-final.mp4", 184_220_341, 980],
+    ["press-kit-2026.zip", 926_114_720, 1_730],
+    ["release-notes.md", 4_210, 2_880],
+    ["brand-guidelines-v4.pdf", 12_904_337, 4_320],
+    ["social-schedule.xlsx", 58_204, 6_010],
+  ],
+};
+
+function listObjects(prefix: string) {
+  const entries = folders[prefix] ?? [];
+  return {
+    objects: entries.map(([name, size, minutes]) => ({
+      key: prefix + name,
+      name,
+      size,
+      lastModified: size === null ? null : ago(minutes),
+      etag: null,
+      storageClass: null,
+      isPrefix: name.endsWith("/"),
+    })),
+    nextContinuationToken: null,
+    isTruncated: false,
+  };
+}
+
+function transfer(
+  id: string,
+  direction: "UPLOAD" | "DOWNLOAD",
+  key: string,
+  bucket: string,
+  total: number,
+  done: number,
+  status: string,
+  minutes: number,
+  error: string | null = null,
+) {
+  return {
+    id,
+    connectionId: "c-aws",
+    connectionNameSnapshot: "Production assets",
+    direction,
+    bucket,
+    objectKey: key,
+    localFileName: key.split("/").pop(),
+    bytesTotal: total,
+    bytesTransferred: done,
+    status,
+    retryCount: 0,
+    error: error
+      ? { code: "ENDPOINT_UNREACHABLE", message: error, details: null, retryable: true }
+      : null,
+    createdAt: ago(minutes),
+    startedAt: ago(minutes),
+    completedAt: status === "RUNNING" || status === "QUEUED" ? null : ago(minutes - 1),
+  };
+}
+
+const transfers = [
+  transfer(
+    "t1",
+    "UPLOAD",
+    "marketing/launch-video-final.mp4",
+    "media-originals",
+    184_220_341,
+    121_734_000,
+    "RUNNING",
+    1,
+  ),
+  transfer(
+    "t2",
+    "UPLOAD",
+    "marketing/press-kit-2026.zip",
+    "media-originals",
+    926_114_720,
+    0,
+    "QUEUED",
+    1,
+  ),
+  transfer(
+    "t3",
+    "DOWNLOAD",
+    "2026/10/INV-20418.pdf",
+    "invoices-2026",
+    238_114,
+    238_114,
+    "COMPLETED",
+    6,
+  ),
+  transfer(
+    "t4",
+    "UPLOAD",
+    "marketing/Q3-board-deck.pdf",
+    "media-originals",
+    4_823_114,
+    4_823_114,
+    "COMPLETED",
+    21,
+  ),
+  transfer(
+    "t5",
+    "UPLOAD",
+    "dumps/db-2026-10-14.sql.gz",
+    "backups-cold",
+    52_114_003,
+    8_421_000,
+    "FAILED",
+    48,
+    "Could not reach the storage endpoint.",
+  ),
+  transfer(
+    "t6",
+    "UPLOAD",
+    "marketing/hero-banner@2x.png",
+    "media-originals",
+    1_288_412,
+    1_288_412,
+    "COMPLETED",
+    141,
+  ),
+  transfer(
+    "t7",
+    "DOWNLOAD",
+    "exports/customer-export-2026-10.csv",
+    "media-originals",
+    73_821,
+    73_821,
+    "COMPLETED",
+    205,
+  ),
+];
+
+const theme = params.get("theme") === "light" ? "light" : "dark";
+
+function respond(cmd: string, args: Record<string, unknown> = {}): unknown {
+  switch (cmd) {
+    case "health":
+      return { appVersion: "0.1.0", databaseOk: true, databaseError: null };
+    case "list_connections":
+      return connections;
+    case "list_provider_profiles":
+      return profiles;
+    case "get_settings":
+      return {
+        theme,
+        maxConcurrentTransfers: 3,
+        multipartThresholdMb: 64,
+        multipartPartSizeMb: 16,
+        explorerPageSize: 100,
+      };
+    case "list_transfers":
+      return transfers;
+    case "list_buckets":
+      return buckets;
+    case "list_bucket_bookmarks":
+      return bookmarks[args.connectionId as string] ?? [];
+    case "list_objects": {
+      const request = args.request as { prefix?: string | null };
+      return listObjects(request.prefix ?? "");
+    }
+    case "head_object":
+      return {
+        key: args.key,
+        size: 4_823_114,
+        lastModified: ago(20),
+        contentType: "application/pdf",
+        etag: '"9b2cf535f27731c974343645a3985328"',
+        storageClass: "STANDARD",
+        metadata: { "uploaded-by": "dewi.anggraini", department: "marketing" },
+      };
+    default:
+      throw {
+        code: "OPERATION_UNSUPPORTED",
+        message: `Not available in demo mode: ${cmd}`,
+        details: null,
+        retryable: false,
+      };
+  }
+}
+
+/** Replaces Tauri IPC; must run before the app mounts. */
+export function install() {
+  // Screenshots should not show an empty macOS title-bar area.
+  document.documentElement.classList.remove("platform-mac");
+  let nextCallback = 1;
+  (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {
+    invoke: async (cmd: string, args?: Record<string, unknown>) => {
+      if (cmd.startsWith("plugin:event|")) return nextCallback++;
+      return structuredClone(respond(cmd, args));
+    },
+    transformCallback: () => nextCallback++,
+    metadata: { currentWindow: { label: "main" }, currentWebview: { label: "main" } },
+  };
+}
+
+/** Optional per-screenshot actions once routing and stores are ready. */
+export async function afterMount(app: App) {
+  const select = params.get("select");
+  if (!select) return;
+  const router = app.config.globalProperties.$router as Router;
+  await router.isReady();
+  // Let the explorer load its listing before selecting.
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  const pinia = app.config.globalProperties.$pinia as unknown as {
+    _s: Map<string, { select?: (key: string) => Promise<void> }>;
+  };
+  await pinia._s.get("explorer")?.select?.(select);
+}

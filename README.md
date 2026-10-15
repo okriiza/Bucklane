@@ -8,11 +8,14 @@ It is **local-first**: there is no Bucklane account and no server in between. Th
 
 Available for **macOS** (Apple Silicon and Intel), **Windows**, and **Linux**.
 
+![Bucklane overview: connections, pinned buckets, transfer activity](docs/screenshots/overview.png)
+
 ---
 
 ## Contents
 
 - [Features](#features)
+- [Screenshots](#screenshots)
 - [Download and install](#download-and-install)
 - [Getting started](#getting-started)
 - [Connecting to each provider](#connecting-to-each-provider)
@@ -38,6 +41,39 @@ Available for **macOS** (Apple Silicon and Intel), **Windows**, and **Linux**.
 | **Bookmarks and pinned buckets**          | Open a bucket by name even when your keys can't list buckets, and star the ones you use most so they appear on the Overview.                                                 |
 | **Overview dashboard**                    | See active transfers, what you uploaded and downloaded today, your connections, pinned buckets, and recent activity at a glance.                                             |
 | **Light and dark mode**                   | Follows your system, or pick one in Settings.                                                                                                                                |
+
+---
+
+## Screenshots
+
+<table>
+  <tr>
+    <td width="50%">
+      <img src="docs/screenshots/explorer.png" alt="File explorer with object details" />
+      <p align="center"><b>Explorer</b> — browse folders and inspect object details</p>
+    </td>
+    <td width="50%">
+      <img src="docs/screenshots/connection.png" alt="Connection page with bucket list" />
+      <p align="center"><b>Connection</b> — buckets, regions, and bookmarks</p>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <img src="docs/screenshots/add-connection.png" alt="Add connection dialog" />
+      <p align="center"><b>Add connection</b> — test before you save</p>
+    </td>
+    <td width="50%">
+      <img src="docs/screenshots/settings.png" alt="Settings page" />
+      <p align="center"><b>Settings</b> — theme and transfer tuning</p>
+    </td>
+  </tr>
+  <tr>
+    <td colspan="2">
+      <img src="docs/screenshots/overview-light.png" alt="Overview in light mode" />
+      <p align="center"><b>Light mode</b> — follows your system or your choice in Settings</p>
+    </td>
+  </tr>
+</table>
 
 ---
 
@@ -312,6 +348,17 @@ docker compose up -d s3
 BUCKLANE_S3_TEST_ENDPOINT=http://localhost:9100 cargo test --manifest-path src-tauri/Cargo.toml
 docker compose down
 ```
+
+### Updating the screenshots
+
+The images in `docs/screenshots/` are generated from the running dev server in a demo mode with sample data (`?demo`, development builds only). With a Chromium-based browser installed (Chrome, Chromium, Edge, or Brave):
+
+```bash
+pnpm dev            # in one terminal
+pnpm screenshots    # in another
+```
+
+Set `CHROME_PATH` if the browser isn't found automatically. Shots and their sample data live in `scripts/screenshots.mjs` and `src/demo/demoIpc.ts`.
 
 ### Releasing
 
