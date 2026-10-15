@@ -26,3 +26,7 @@ TypeScript IPC bindings (`src/services/tauri/bindings.ts`) are generated from Ru
 pnpm lint && pnpm format:check && pnpm typecheck && pnpm test
 cd src-tauri && cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test
 ```
+
+## Releasing
+
+Push a version tag (for example `v0.1.0`) to build macOS, Windows, and Linux installers into a draft GitHub release. See [docs/releasing.md](docs/releasing.md).

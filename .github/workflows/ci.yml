@@ -25,6 +25,8 @@ jobs:
       - run: pnpm format:check
       - run: pnpm typecheck
       - run: pnpm test
+      - name: Production build
+        run: pnpm build
 
   rust:
     name: Rust
