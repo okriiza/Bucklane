@@ -1,12 +1,12 @@
 import { createRouter, createWebHashHistory } from "vue-router";
 
-import WelcomePage from "@/pages/WelcomePage.vue";
+import HomePage from "@/pages/HomePage.vue";
 
 export const router = createRouter({
   // Hash history: the app is served from a custom protocol, not a web server.
   history: createWebHashHistory(),
   routes: [
-    { path: "/", name: "welcome", component: WelcomePage },
+    { path: "/", name: "home", component: HomePage },
     {
       path: "/connections/:id",
       name: "connection",

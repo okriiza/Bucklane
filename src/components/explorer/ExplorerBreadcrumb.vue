@@ -24,11 +24,11 @@ function folderRoute(prefix: string) {
 
 <template>
   <nav :aria-label="$t('explorer.breadcrumb')" class="min-w-0">
-    <ol class="flex min-w-0 items-center gap-1 text-sm">
+    <ol class="flex min-w-0 items-center gap-0.5 text-[13px]">
       <li class="shrink-0">
         <RouterLink
           :to="{ name: 'connection', params: { id: connectionId } }"
-          class="text-muted-foreground hover:text-foreground"
+          class="text-muted-foreground hover:bg-accent hover:text-foreground rounded-md px-1.5 py-1 transition-colors"
         >
           {{ connectionName }}
         </RouterLink>
@@ -39,18 +39,18 @@ function folderRoute(prefix: string) {
           v-if="segments.length"
           :to="folderRoute('')"
           data-drop-prefix=""
-          class="text-muted-foreground hover:text-foreground rounded px-1"
+          class="text-muted-foreground hover:bg-accent hover:text-foreground rounded-md px-1.5 py-1 transition-colors"
         >
           {{ bucket }}
         </RouterLink>
-        <span v-else class="font-medium" aria-current="page">{{ bucket }}</span>
+        <span v-else class="px-1.5 font-medium" aria-current="page">{{ bucket }}</span>
       </li>
       <template v-for="(segment, index) in segments" :key="segment.prefix">
         <ChevronRight class="text-muted-foreground size-3.5 shrink-0" aria-hidden="true" />
         <li class="min-w-0">
           <span
             v-if="index === segments.length - 1"
-            class="block truncate font-medium"
+            class="block truncate px-1.5 font-medium"
             aria-current="page"
           >
             {{ segment.name || "∅" }}
@@ -59,7 +59,7 @@ function folderRoute(prefix: string) {
             v-else
             :to="folderRoute(segment.prefix)"
             :data-drop-prefix="segment.prefix"
-            class="text-muted-foreground hover:text-foreground block truncate rounded px-1"
+            class="text-muted-foreground hover:bg-accent hover:text-foreground block truncate rounded-md px-1.5 py-1 transition-colors"
           >
             {{ segment.name || "∅" }}
           </RouterLink>

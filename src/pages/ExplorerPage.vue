@@ -5,6 +5,7 @@ import {
   Copy,
   Download,
   FolderInput,
+  FolderOpen,
   FolderPlus,
   Pencil,
   RefreshCw,
@@ -289,7 +290,7 @@ function goTo(prefix: string) {
     @click.capture="(e) => shouldSuppressClick() && e.stopPropagation()"
   >
     <div class="flex min-w-0 flex-1 flex-col">
-      <header class="flex h-11 shrink-0 items-center gap-2 border-b px-4">
+      <header data-tauri-drag-region class="flex h-12 shrink-0 items-center gap-1.5 px-3">
         <Button
           variant="ghost"
           size="icon"
@@ -301,68 +302,15 @@ function goTo(prefix: string) {
           <ArrowUp />
         </Button>
         <ExplorerBreadcrumb
-          class="flex-1"
+          class="min-w-0 flex-1"
           :connection-id="id"
           :connection-name="connectionName"
           :bucket="bucket"
           :prefix="prefix"
         />
-        <template v-if="explorer.checkedKeys.size">
-          <span class="text-muted-foreground text-xs whitespace-nowrap">
-            {{ $t("explorer.selected", { count: explorer.checkedKeys.size }) }}
-          </span>
-          <template v-if="singleCheckedFile">
-            <Button variant="outline" size="sm" @click="openPrompt('rename', singleCheckedFile)">
-              <Pencil /> {{ $t("ops.rename") }}
-            </Button>
-            <Button variant="outline" size="sm" @click="openPrompt('copy', singleCheckedFile)">
-              <Copy /> {{ $t("ops.copy") }}
-            </Button>
-            <Button variant="outline" size="sm" @click="openPrompt('move', singleCheckedFile)">
-              <FolderInput /> {{ $t("ops.move") }}
-            </Button>
-          </template>
-          <Button
-            v-if="explorer.checkedEntries.some((e) => !e.isPrefix)"
-            variant="outline"
-            size="sm"
-            @click="downloadEntries(explorer.checkedEntries)"
-          >
-            <Download /> {{ $t("transfers.downloadAction") }}
-          </Button>
-          <Button variant="outline" size="sm" @click="openDelete(explorer.checkedEntries)">
-            <Trash2 /> {{ $t("common.delete") }}
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            :aria-label="$t('explorer.clearSelection')"
-            @click="explorer.setAllChecked([], false)"
-          >
-            <X />
-          </Button>
-        </template>
-        <template v-else>
-          <Button
-            variant="ghost"
-            size="sm"
-            :disabled="explorer.loading || !!explorer.error"
-            @click="pickAndUpload({ connectionId: id, bucket, prefix })"
-          >
-            <Upload /> {{ $t("transfers.uploadAction") }}
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            :disabled="explorer.loading || !!explorer.error"
-            @click="openPrompt('newFolder')"
-          >
-            <FolderPlus /> {{ $t("ops.newFolder") }}
-          </Button>
-        </template>
         <label class="relative">
           <Search
-            class="text-muted-foreground absolute top-1/2 left-2 size-3.5 -translate-y-1/2"
+            class="text-muted-foreground absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2"
             aria-hidden="true"
           />
           <input
@@ -370,7 +318,7 @@ function goTo(prefix: string) {
             type="search"
             :placeholder="$t('explorer.filter')"
             :aria-label="$t('explorer.filter')"
-            class="bg-background focus-visible:ring-ring/50 h-8 w-48 rounded-md border pr-2 pl-7 text-sm outline-none focus-visible:ring-2"
+            class="bg-muted/60 focus-visible:bg-background focus-visible:ring-ring/25 focus-visible:border-ring placeholder:text-muted-foreground/70 h-8 w-52 rounded-md border border-transparent pr-2 pl-8 text-[13px] transition-[background-color,box-shadow] outline-none focus-visible:ring-[3px]"
           />
         </label>
         <Button
@@ -385,10 +333,77 @@ function goTo(prefix: string) {
         </Button>
       </header>
 
+      <div
+        class="flex h-11 shrink-0 items-center gap-1.5 border-y px-3 transition-colors"
+        :class="explorer.checkedKeys.size ? 'bg-primary/8 border-primary/15' : ''"
+      >
+        <template v-if="explorer.checkedKeys.size">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            :aria-label="$t('explorer.clearSelection')"
+            :title="$t('explorer.clearSelection')"
+            @click="explorer.setAllChecked([], false)"
+          >
+            <X />
+          </Button>
+          <span class="text-primary mr-2 text-[13px] font-medium whitespace-nowrap">
+            {{ $t("explorer.selected", { count: explorer.checkedKeys.size }) }}
+          </span>
+          <Button
+            v-if="explorer.checkedEntries.some((e) => !e.isPrefix)"
+            variant="outline"
+            size="sm"
+            @click="downloadEntries(explorer.checkedEntries)"
+          >
+            <Download /> {{ $t("transfers.downloadAction") }}
+          </Button>
+          <template v-if="singleCheckedFile">
+            <Button variant="outline" size="sm" @click="openPrompt('rename', singleCheckedFile)">
+              <Pencil /> {{ $t("ops.rename") }}
+            </Button>
+            <Button variant="outline" size="sm" @click="openPrompt('copy', singleCheckedFile)">
+              <Copy /> {{ $t("ops.copy") }}
+            </Button>
+            <Button variant="outline" size="sm" @click="openPrompt('move', singleCheckedFile)">
+              <FolderInput /> {{ $t("ops.move") }}
+            </Button>
+          </template>
+          <Button
+            variant="outline"
+            size="sm"
+            class="hover:text-destructive ml-auto"
+            @click="openDelete(explorer.checkedEntries)"
+          >
+            <Trash2 /> {{ $t("common.delete") }}
+          </Button>
+        </template>
+        <template v-else>
+          <Button
+            size="sm"
+            :disabled="explorer.loading || !!explorer.error"
+            @click="pickAndUpload({ connectionId: id, bucket, prefix })"
+          >
+            <Upload /> {{ $t("transfers.uploadAction") }}
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            :disabled="explorer.loading || !!explorer.error"
+            @click="openPrompt('newFolder')"
+          >
+            <FolderPlus /> {{ $t("ops.newFolder") }}
+          </Button>
+          <span class="text-muted-foreground ml-auto hidden text-[11px] lg:inline">
+            {{ $t("explorer.dropHint") }}
+          </span>
+        </template>
+      </div>
+
       <div class="min-h-0 flex-1 overflow-auto">
         <div
           v-if="explorer.error"
-          class="border-destructive/40 bg-destructive/10 text-destructive m-4 grid gap-1 rounded-md border p-3 text-sm"
+          class="border-destructive/30 bg-destructive/8 text-destructive m-4 grid gap-1 rounded-lg border p-3 text-[13px]"
           role="alert"
         >
           <div class="flex gap-2">
@@ -400,15 +415,37 @@ function goTo(prefix: string) {
           </code>
         </div>
 
-        <p v-if="explorer.loading" class="text-muted-foreground p-4 text-sm">
-          {{ $t("explorer.loading") }}
-        </p>
-        <p
+        <div v-if="explorer.loading" aria-busy="true" :aria-label="$t('explorer.loading')">
+          <div
+            v-for="n in 9"
+            :key="n"
+            class="flex h-9 items-center gap-3 border-b px-4"
+            :style="{ opacity: 1 - n * 0.08 }"
+          >
+            <span class="skeleton size-3.5 rounded" />
+            <span class="skeleton size-4 rounded" />
+            <span class="skeleton h-3 rounded" :style="{ width: `${18 + ((n * 37) % 30)}%` }" />
+            <span class="skeleton ml-auto h-3 w-14 rounded" />
+            <span class="skeleton h-3 w-28 rounded" />
+          </div>
+        </div>
+        <div
           v-else-if="!explorer.error && !explorer.entries.length"
-          class="text-muted-foreground p-8 text-center text-sm"
+          class="flex h-full min-h-64 flex-col items-center justify-center gap-3 p-8 text-center"
         >
-          {{ $t("explorer.empty") }}
-        </p>
+          <span
+            class="bg-primary/10 text-primary inline-flex size-12 items-center justify-center rounded-xl"
+          >
+            <FolderOpen class="size-6" />
+          </span>
+          <div>
+            <p class="text-[15px] font-medium">{{ $t("explorer.empty") }}</p>
+            <p class="text-muted-foreground mt-1 text-[13px]">{{ $t("explorer.emptyHint") }}</p>
+          </div>
+          <Button size="sm" @click="pickAndUpload({ connectionId: id, bucket, prefix })">
+            <Upload /> {{ $t("transfers.uploadAction") }}
+          </Button>
+        </div>
         <template v-else-if="explorer.entries.length">
           <ObjectTable
             :entries="visible"
@@ -447,7 +484,7 @@ function goTo(prefix: string) {
 
       <footer
         v-if="explorer.entries.length"
-        class="text-muted-foreground flex h-7 shrink-0 items-center border-t px-4 text-xs"
+        class="text-muted-foreground tabular flex h-7 shrink-0 items-center border-t px-4 text-[11px]"
       >
         {{ $t("explorer.count", { count: explorer.entries.length }, explorer.entries.length) }}
         <template v-if="explorer.isTruncated">+</template>

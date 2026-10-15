@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { formatBytes, formatDateTime } from "./format";
+import { endpointHost, formatBytes, formatDateTime, formatRelative } from "./format";
 import { extensionOf, parentPrefix, prefixSegments } from "./prefix";
 
 describe("formatBytes", () => {
@@ -56,5 +56,22 @@ describe("extensionOf", () => {
     expect(extensionOf("Report.PDF")).toBe("pdf");
     expect(extensionOf(".env")).toBe("");
     expect(extensionOf("Makefile")).toBe("");
+  });
+});
+
+describe("formatRelative", () => {
+  const now = Date.parse("2026-10-15T12:00:00Z");
+  it("describes recent and past times", () => {
+    expect(formatRelative("2026-10-15T11:57:00Z", now)).toMatch(/3 minutes ago/);
+    expect(formatRelative("2026-10-14T12:00:00Z", now)).toMatch(/yesterday|1 day ago/);
+    expect(formatRelative(null, now)).toBe("—");
+  });
+});
+
+describe("endpointHost", () => {
+  it("extracts hosts and defaults to AWS", () => {
+    expect(endpointHost("https://abc.supabase.co/storage/v1/s3", "x")).toBe("abc.supabase.co");
+    expect(endpointHost("http://localhost:9000", "x")).toBe("localhost:9000");
+    expect(endpointHost(null, "ap-southeast-1")).toBe("s3.ap-southeast-1.amazonaws.com");
   });
 });

@@ -20,18 +20,46 @@ export default {
     addConnection: "Add connection",
   },
   welcome: {
-    title: "Manage all your S3-compatible storage",
+    title: "All your S3 storage, in one window",
     description:
-      "Add a connection to Amazon S3, Supabase Storage, MinIO, or any S3-compatible endpoint to start browsing buckets.",
+      "Connect Amazon S3, Supabase Storage, MinIO, Cloudflare R2, or any S3-compatible endpoint, then browse, move, and transfer files like a local folder.",
     addConnection: "Add connection",
+    providers: "Supported providers",
+    points: {
+      keychain: {
+        title: "Secrets stay in your keychain",
+        body: "Secret keys live in the system credential store, never in a file or database.",
+      },
+      transfers: {
+        title: "Built for large files",
+        body: "Uploads stream from disk in parallel parts, so multi-gigabyte files never fill your memory.",
+      },
+      safe: {
+        title: "Nothing is overwritten silently",
+        body: "Moves verify the copy before deleting, and every replace or delete asks first.",
+      },
+    },
+  },
+  home: {
+    title: "Overview",
+    subtitle: "{count} connection | {count} connections",
+    active: "Active transfers",
+    uploadedToday: "Uploaded today",
+    downloadedToday: "Downloaded today",
+    files: "{count} file | {count} files",
+    pinned: "Pinned buckets",
+    pinnedEmpty: "Star a bucket on a connection page to pin it here.",
+    recent: "Recent activity",
+    recentEmpty: "Uploads and downloads will appear here.",
   },
   connection: {
     endpoint: "Endpoint",
     defaultEndpoint: "Provider default",
     region: "Region",
     accessKeyId: "Access key ID",
-    pathStyle: "Path-style addressing",
-    insecureHttp: "Insecure HTTP allowed",
+    pathStyle: "Path-style",
+    insecureHttp: "Insecure HTTP",
+    options: "Options",
     test: "Test connection",
     notFound: "This connection no longer exists.",
     deleteTitle: "Delete “{name}”?",
@@ -74,7 +102,8 @@ export default {
     listDenied:
       "These credentials can't list buckets. Add a bucket by name below to open it directly.",
     add: "Add",
-    addPlaceholder: "Bucket name",
+    addPlaceholder: "Open a bucket by name",
+    bookmarkedOnly: "bookmarked",
     addBookmark: "Bookmark bucket",
     removeBookmark: "Remove bookmark",
   },
@@ -88,7 +117,9 @@ export default {
     size: "Size",
     lastModified: "Last modified",
     loading: "Loading…",
-    empty: "This folder is empty.",
+    empty: "This folder is empty",
+    emptyHint: "Upload files, or drag them here from your computer.",
+    dropHint: "Drop files anywhere to upload here",
     noMatches: "No loaded items match the filter.",
     loadMore: "Load more",
     count: "{count} item | {count} items",
@@ -225,6 +256,73 @@ export default {
   },
   about: {
     title: "About Bucklane",
-    description: "A local-first desktop manager for S3-compatible object storage.",
+    tagline: "A desktop manager for S3-compatible storage",
+    description:
+      "Bucklane is local-first. There is no account to create and no server in between: the app talks to your storage provider directly, and everything it remembers stays on this computer.",
+    platforms: { mac: "macOS", windows: "Windows", linux: "Linux" },
+    keychains: {
+      mac: "macOS Keychain",
+      windows: "Windows Credential Manager",
+      linux: "Secret Service (GNOME Keyring or KWallet)",
+    },
+    features: {
+      title: "What you can do",
+      providers: {
+        title: "Every S3-compatible provider",
+        body: "Amazon S3, Supabase Storage, MinIO, Cloudflare R2, Wasabi, DigitalOcean Spaces, or any custom endpoint, with as many connections as you need.",
+      },
+      explorer: {
+        title: "Browse buckets like folders",
+        body: "Navigate prefixes as folders, page through large buckets, filter what's loaded, and inspect any object's details.",
+      },
+      transfers: {
+        title: "Uploads and downloads in the background",
+        body: "Queue transfers, watch progress, cancel or retry, and send large files in parallel parts without filling your memory.",
+      },
+      dragDrop: {
+        title: "Drag and drop",
+        body: "Drop files from your computer to upload them, or drag files onto a folder to move them within a bucket.",
+      },
+      safeOps: {
+        title: "Nothing lost by accident",
+        body: "Moves delete the original only after the copy is verified, replacing a file always asks first, and folder deletes show exactly what will go.",
+      },
+      bookmarks: {
+        title: "Bookmarks and pinned buckets",
+        body: "Open buckets by name even without permission to list them, and pin the ones you use most to the overview.",
+      },
+    },
+    privacy: {
+      title: "What stays on this computer",
+      storesTitle: "Stored locally",
+      neverTitle: "Never stored or sent anywhere else",
+      stores: {
+        connections: "Connection settings and access key IDs",
+        bookmarks: "Bucket bookmarks",
+        history: "Transfer history, until you clear it",
+        settings: "Your preferences",
+        logs: "Diagnostic logs for the last 7 days, without secrets",
+      },
+      never: {
+        secrets: "Secret keys in a file or the app database",
+        files: "Your files, except where you upload or download them",
+        telemetry: "Usage data or crash reports",
+      },
+    },
+    shortcuts: {
+      title: "Keyboard shortcuts",
+      open: "Open a folder or show file details",
+      rename: "Rename the focused file",
+      delete: "Delete the focused item",
+      cancelDrag: "Cancel a drag in progress",
+    },
+    details: {
+      credentials: "Secret keys",
+      telemetry: "Telemetry",
+      telemetryValue: "None",
+      account: "Account",
+      accountValue: "Not required",
+    },
+    providers: "Supported providers",
   },
 };

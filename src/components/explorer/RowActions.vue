@@ -22,13 +22,13 @@ const emit = defineEmits<{
 }>();
 
 const itemClass =
-  "flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none select-none data-[highlighted]:bg-accent data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&_svg]:size-4";
+  "flex cursor-default items-center gap-2 rounded-md px-2 py-1.5 text-[13px] outline-none select-none data-[highlighted]:bg-accent data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&_svg]:size-4";
 </script>
 
 <template>
   <DropdownMenuRoot>
     <DropdownMenuTrigger
-      class="hover:bg-accent focus-visible:ring-ring/50 data-[state=open]:bg-accent inline-flex size-7 items-center justify-center rounded-md outline-none focus-visible:ring-2"
+      class="text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:ring-ring/40 data-[state=open]:bg-accent data-[state=open]:text-foreground inline-flex size-7 items-center justify-center rounded-md transition-colors outline-none focus-visible:ring-2"
       :aria-label="$t('explorer.actions', { name: entry.name })"
       @click.stop
       @keydown.enter.stop
@@ -39,7 +39,7 @@ const itemClass =
       <DropdownMenuContent
         align="end"
         :side-offset="4"
-        class="bg-popover text-popover-foreground z-50 min-w-40 rounded-md border p-1 shadow-md"
+        class="bg-popover text-popover-foreground data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 z-50 min-w-44 rounded-lg border p-1 shadow-[var(--shadow-float)]"
       >
         <template v-if="!entry.isPrefix">
           <DropdownMenuItem :class="itemClass" @select="emit('details')">

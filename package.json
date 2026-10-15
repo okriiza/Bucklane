@@ -1,7 +1,7 @@
 {
   "name": "bucklane",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "packageManager": "pnpm@12.6.0",
   "scripts": {
@@ -14,9 +14,12 @@
     "format:check": "prettier --check .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "screenshots": "node scripts/screenshots.mjs"
   },
   "dependencies": {
+    "@fontsource-variable/geist": "^5.3.0",
+    "@fontsource-variable/geist-mono": "^5.3.0",
     "@lucide/vue": "^1.56.0",
     "@tauri-apps/api": "^2.12.3",
     "class-variance-authority": "^0.7.1",
@@ -44,6 +47,7 @@
     "jiti": "^2.7.0",
     "jsdom": "^30.1.2",
     "prettier": "^3.9.10",
+    "puppeteer-core": "25.12.0",
     "tailwindcss": "^4.3.3",
     "typescript": "~6.0.3",
     "vite": "^8.3.4",
