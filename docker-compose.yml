@@ -1,0 +1,15 @@
+# Local S3-compatible storage for integration tests (TSD §13.2).
+#
+# RustFS is used because MinIO no longer publishes Docker images. Port 9100
+# avoids clashing with a locally running S3 server on 9000.
+#
+#   docker compose up -d s3
+#   BUCKLANE_S3_TEST_ENDPOINT=http://localhost:9100 cargo test --manifest-path src-tauri/Cargo.toml
+services:
+  s3:
+    image: rustfs/rustfs:1.0.0
+    environment:
+      RUSTFS_ACCESS_KEY: bucklane-test
+      RUSTFS_SECRET_KEY: bucklane-test-secret
+    ports:
+      - "9100:9000"

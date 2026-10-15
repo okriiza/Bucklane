@@ -72,6 +72,9 @@ MVP tidak mencakup:
 - Object replication.
 - Transfer langsung antar-provider.
 - Koneksi SFTP, FTP, atau WebDAV.
+- Kredensial selain static access key (session token/STS, AWS profiles, SSO).
+- Copy/move folder (prefix) secara rekursif.
+- Copy/move objek berukuran di atas 5 GiB.
 
 # 3. Target Users
 
@@ -182,7 +185,8 @@ Pengguna dapat memperbarui atau menghapus konfigurasi koneksi.
 - Perubahan konfigurasi dapat disimpan.
 - Penghapusan memerlukan konfirmasi.
 - Penghapusan koneksi tidak menghapus bucket maupun objek di storage provider.
-- Kredensial terkait dibersihkan dari credential store ketika koneksi dihapus, kecuali digunakan bersama oleh referensi lain.
+- Kredensial terkait dibersihkan dari credential store ketika koneksi dihapus. Setiap koneksi memiliki credential reference sendiri (relasi 1:1); kredensial tidak dibagi antar-koneksi.
+- Riwayat transfer koneksi yang dihapus tetap dipertahankan menggunakan snapshot nama koneksi.
 
 ## 5.2 Bucket Management
 
@@ -199,7 +203,20 @@ Sistem menampilkan bucket yang dapat diakses pengguna.
 - Daftar bucket ditampilkan jika kredensial memiliki permission yang diperlukan.
 - Nama bucket dapat dipilih untuk membuka file explorer.
 - Status loading dan error tersedia.
-- Jika listing bucket tidak diizinkan, pengguna dapat membuka bucket tertentu yang telah dikonfigurasi secara manual.
+- Jika listing bucket tidak diizinkan, pengguna dapat membuka bucket tertentu yang telah dikonfigurasi secara manual (lihat BKT-005).
+
+### BKT-005 — Bucket Bookmarks
+
+**Priority:** P0
+
+Pengguna dapat menyimpan nama bucket secara manual per koneksi agar dapat dibuka langsung tanpa permission ListBuckets.
+
+**Acceptance Criteria:**
+
+- Pengguna dapat menambah, memberi label, dan menghapus bookmark bucket.
+- Nama bucket yang sama tidak dapat di-bookmark dua kali pada koneksi yang sama.
+- Bookmark tidak dianggap sebagai bukti bahwa bucket ada atau dapat diakses; status akses diverifikasi saat dibuka.
+- Bookmark ikut terhapus ketika koneksi dihapus.
 
 ### BKT-002 — Bucket Navigation
 
@@ -305,7 +322,7 @@ Pengguna dapat mengunggah satu atau beberapa file lokal ke bucket.
 - Tujuan bucket dan prefix dapat dipilih.
 - Transfer progress ditampilkan.
 - Kegagalan upload dapat diketahui.
-- File dengan key yang sama memerlukan keputusan overwrite sesuai kebijakan.
+- Jika key tujuan sudah ada, pengguna memilih Overwrite, Skip, atau Rename (`name (1).ext`), dengan opsi "terapkan ke semua". Default: tanya pengguna; tidak ada overwrite tanpa pilihan eksplisit.
 - UI tetap responsif selama transfer.
 
 ### FIL-002 — Download File
@@ -318,7 +335,7 @@ Pengguna dapat mengunduh objek ke filesystem lokal.
 
 - Pengguna memilih lokasi penyimpanan.
 - Progress transfer ditampilkan.
-- File lokal yang sudah ada tidak ditimpa diam-diam.
+- File lokal yang sudah ada tidak ditimpa diam-diam; pengguna memilih Overwrite, Skip, atau Rename seperti pada upload.
 - Kegagalan download ditangani dengan aman.
 - File parsial tidak diperlakukan sebagai download berhasil.
 
@@ -344,11 +361,15 @@ Rename dilakukan dengan copy object ke key baru, lalu menghapus key lama setelah
 
 Pengguna dapat menyalin objek dalam storage yang sama.
 
+**Batasan MVP:** hanya objek tunggal; objek di atas 5 GiB ditolak dengan pesan yang jelas.
+
 ### FIL-005 — Move Object
 
 **Priority:** P0
 
 Pengguna dapat memindahkan objek ke prefix lain menggunakan proses copy lalu delete.
+
+**Batasan MVP:** sama dengan FIL-004.
 
 ### FIL-006 — Delete Object
 
@@ -362,6 +383,13 @@ Pengguna dapat menghapus satu atau beberapa objek.
 - Nama bucket dan jumlah objek ditampilkan.
 - Operasi partial failure dilaporkan.
 - Sistem tidak mengklaim seluruh operasi berhasil jika sebagian gagal.
+
+**Hapus folder (prefix):**
+
+- Sistem terlebih dahulu menghitung seluruh objek di bawah prefix, lalu menampilkan jumlah objek dan total ukuran sebelum konfirmasi.
+- Hanya objek yang terhitung saat konfirmasi yang dihapus; objek baru yang muncul setelahnya tidak ikut terhapus.
+- Penghapusan root bucket (prefix kosong) tidak diizinkan.
+- Folder dengan lebih dari 100.000 objek tidak dapat dihapus melalui MVP.
 
 ### FIL-007 — Bulk Selection
 
@@ -563,6 +591,8 @@ Target awal yang akan diverifikasi melalui pengujian, bukan klaim kinerja yang t
 
 # 10. Local Data Management
 
+Ringkasan entitas di bawah bersifat konseptual. Skema detail, constraint, dan migration menjadi tanggung jawab [Database Design](database_design.md).
+
 ## 10.1 Connection Entity
 
 - id
@@ -573,14 +603,23 @@ Target awal yang akan diverifikasi melalui pengujian, bukan klaim kinerja yang t
 - access_key_id
 - credential_ref
 - force_path_style
-- use_ssl
+- allow_insecure_http
 - created_at
 - updated_at
 
-## 10.2 Transfer Entity
+## 10.2 Bucket Bookmark Entity
 
 - id
 - connection_id
+- bucket_name
+- display_name
+- created_at
+
+## 10.3 Transfer Entity
+
+- id
+- connection_id (nullable setelah koneksi dihapus)
+- connection_name_snapshot
 - direction
 - bucket
 - object_key
@@ -588,15 +627,27 @@ Target awal yang akan diverifikasi melalui pengujian, bukan klaim kinerja yang t
 - bytes_total
 - bytes_transferred
 - status
+- retry_count
+- error_code
 - error_message
+- multipart_upload_id
 - created_at
 - started_at
 - completed_at
 
-## 10.3 Settings Entity
+## 10.4 Transfer Part Entity
+
+- id
+- transfer_id
+- part_number
+- etag
+- size_bytes
+
+## 10.5 Settings Entity
 
 - key
 - value
+- updated_at
 
 Database harus mempunyai versioned migration untuk perubahan skema aplikasi di masa mendatang.
 
@@ -650,6 +701,7 @@ Operasi dasar provider:
 - GetObject
 - CopyObject
 - DeleteObject
+- CreateMultipartUpload / UploadPart / CompleteMultipartUpload / AbortMultipartUpload
 
 Provider-specific capabilities tidak boleh diasumsikan identik untuk semua layanan.
 
@@ -763,7 +815,7 @@ MVP dinyatakan siap apabila:
 ## M02 — Bucket Explorer
 
 - List buckets.
-- Open configured bucket.
+- Bucket bookmarks / open configured bucket.
 - List objects.
 - Prefix navigation.
 - Pagination.
@@ -826,6 +878,8 @@ MVP dinyatakan siap apabila:
 
 - Transfer between providers.
 - Folder upload/download.
+- Copy/move folder dan multipart copy untuk objek di atas 5 GiB.
+- Session token / temporary credentials.
 - Connection grouping.
 - Local configuration backup/export.
 - Keyboard shortcuts.
