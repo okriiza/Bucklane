@@ -78,6 +78,10 @@ const itemClass =
           <DropdownMenuSeparator class="bg-border -mx-1 my-1 h-px" />
         </template>
         <template v-else>
+          <DropdownMenuItem :class="itemClass" @select="emit('download')">
+            <Download /> {{ $t("transfers.downloadFolder") }}
+          </DropdownMenuItem>
+          <DropdownMenuSeparator class="bg-border -mx-1 my-1 h-px" />
           <!-- Shown disabled so users learn why folders can't be renamed yet. -->
           <DropdownMenuItem :class="itemClass" disabled>
             <Pencil /> {{ $t("ops.rename") }}

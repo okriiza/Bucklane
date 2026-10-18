@@ -33,18 +33,18 @@ Available for **macOS** (Apple Silicon and Intel), **Windows**, and **Linux**.
 
 ## Features
 
-|                                           |                                                                                                                                                                              |
-| ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Every S3-compatible provider**          | Amazon S3, Supabase Storage, MinIO, Cloudflare R2, Wasabi, DigitalOcean Spaces, or a custom endpoint. Save as many connections as you need.                                  |
-| **Browse buckets like folders**           | Open folders, go back with the breadcrumb, load large buckets page by page, filter what's loaded, and view any object's size, type, ETag, and metadata.                      |
-| **Upload and download in the background** | Every transfer joins a queue with live progress. Cancel or retry at any time. Large files are sent in parallel parts and streamed from disk, so they never fill your memory. |
-| **Drag and drop**                         | Drop files from your desktop or Finder/Explorer into a folder to upload them, or drag files onto another folder to move them inside the bucket.                              |
-| **Safe file operations**                  | Rename, copy, and move files. A move deletes the original only after the copy is verified. Replacing an existing file always asks first.                                     |
-| **Folder delete you can trust**           | Before deleting a folder, Bucklane counts exactly how many objects and bytes will be removed and deletes only those.                                                         |
-| **Share links**                           | Create a time-limited download link for any file (15 minutes to 7 days) and copy it in one click. Copy an object's key or `s3://` URI just as quickly.                       |
-| **Bookmarks and pinned buckets**          | Open a bucket by name even when your keys can't list buckets, and star the ones you use most so they appear on the Overview.                                                 |
-| **Overview dashboard**                    | See active transfers, what you uploaded and downloaded today, your connections, pinned buckets, and recent activity at a glance.                                             |
-| **Light and dark mode**                   | Follows your system, or pick one in Settings.                                                                                                                                |
+|                                           |                                                                                                                                                                                                                       |
+| ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Every S3-compatible provider**          | Amazon S3, Supabase Storage, MinIO, Cloudflare R2, Wasabi, DigitalOcean Spaces, or a custom endpoint. Save as many connections as you need.                                                                           |
+| **Browse buckets like folders**           | Open folders, go back with the breadcrumb, load large buckets page by page, filter what's loaded, and view any object's size, type, ETag, and metadata.                                                               |
+| **Upload and download in the background** | Transfer single files or entire folders. Every transfer joins a queue with live progress; cancel or retry at any time. Large files are sent in parallel parts and streamed from disk, so they never fill your memory. |
+| **Drag and drop**                         | Drop files or whole folders from your desktop into Bucklane to upload them with their structure intact, or drag files onto another folder to move them inside the bucket.                                             |
+| **Safe file operations**                  | Rename, copy, and move files. A move deletes the original only after the copy is verified. Replacing an existing file always asks first.                                                                              |
+| **Folder delete you can trust**           | Before deleting a folder, Bucklane counts exactly how many objects and bytes will be removed and deletes only those.                                                                                                  |
+| **Share links**                           | Create a time-limited download link for any file (15 minutes to 7 days) and copy it in one click. Copy an object's key or `s3://` URI just as quickly.                                                                |
+| **Bookmarks and pinned buckets**          | Open a bucket by name even when your keys can't list buckets, and star the ones you use most so they appear on the Overview.                                                                                          |
+| **Overview dashboard**                    | See active transfers, what you uploaded and downloaded today, your connections, pinned buckets, and recent activity at a glance.                                                                                      |
+| **Light and dark mode**                   | Follows your system, or pick one in Settings.                                                                                                                                                                         |
 
 ---
 
@@ -219,15 +219,16 @@ Uninstalling leaves your local data and keychain entries in place. To remove sec
 
 ### Uploading
 
-- Click **Upload** and choose one or more files, **or**
-- Drag files from your desktop and drop them anywhere on the window while a folder is open.
+- Click **Upload → Files…** and choose one or more files, or **Upload → Folder…** to upload a whole folder, **or**
+- Drag files or folders from your desktop and drop them anywhere on the window while a folder is open.
 
-Files go into the folder you're viewing. Progress appears in the **Transfers** panel at the bottom.
+Everything goes into the folder you're viewing. Uploaded folders keep their structure — `reports/2026/q3.pdf` arrives as `<current folder>/reports/2026/q3.pdf`. Hidden system files such as `.DS_Store` and `Thumbs.db` are skipped. Progress appears in the **Transfers** panel at the bottom.
 
 ### Downloading
 
 - Open the **⋯** menu on a file and choose **Download**, or click the file and use **Download** in the details panel.
-- To download several files, tick their checkboxes and click **Download** in the selection bar.
+- To download a whole folder, open its **⋯** menu and choose **Download folder**. The folder and its subfolders are recreated in the location you choose.
+- To download several files or folders, tick their checkboxes and click **Download** in the selection bar.
 
 You'll be asked where to save. A download is written to a temporary file first and only appears under its real name once it's complete.
 
@@ -336,7 +337,8 @@ Deleting a connection removes its secret from the keychain. Buckets and files on
 
 ## Current limitations
 
-- Folders can't be uploaded, downloaded, renamed, copied, or moved yet — work with the files inside them instead. (Deleting folders is supported.)
+- Folders can't be renamed, copied, or moved yet — work with the files inside them instead. (Uploading, downloading, and deleting folders are supported.)
+- A single folder upload or download is limited to **10,000** files. Empty folders aren't uploaded.
 - Copying, moving, or renaming objects larger than **5 GB** isn't supported yet.
 - A single folder delete is limited to **100,000** objects.
 - Transfers don't resume after the app is closed; they're marked as failed and can be retried from the start.

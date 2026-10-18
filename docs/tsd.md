@@ -761,6 +761,13 @@ interface TransferDto {
 }
 ```
 
+### 6.5.0 Folders
+
+- `pick_upload_folder` dan drag-and-drop folder mendaftarkan selection jenis `UploadDirectory`. Selection ini hanya bisa dibaca: tidak dapat dipakai sebagai tujuan download.
+- `enqueue_upload` mengekspansi folder secara rekursif (symlink dan file metadata OS seperti `.DS_Store` dilewati); setiap file menjadi transfer terpisah dengan key `<prefix><nama folder>/<path relatif>`. Keberadaan objek dicek dengan satu listing prefix tujuan, bukan HEAD per file.
+- `enqueue_download` menerima key folder (berakhiran `/`); semua objek di bawahnya diunduh dengan struktur folder dibuat ulang di tujuan. Setiap segmen path disanitasi sehingga key tidak dapat menempatkan file di luar folder tujuan.
+- Batas 10.000 file per folder. Item konflik untuk file di dalam folder diberi ID `<folder><U+001F><path/key>` sehingga pengiriman ulang dengan pilihan pengguna hanya memproses file tersebut.
+
 ### 6.5.1 Conflict Policy
 
 Upload:

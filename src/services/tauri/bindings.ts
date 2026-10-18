@@ -44,6 +44,16 @@ export const commands = {
 	 *  frontend never sees a path it could send back (TSD §6.4, ADR-012).
 	 */
 	pickUploadFiles: () => typedError<LocalFileSelection[], AppError>(__TAURI_INVOKE("pick_upload_files")),
+	/**  Picks a folder to upload recursively. Returns `None` when canceled. */
+	pickUploadFolder: () => typedError<{
+	selectionId: string,
+	fileName: string,
+	sizeBytes: number | null,
+	/**  For display only; never accepted back as input. */
+	displayPath: string,
+	/**  A folder to upload recursively; `size_bytes` is 0 for folders. */
+	isDirectory: boolean,
+} | null, AppError>(__TAURI_INVOKE("pick_upload_folder")),
 	/**  Returns `None` when the user cancels the dialog. */
 	pickDownloadDirectory: () => typedError<{
 	selectionId: string,
@@ -282,13 +292,15 @@ export type LocalDirectorySelection = {
 	displayPath: string,
 };
 
-/**  A local file the user picked or dropped; sent to the frontend. */
+/**  A local file or folder the user picked or dropped; sent to the frontend. */
 export type LocalFileSelection = {
 	selectionId: string,
 	fileName: string,
 	sizeBytes: number | null,
 	/**  For display only; never accepted back as input. */
 	displayPath: string,
+	/**  A folder to upload recursively; `size_bytes` is 0 for folders. */
+	isDirectory: boolean,
 };
 
 export type ObjectMetadata = {

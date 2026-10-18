@@ -11,7 +11,6 @@ import {
   RefreshCw,
   Search,
   Trash2,
-  Upload,
   X,
 } from "@lucide/vue";
 import { computed, ref, watch } from "vue";
@@ -26,6 +25,7 @@ import ExplorerBreadcrumb from "@/components/explorer/ExplorerBreadcrumb.vue";
 import ObjectDetails from "@/components/explorer/ObjectDetails.vue";
 import ObjectTable, { type RowAction } from "@/components/explorer/ObjectTable.vue";
 import ShareLinkDialog from "@/components/explorer/ShareLinkDialog.vue";
+import UploadButton from "@/components/explorer/UploadButton.vue";
 import { Button } from "@/components/ui/button";
 import { CommandError, type ObjectOperationOutcome, type StorageObject } from "@/services/tauri";
 import { useObjectDrag } from "@/composables/useObjectDrag";
@@ -40,7 +40,12 @@ import { extensionOf, parentPrefix } from "@/utils/prefix";
 const props = defineProps<{ id: string; bucket: string; prefix: string }>();
 
 const router = useRouter();
-const { pickAndUpload, pickAndDownload } = useTransferActions();
+const { pickAndUpload, pickAndUploadFolder, pickAndDownload } = useTransferActions();
+const uploadTarget = computed(() => ({
+  connectionId: props.id,
+  bucket: props.bucket,
+  prefix: props.prefix,
+}));
 const { t } = useI18n();
 const connections = useConnectionStore();
 const explorer = useExplorerStore();
@@ -191,9 +196,13 @@ function openDelete(entries: StorageObject[]) {
   deleteOpen.value = true;
 }
 
+/** Files download directly; folders download recursively. */
 function downloadEntries(entries: StorageObject[]) {
-  const keys = entries.filter((e) => !e.isPrefix).map((e) => e.key);
-  return pickAndDownload(props.id, props.bucket, keys);
+  return pickAndDownload(
+    props.id,
+    props.bucket,
+    entries.map((e) => e.key),
+  );
 }
 
 const shareOpen = ref(false);
@@ -369,12 +378,7 @@ function goTo(prefix: string) {
           <span class="text-primary mr-2 text-[13px] font-medium whitespace-nowrap">
             {{ $t("explorer.selected", { count: explorer.checkedKeys.size }) }}
           </span>
-          <Button
-            v-if="explorer.checkedEntries.some((e) => !e.isPrefix)"
-            variant="outline"
-            size="sm"
-            @click="downloadEntries(explorer.checkedEntries)"
-          >
+          <Button variant="outline" size="sm" @click="downloadEntries(explorer.checkedEntries)">
             <Download /> {{ $t("transfers.downloadAction") }}
           </Button>
           <template v-if="singleCheckedFile">
@@ -398,13 +402,11 @@ function goTo(prefix: string) {
           </Button>
         </template>
         <template v-else>
-          <Button
-            size="sm"
+          <UploadButton
             :disabled="explorer.loading || !!explorer.error"
-            @click="pickAndUpload({ connectionId: id, bucket, prefix })"
-          >
-            <Upload /> {{ $t("transfers.uploadAction") }}
-          </Button>
+            @files="pickAndUpload(uploadTarget)"
+            @folder="pickAndUploadFolder(uploadTarget)"
+          />
           <Button
             variant="ghost"
             size="sm"
@@ -461,9 +463,10 @@ function goTo(prefix: string) {
             <p class="text-[15px] font-medium">{{ $t("explorer.empty") }}</p>
             <p class="text-muted-foreground mt-1 text-[13px]">{{ $t("explorer.emptyHint") }}</p>
           </div>
-          <Button size="sm" @click="pickAndUpload({ connectionId: id, bucket, prefix })">
-            <Upload /> {{ $t("transfers.uploadAction") }}
-          </Button>
+          <UploadButton
+            @files="pickAndUpload(uploadTarget)"
+            @folder="pickAndUploadFolder(uploadTarget)"
+          />
         </div>
         <template v-else-if="explorer.entries.length">
           <ObjectTable

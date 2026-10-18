@@ -58,6 +58,7 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::objects::execute_prefix_delete,
             commands::objects::create_share_link,
             commands::files::pick_upload_files,
+            commands::files::pick_upload_folder,
             commands::files::pick_download_directory,
             commands::transfers::enqueue_upload,
             commands::transfers::enqueue_download,
@@ -135,7 +136,9 @@ fn handle_file_drop(window: &tauri::Window, event: &WindowEvent) {
         DragDropEvent::Drop { paths, .. } => {
             let _ = events::FileDragHover(false).emit(window);
             let state = window.state::<AppState>();
-            let files = state.selections.register_files(paths.iter().cloned());
+            let files = state
+                .selections
+                .register_upload_items(paths.iter().cloned());
             let skipped = u32::try_from(paths.len().saturating_sub(files.len())).unwrap_or(0);
             let _ = events::FilesDropped { files, skipped }.emit(window);
         }

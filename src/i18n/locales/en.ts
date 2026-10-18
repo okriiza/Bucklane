@@ -211,6 +211,9 @@ export default {
     upload: "Upload",
     download: "Download",
     uploadAction: "Upload",
+    uploadFiles: "Files…",
+    uploadFolder: "Folder…",
+    downloadFolder: "Download folder",
     downloadAction: "Download",
     cancel: "Cancel transfer",
     retry: "Retry transfer",
@@ -235,8 +238,8 @@ export default {
   drop: {
     title: "Drop to upload to",
     openFolderFirst: "Open a bucket folder to upload files by dropping them.",
-    skippedFolders:
-      "{count} dropped folder was skipped. Folder upload isn't available yet. | {count} dropped folders were skipped. Folder upload isn't available yet.",
+    skippedItems:
+      "{count} dropped item couldn't be read and was skipped. | {count} dropped items couldn't be read and were skipped.",
   },
   status: {
     checking: "Checking backend…",
@@ -299,11 +302,11 @@ export default {
       },
       transfers: {
         title: "Uploads and downloads in the background",
-        body: "Queue transfers, watch progress, cancel or retry, and send large files in parallel parts without filling your memory.",
+        body: "Transfer files or entire folders, watch progress, cancel or retry, and send large files in parallel parts without filling your memory.",
       },
       dragDrop: {
         title: "Drag and drop",
-        body: "Drop files from your computer to upload them, or drag files onto a folder to move them within a bucket.",
+        body: "Drop files or whole folders from your computer to upload them, or drag files onto a folder to move them within a bucket.",
       },
       safeOps: {
         title: "Nothing lost by accident",
