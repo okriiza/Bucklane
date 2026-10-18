@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { s3Uri } from "./clipboard";
 import { endpointHost, formatBytes, formatDateTime, formatRelative } from "./format";
-import { extensionOf, parentPrefix, prefixSegments } from "./prefix";
+import { extensionOf, parentPrefix, prefixSegments, uploadChangesListing } from "./prefix";
 
 describe("formatBytes", () => {
   it.each([
@@ -81,5 +81,26 @@ describe("s3Uri", () => {
   it("joins bucket and key", () => {
     expect(s3Uri("media", "marketing/deck.pdf")).toBe("s3://media/marketing/deck.pdf");
     expect(s3Uri("media", "folder/")).toBe("s3://media/folder/");
+  });
+});
+
+describe("uploadChangesListing", () => {
+  const listed = new Set(["docs/existing/", "docs/a.txt"]);
+
+  it("refreshes for files directly in the folder", () => {
+    expect(uploadChangesListing("docs/", "docs/new.txt", listed)).toBe(true);
+  });
+
+  it("refreshes once for a new subfolder, not for every file in it", () => {
+    expect(uploadChangesListing("docs/", "docs/reports/2026/q3.pdf", listed)).toBe(true);
+    expect(uploadChangesListing("docs/", "docs/existing/deep/file.txt", listed)).toBe(false);
+  });
+
+  it("ignores uploads elsewhere", () => {
+    expect(uploadChangesListing("docs/", "other/file.txt", listed)).toBe(false);
+  });
+
+  it("works at the bucket root", () => {
+    expect(uploadChangesListing("", "reports/q3.pdf", new Set())).toBe(true);
   });
 });

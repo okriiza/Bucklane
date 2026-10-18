@@ -34,3 +34,21 @@ export function extensionOf(name: string): string {
   const dot = name.lastIndexOf(".");
   return dot > 0 ? name.slice(dot + 1).toLowerCase() : "";
 }
+
+/**
+ * Whether an object uploaded to `key` changes the listing of the folder at
+ * `prefix`: a file directly inside it always does; a file deeper down only
+ * does when its top-level subfolder isn't listed yet. This lets a folder
+ * upload of thousands of files refresh the view once, not once per file.
+ */
+export function uploadChangesListing(
+  prefix: string,
+  key: string,
+  listedKeys: ReadonlySet<string>,
+): boolean {
+  if (!key.startsWith(prefix)) return false;
+  const rest = key.slice(prefix.length);
+  const slash = rest.indexOf("/");
+  if (slash === -1) return true;
+  return !listedKeys.has(prefix + rest.slice(0, slash + 1));
+}
