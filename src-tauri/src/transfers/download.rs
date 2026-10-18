@@ -33,6 +33,14 @@ pub(super) async fn run(
     t.bytes_total = Some(expected);
     repo.update(t).await?;
 
+    // Folder downloads recreate subfolders; `join_relative` already confined
+    // the path to the user's chosen destination.
+    if let Some(parent) = destination.parent() {
+        tokio::fs::create_dir_all(parent)
+            .await
+            .map_err(map_io_error)?;
+    }
+
     // A leftover from an earlier attempt is ours to replace.
     let _ = tokio::fs::remove_file(&temp).await;
     let mut file = tokio::fs::OpenOptions::new()

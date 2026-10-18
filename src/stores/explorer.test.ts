@@ -72,8 +72,50 @@ describe("useExplorerStore", () => {
     expect(mocked.listObjects).toHaveBeenLastCalledWith(
       expect.objectContaining({ continuationToken: "opaque==token" }),
     );
-    expect(store.entries.map((e) => e.key)).toEqual(["docs/z/", "docs/a.txt", "docs/b.txt"]);
+    expect(store.sortedEntries.map((e) => e.key)).toEqual(["docs/z/", "docs/a.txt", "docs/b.txt"]);
     expect(store.isTruncated).toBe(false);
+  });
+
+  it("searches by name prefix on the server and keeps it across refresh", async () => {
+    mocked.listObjects.mockResolvedValue(page([entry("docs/report.pdf")]));
+    const store = useExplorerStore();
+    await store.open(docs);
+
+    await store.searchServer("rep");
+    await store.refresh();
+
+    expect(mocked.listObjects).toHaveBeenLastCalledWith(
+      expect.objectContaining({ prefix: "docs/rep", continuationToken: null }),
+    );
+    expect(store.search).toBe("rep");
+
+    await store.clearSearch();
+    expect(mocked.listObjects).toHaveBeenLastCalledWith(
+      expect.objectContaining({ prefix: "docs/" }),
+    );
+  });
+
+  it("drops the search when opening another folder", async () => {
+    mocked.listObjects.mockResolvedValue(page([]));
+    const store = useExplorerStore();
+    await store.open(docs);
+    await store.searchServer("rep");
+
+    await store.open({ ...docs, prefix: "photos/" });
+
+    expect(store.search).toBe("");
+    expect(mocked.listObjects).toHaveBeenLastCalledWith(
+      expect.objectContaining({ prefix: "photos/" }),
+    );
+  });
+
+  it("remembers the chosen sort order", () => {
+    const store = useExplorerStore();
+    store.setSort({ key: "size", direction: "desc" });
+
+    setActivePinia(createPinia());
+    expect(useExplorerStore().sort).toEqual({ key: "size", direction: "desc" });
+    localStorage.clear();
   });
 
   it("ignores a slow response for a folder the user already left", async () => {

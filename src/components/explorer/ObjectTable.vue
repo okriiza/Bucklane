@@ -1,25 +1,45 @@
 <script setup lang="ts">
-import { File, FileArchive, FileImage, FileText, FileVideo, Folder } from "@lucide/vue";
+import {
+  ArrowDown,
+  ArrowUp,
+  File,
+  FileArchive,
+  FileImage,
+  FileText,
+  FileVideo,
+  Folder,
+} from "@lucide/vue";
 import { computed } from "vue";
 
 import type { StorageObject } from "@/services/tauri";
 import { formatBytes, formatDateTime } from "@/utils/format";
 import { extensionOf } from "@/utils/prefix";
+import type { SortKey, SortState } from "@/utils/sort";
 
 import RowActions from "./RowActions.vue";
+
+export type RowAction =
+  "preview" | "download" | "share" | "copyKey" | "copyUri" | "rename" | "copy" | "move" | "delete";
 
 const props = defineProps<{
   entries: StorageObject[];
   selectedKey: string | null;
   checkedKeys: Set<string>;
+  sort: SortState;
 }>();
 const emit = defineEmits<{
   openFolder: [prefix: string];
   select: [key: string];
   toggle: [key: string, checked: boolean];
   toggleAll: [checked: boolean];
-  action: [action: "download" | "rename" | "copy" | "move" | "delete", entry: StorageObject];
+  action: [action: RowAction, entry: StorageObject];
+  sort: [key: SortKey];
 }>();
+
+function ariaSort(key: SortKey) {
+  if (props.sort.key !== key) return "none";
+  return props.sort.direction === "asc" ? "ascending" : "descending";
+}
 
 const ICONS: Record<string, typeof File> = {
   jpg: FileImage,
@@ -48,6 +68,12 @@ const someChecked = computed(
   () => !allChecked.value && props.entries.some((e) => props.checkedKeys.has(e.key)),
 );
 
+const COLUMNS: { key: SortKey; label: string; class: string }[] = [
+  { key: "name", label: "explorer.name", class: "px-1" },
+  { key: "size", label: "explorer.size", class: "w-24 px-3 text-right" },
+  { key: "lastModified", label: "explorer.lastModified", class: "w-44 px-3" },
+];
+
 function iconFor(entry: StorageObject) {
   if (entry.isPrefix) return Folder;
   return ICONS[extensionOf(entry.name)] ?? File;
@@ -73,9 +99,29 @@ function activate(entry: StorageObject) {
             @change="emit('toggleAll', ($event.target as HTMLInputElement).checked)"
           />
         </th>
-        <th class="px-2 py-2 font-medium">{{ $t("explorer.name") }}</th>
-        <th class="w-24 px-4 py-2 text-right font-medium">{{ $t("explorer.size") }}</th>
-        <th class="w-44 px-4 py-2 font-medium">{{ $t("explorer.lastModified") }}</th>
+        <th
+          v-for="column in COLUMNS"
+          :key="column.key"
+          :class="column.class"
+          class="py-1 font-medium"
+          :aria-sort="ariaSort(column.key)"
+        >
+          <button
+            type="button"
+            class="hover:text-foreground focus-visible:ring-ring/40 inline-flex items-center gap-1 rounded px-1 py-1 outline-none focus-visible:ring-2"
+            :class="{ 'text-foreground': sort.key === column.key }"
+            :title="$t('explorer.sortBy', { column: $t(column.label) })"
+            @click="emit('sort', column.key)"
+          >
+            {{ $t(column.label) }}
+            <component
+              :is="sort.direction === 'asc' ? ArrowUp : ArrowDown"
+              class="size-3"
+              :class="{ invisible: sort.key !== column.key }"
+              aria-hidden="true"
+            />
+          </button>
+        </th>
         <th class="w-12" />
       </tr>
     </thead>
@@ -96,6 +142,8 @@ function activate(entry: StorageObject) {
         @keydown.enter.self.prevent="activate(entry)"
         @keydown.delete.self.prevent="emit('action', 'delete', entry)"
         @keydown.f2.self.prevent="!entry.isPrefix && emit('action', 'rename', entry)"
+        @keydown.space.self.prevent="!entry.isPrefix && emit('action', 'preview', entry)"
+        @dblclick="!entry.isPrefix && emit('action', 'preview', entry)"
       >
         <td class="pl-4" @click.stop>
           <input
@@ -128,7 +176,11 @@ function activate(entry: StorageObject) {
           <RowActions
             :entry="entry"
             @details="emit('select', entry.key)"
+            @preview="emit('action', 'preview', entry)"
             @download="emit('action', 'download', entry)"
+            @share="emit('action', 'share', entry)"
+            @copy-key="emit('action', 'copyKey', entry)"
+            @copy-uri="emit('action', 'copyUri', entry)"
             @rename="emit('action', 'rename', entry)"
             @copy="emit('action', 'copy', entry)"
             @move="emit('action', 'move', entry)"

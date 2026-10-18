@@ -82,4 +82,39 @@ describe("useTransferStore", () => {
     expect(store.transfers[0]?.status).toBe("QUEUED");
     expect(store.transfers[0]?.retryCount).toBe(1);
   });
+
+  it("measures a smoothed speed and estimates time left", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    const store = useTransferStore();
+    const running = (bytes: number) =>
+      transfer({ status: "RUNNING", bytesTotal: 10_000_000, bytesTransferred: bytes });
+
+    store.upsert(running(0));
+    expect(store.speedOf("t1")).toBeNull();
+
+    vi.setSystemTime(1_000);
+    store.upsert(running(1_000_000)); // 1 MB/s
+    expect(store.speedOf("t1")).toBe(1_000_000);
+    expect(store.etaOf(store.transfers[0]!)).toBe(9);
+
+    vi.setSystemTime(2_000);
+    store.upsert(running(3_000_000)); // 2 MB/s instant, smoothed toward it
+    expect(store.speedOf("t1")).toBeCloseTo(1_300_000);
+
+    store.upsert(transfer({ status: "COMPLETED", bytesTransferred: 10_000_000 }));
+    expect(store.speedOf("t1")).toBeNull();
+    vi.useRealTimers();
+  });
+
+  it("restarts measurement when progress goes backwards", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    const store = useTransferStore();
+    store.upsert(transfer({ status: "RUNNING", bytesTransferred: 5_000_000 }));
+    vi.setSystemTime(1_000);
+    store.upsert(transfer({ status: "RUNNING", bytesTransferred: 0 }));
+    expect(store.speedOf("t1")).toBeNull();
+    vi.useRealTimers();
+  });
 });

@@ -24,7 +24,25 @@ pub async fn pick_upload_files(
         .unwrap_or_default()
         .into_iter()
         .filter_map(|p| p.into_path().ok());
-    Ok(state.selections.register_files(paths))
+    Ok(state.selections.register_upload_items(paths))
+}
+
+/// Picks a folder to upload recursively. Returns `None` when canceled.
+#[tauri::command]
+#[specta::specta]
+pub async fn pick_upload_folder(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<Option<LocalFileSelection>, AppError> {
+    let (tx, rx) = oneshot::channel();
+    app.dialog().file().pick_folder(move |folder| {
+        let _ = tx.send(folder);
+    });
+    let path = rx
+        .await
+        .map_err(|_| AppError::internal("The folder dialog closed unexpectedly."))?
+        .and_then(|p| p.into_path().ok());
+    Ok(path.and_then(|p| state.selections.register_upload_items([p]).pop()))
 }
 
 /// Returns `None` when the user cancels the dialog.

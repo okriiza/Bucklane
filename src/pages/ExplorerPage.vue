@@ -11,7 +11,6 @@ import {
   RefreshCw,
   Search,
   Trash2,
-  Upload,
   X,
 } from "@lucide/vue";
 import { computed, ref, watch } from "vue";
@@ -24,7 +23,10 @@ import PromptDialog from "@/components/common/PromptDialog.vue";
 import DeleteObjectsDialog from "@/components/explorer/DeleteObjectsDialog.vue";
 import ExplorerBreadcrumb from "@/components/explorer/ExplorerBreadcrumb.vue";
 import ObjectDetails from "@/components/explorer/ObjectDetails.vue";
-import ObjectTable from "@/components/explorer/ObjectTable.vue";
+import ObjectTable, { type RowAction } from "@/components/explorer/ObjectTable.vue";
+import PreviewDialog from "@/components/explorer/PreviewDialog.vue";
+import ShareLinkDialog from "@/components/explorer/ShareLinkDialog.vue";
+import UploadButton from "@/components/explorer/UploadButton.vue";
 import { Button } from "@/components/ui/button";
 import { CommandError, type ObjectOperationOutcome, type StorageObject } from "@/services/tauri";
 import { useObjectDrag } from "@/composables/useObjectDrag";
@@ -32,13 +34,20 @@ import { useTransferActions } from "@/composables/useTransferActions";
 import { toAppError } from "@/services/tauri";
 import { useConnectionStore } from "@/stores/connections";
 import { useExplorerStore } from "@/stores/explorer";
+import { copyText, s3Uri } from "@/utils/clipboard";
 import { formatBytes } from "@/utils/format";
 import { extensionOf, parentPrefix } from "@/utils/prefix";
+import { nextSort } from "@/utils/sort";
 
 const props = defineProps<{ id: string; bucket: string; prefix: string }>();
 
 const router = useRouter();
-const { pickAndUpload, pickAndDownload } = useTransferActions();
+const { pickAndUpload, pickAndUploadFolder, pickAndDownload } = useTransferActions();
+const uploadTarget = computed(() => ({
+  connectionId: props.id,
+  bucket: props.bucket,
+  prefix: props.prefix,
+}));
 const { t } = useI18n();
 const connections = useConnectionStore();
 const explorer = useExplorerStore();
@@ -55,13 +64,34 @@ watch(
   { immediate: true },
 );
 
-// Client-side filter over loaded entries only (EXP-004); it does not search
-// the whole bucket.
+// Client-side filter over loaded entries only (EXP-004). Enter runs a
+// server-side name-prefix search over the whole folder instead.
 const visible = computed(() => {
   const q = filter.value.trim().toLowerCase();
-  if (!q) return explorer.entries;
-  return explorer.entries.filter((e) => e.name.toLowerCase().includes(q));
+  if (!q) return explorer.sortedEntries;
+  return explorer.sortedEntries.filter((e) => e.name.toLowerCase().includes(q));
 });
+
+const query = computed(() => filter.value.trim());
+/** Offer a server search when the loaded items may not be the whole folder. */
+const canSearchServer = computed(
+  () =>
+    !!query.value &&
+    !query.value.includes("/") &&
+    query.value !== explorer.search &&
+    (explorer.isTruncated || !!explorer.search),
+);
+
+function runSearch() {
+  if (!query.value) return void clearSearch();
+  if (query.value.includes("/")) return void toast.info(t("explorer.searchNoSlash"));
+  void explorer.searchServer(query.value);
+}
+
+function clearSearch() {
+  filter.value = "";
+  void explorer.clearSearch();
+}
 
 type Relocation = "copy" | "move" | "rename";
 type PromptKind = "newFolder" | Relocation;
@@ -189,16 +219,43 @@ function openDelete(entries: StorageObject[]) {
   deleteOpen.value = true;
 }
 
+/** Files download directly; folders download recursively. */
 function downloadEntries(entries: StorageObject[]) {
-  const keys = entries.filter((e) => !e.isPrefix).map((e) => e.key);
-  return pickAndDownload(props.id, props.bucket, keys);
+  return pickAndDownload(
+    props.id,
+    props.bucket,
+    entries.map((e) => e.key),
+  );
 }
 
-function onRowAction(
-  action: "download" | "rename" | "copy" | "move" | "delete",
-  entry: StorageObject,
-) {
-  if (action === "download") {
+const shareOpen = ref(false);
+const shareKey = ref("");
+const insecureConnection = computed(() => connections.byId(props.id)?.allowInsecureHttp ?? false);
+
+async function copyToClipboard(text: string, label: string) {
+  try {
+    await copyText(text);
+    toast.success(t("share.copiedValue", { label }));
+  } catch {
+    toast.error(t("share.copyFailed"));
+  }
+}
+
+const previewOpen = ref(false);
+const previewKey = ref("");
+
+function onRowAction(action: RowAction, entry: StorageObject) {
+  if (action === "preview") {
+    previewKey.value = entry.key;
+    previewOpen.value = true;
+  } else if (action === "share") {
+    shareKey.value = entry.key;
+    shareOpen.value = true;
+  } else if (action === "copyKey") {
+    void copyToClipboard(entry.key, t("share.copyKeyLabel"));
+  } else if (action === "copyUri") {
+    void copyToClipboard(s3Uri(props.bucket, entry.key), t("share.copyUriLabel"));
+  } else if (action === "download") {
     // Downloading a checked row acts on the whole selection.
     void downloadEntries(explorer.checkedKeys.has(entry.key) ? explorer.checkedEntries : [entry]);
   } else if (action === "delete") {
@@ -318,7 +375,10 @@ function goTo(prefix: string) {
             type="search"
             :placeholder="$t('explorer.filter')"
             :aria-label="$t('explorer.filter')"
+            :title="$t('explorer.searchHint')"
             class="bg-muted/60 focus-visible:bg-background focus-visible:ring-ring/25 focus-visible:border-ring placeholder:text-muted-foreground/70 h-8 w-52 rounded-md border border-transparent pr-2 pl-8 text-[13px] transition-[background-color,box-shadow] outline-none focus-visible:ring-[3px]"
+            @keydown.enter.prevent="runSearch"
+            @keydown.esc="filter ? (filter = '') : clearSearch()"
           />
         </label>
         <Button
@@ -350,12 +410,7 @@ function goTo(prefix: string) {
           <span class="text-primary mr-2 text-[13px] font-medium whitespace-nowrap">
             {{ $t("explorer.selected", { count: explorer.checkedKeys.size }) }}
           </span>
-          <Button
-            v-if="explorer.checkedEntries.some((e) => !e.isPrefix)"
-            variant="outline"
-            size="sm"
-            @click="downloadEntries(explorer.checkedEntries)"
-          >
+          <Button variant="outline" size="sm" @click="downloadEntries(explorer.checkedEntries)">
             <Download /> {{ $t("transfers.downloadAction") }}
           </Button>
           <template v-if="singleCheckedFile">
@@ -379,13 +434,11 @@ function goTo(prefix: string) {
           </Button>
         </template>
         <template v-else>
-          <Button
-            size="sm"
+          <UploadButton
             :disabled="explorer.loading || !!explorer.error"
-            @click="pickAndUpload({ connectionId: id, bucket, prefix })"
-          >
-            <Upload /> {{ $t("transfers.uploadAction") }}
-          </Button>
+            @files="pickAndUpload(uploadTarget)"
+            @folder="pickAndUploadFolder(uploadTarget)"
+          />
           <Button
             variant="ghost"
             size="sm"
@@ -398,6 +451,17 @@ function goTo(prefix: string) {
             {{ $t("explorer.dropHint") }}
           </span>
         </template>
+      </div>
+
+      <div
+        v-if="explorer.search"
+        class="bg-muted/40 flex h-9 shrink-0 items-center gap-2 border-b px-4 text-[12px]"
+      >
+        <Search class="text-muted-foreground size-3.5" aria-hidden="true" />
+        <span class="truncate">{{ $t("explorer.searchActive", { query: explorer.search }) }}</span>
+        <Button variant="ghost" size="sm" class="ml-auto h-6 px-2 text-xs" @click="clearSearch">
+          <X /> {{ $t("explorer.clearSearch") }}
+        </Button>
       </div>
 
       <div class="min-h-0 flex-1 overflow-auto">
@@ -430,6 +494,15 @@ function goTo(prefix: string) {
           </div>
         </div>
         <div
+          v-else-if="!explorer.error && !explorer.entries.length && explorer.search"
+          class="text-muted-foreground flex flex-col items-center gap-3 p-10 text-center text-[13px]"
+        >
+          {{ $t("explorer.searchNoResults", { query: explorer.search }) }}
+          <Button variant="outline" size="sm" @click="clearSearch">
+            {{ $t("explorer.clearSearch") }}
+          </Button>
+        </div>
+        <div
           v-else-if="!explorer.error && !explorer.entries.length"
           class="flex h-full min-h-64 flex-col items-center justify-center gap-3 p-8 text-center"
         >
@@ -442,15 +515,18 @@ function goTo(prefix: string) {
             <p class="text-[15px] font-medium">{{ $t("explorer.empty") }}</p>
             <p class="text-muted-foreground mt-1 text-[13px]">{{ $t("explorer.emptyHint") }}</p>
           </div>
-          <Button size="sm" @click="pickAndUpload({ connectionId: id, bucket, prefix })">
-            <Upload /> {{ $t("transfers.uploadAction") }}
-          </Button>
+          <UploadButton
+            @files="pickAndUpload(uploadTarget)"
+            @folder="pickAndUploadFolder(uploadTarget)"
+          />
         </div>
         <template v-else-if="explorer.entries.length">
           <ObjectTable
             :entries="visible"
             :selected-key="explorer.selectedKey"
             :checked-keys="explorer.checkedKeys"
+            :sort="explorer.sort"
+            @sort="(key) => explorer.setSort(nextSort(explorer.sort, key))"
             @open-folder="goTo"
             @select="explorer.select"
             @toggle="explorer.toggleChecked"
@@ -466,6 +542,11 @@ function goTo(prefix: string) {
           <p v-if="filter && !visible.length" class="text-muted-foreground p-4 text-center text-sm">
             {{ $t("explorer.noMatches") }}
           </p>
+          <div v-if="canSearchServer" class="flex justify-center px-4 pt-3">
+            <Button variant="secondary" size="sm" @click="runSearch">
+              <Search /> {{ $t("explorer.searchServer", { query }) }}
+            </Button>
+          </div>
           <div v-if="explorer.isTruncated" class="flex flex-col items-center gap-1 p-4">
             <Button
               variant="outline"
@@ -520,6 +601,20 @@ function goTo(prefix: string) {
       @confirm="confirmOverwrite"
     />
     <DeleteObjectsDialog v-model:open="deleteOpen" :entries="deleteTargets" />
+    <PreviewDialog
+      v-model:open="previewOpen"
+      :connection-id="id"
+      :bucket="bucket"
+      :object-key="previewKey"
+      @download="pickAndDownload(id, bucket, [previewKey])"
+    />
+    <ShareLinkDialog
+      v-model:open="shareOpen"
+      :connection-id="id"
+      :bucket="bucket"
+      :object-key="shareKey"
+      :insecure="insecureConnection"
+    />
 
     <!-- Drag preview following the pointer. -->
     <div

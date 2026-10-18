@@ -25,11 +25,13 @@ use crate::errors::{AppError, ErrorCode};
 use crate::events::TransferUpdate;
 use crate::providers::s3_client_factory::ClientCache;
 use crate::providers::s3_provider::S3StorageProvider;
+use crate::providers::storage_provider::ListQuery;
 use crate::providers::storage_provider::StorageProvider;
 use crate::repositories::transfer_repository::TransferRepository;
 use crate::security::credential_store::CredentialStore;
 use crate::security::local_selection::{
-    SelectionKind, SelectionRegistry, join_in_dir, numbered_name, safe_local_file_name,
+    MAX_FOLDER_FILES, SelectionKind, SelectionRegistry, collect_files, join_in_dir, join_relative,
+    numbered_name, safe_local_file_name,
 };
 use crate::services::connection_service::ConnectionService;
 
@@ -224,6 +226,29 @@ impl TransferManager {
         Ok(dto)
     }
 
+    /// Shows a transfer's local file in Finder / File Explorer. The path
+    /// never leaves the backend; the frontend only names the transfer.
+    pub async fn reveal(&self, id: &str) -> Result<(), AppError> {
+        let t = self.inner.repo.get(id).await?.ok_or_else(not_found)?;
+        let path = std::path::PathBuf::from(&t.local_path);
+        if !tokio::fs::try_exists(&path).await.unwrap_or(false) {
+            return Err(AppError::new(
+                ErrorCode::LocalFileError,
+                "The file is no longer at its original location.",
+            ));
+        }
+        tauri::async_runtime::spawn_blocking(move || tauri_plugin_opener::reveal_item_in_dir(path))
+            .await
+            .map_err(|_| AppError::internal("Opening the file manager was interrupted."))?
+            .map_err(|err| {
+                AppError::new(
+                    ErrorCode::LocalFileError,
+                    "The file manager could not be opened.",
+                )
+                .with_details(err.to_string())
+            })
+    }
+
     pub async fn clear_history(&self) -> Result<u64, AppError> {
         self.inner.repo.clear_history().await
     }
@@ -248,51 +273,49 @@ impl TransferManager {
                 .await?,
         );
 
-        let mut results = Vec::with_capacity(input.selection_ids.len());
-        for selection_id in &input.selection_ids {
-            let selection = match selections.get(selection_id, SelectionKind::File) {
-                Ok(s) => s,
-                Err(error) => {
-                    results.push(rejected(selection_id, selection_id, error));
-                    continue;
-                }
-            };
-            let name = selection
-                .path
-                .file_name()
-                .map(|n| n.to_string_lossy().into_owned())
-                .unwrap_or_default();
-            let size = std::fs::metadata(&selection.path).map(|m| m.len()).ok();
+        let mut results = Vec::new();
+        let mut planned = Vec::new();
+        for item in &input.selection_ids {
+            match plan_upload(&provider, &bucket, &input.prefix, item, selections).await {
+                Ok(items) => planned.extend(items),
+                Err(error) => results.push(rejected(item, item, error)),
+            }
+        }
 
-            let mut key = format!("{}{name}", input.prefix);
+        for plan in planned {
+            let mut key = plan.key;
             let mut overwrite = false;
-            match remote_exists(&provider, &bucket, &key).await {
+            let exists = match plan.exists {
+                Some(known) => Ok(known),
+                None => remote_exists(&provider, &bucket, &key).await,
+            };
+            match exists {
                 Err(error) => {
-                    results.push(rejected(selection_id, &name, error));
+                    results.push(rejected(&plan.item, &plan.name, error));
                     continue;
                 }
                 Ok(false) => {}
                 Ok(true) => match input.conflict_policy {
                     TransferConflictPolicy::Ask => {
                         results.push(EnqueueItemResult::Conflict {
-                            item: selection_id.clone(),
-                            name,
+                            item: plan.item,
+                            name: plan.name,
                         });
                         continue;
                     }
                     TransferConflictPolicy::Skip => {
                         results.push(EnqueueItemResult::Skipped {
-                            item: selection_id.clone(),
-                            name,
+                            item: plan.item,
+                            name: plan.name,
                         });
                         continue;
                     }
                     TransferConflictPolicy::Overwrite => overwrite = true,
                     TransferConflictPolicy::Rename => {
-                        match free_remote_key(&provider, &bucket, &input.prefix, &name).await {
+                        match free_remote_key(&provider, &bucket, &key).await {
                             Ok(free) => key = free,
                             Err(error) => {
-                                results.push(rejected(selection_id, &name, error));
+                                results.push(rejected(&plan.item, &plan.name, error));
                                 continue;
                             }
                         }
@@ -307,8 +330,8 @@ impl TransferManager {
                     TransferDirection::Upload,
                     &bucket,
                     &key,
-                    &selection.path.to_string_lossy(),
-                    size.and_then(|s| i64::try_from(s).ok()),
+                    &plan.path.to_string_lossy(),
+                    plan.size,
                     overwrite,
                 )
                 .await?;
@@ -329,77 +352,50 @@ impl TransferManager {
         let dir = selections
             .get(&input.directory_selection_id, SelectionKind::Directory)?
             .path;
-        let connection_name = self
-            .inner
-            .connections()
-            .get(&input.connection_id)
-            .await?
-            .name;
+        let connections = self.inner.connections();
+        let connection_name = connections.get(&input.connection_id).await?.name;
+        let provider = S3StorageProvider::new(
+            connections
+                .client_for_bucket(&input.connection_id, &bucket)
+                .await?,
+        );
 
-        let mut results = Vec::with_capacity(input.keys.len());
-        for key in &input.keys {
-            let base = key.rsplit('/').next().unwrap_or(key);
-            if key.ends_with('/') {
-                results.push(rejected(
-                    key,
-                    key,
-                    AppError::new(
-                        ErrorCode::OperationUnsupported,
-                        "Downloading folders is not supported yet.",
-                    ),
-                ));
-                continue;
+        let mut results = Vec::new();
+        let mut planned = Vec::new();
+        for item in &input.keys {
+            match plan_download(&provider, &bucket, &dir, item).await {
+                Ok(items) => planned.extend(items),
+                Err(error) => results.push(rejected(item, item, error)),
             }
-            let Some(file_name) = safe_local_file_name(base) else {
-                results.push(rejected(
-                    key,
-                    base,
-                    AppError::new(
-                        ErrorCode::LocalFileError,
-                        "This object's name cannot be used as a file name.",
-                    ),
-                ));
-                continue;
-            };
-            let Some(mut path) = join_in_dir(&dir, &file_name) else {
-                results.push(rejected(
-                    key,
-                    base,
-                    AppError::new(ErrorCode::LocalFileError, "Invalid destination."),
-                ));
-                continue;
-            };
+        }
 
+        for plan in planned {
+            let mut path = plan.path;
             let mut overwrite = false;
             if path.exists() {
                 match input.conflict_policy {
                     TransferConflictPolicy::Ask => {
                         results.push(EnqueueItemResult::Conflict {
-                            item: key.clone(),
-                            name: file_name,
+                            item: plan.item,
+                            name: plan.name,
                         });
                         continue;
                     }
                     TransferConflictPolicy::Skip => {
                         results.push(EnqueueItemResult::Skipped {
-                            item: key.clone(),
-                            name: file_name,
+                            item: plan.item,
+                            name: plan.name,
                         });
                         continue;
                     }
                     TransferConflictPolicy::Overwrite => overwrite = true,
-                    TransferConflictPolicy::Rename => {
-                        match (1..=MAX_RENAME_ATTEMPTS)
-                            .filter_map(|n| join_in_dir(&dir, &numbered_name(&file_name, n)))
-                            .find(|p| !p.exists())
-                        {
-                            Some(free) => path = free,
-                            None => {
-                                results.push(rejected(key, base, no_free_name()));
-                                continue;
-                            }
+                    TransferConflictPolicy::Rename => match free_local_path(&path) {
+                        Some(free) => path = free,
+                        None => {
+                            results.push(rejected(&plan.item, &plan.name, no_free_name()));
+                            continue;
                         }
-                    }
+                    },
                 }
             }
 
@@ -409,15 +405,15 @@ impl TransferManager {
                     &connection_name,
                     TransferDirection::Download,
                     &bucket,
-                    key,
+                    &plan.key,
                     &path.to_string_lossy(),
-                    None,
+                    plan.size,
                     overwrite,
                 )
                 .await?;
             results.push(EnqueueItemResult::Queued {
                 transfer_id: transfer,
-                key: key.clone(),
+                key: plan.key,
             });
         }
         Ok(results)
@@ -687,12 +683,14 @@ async fn remote_exists(
     }
 }
 
+/// `folder/name.ext` → `folder/name (1).ext`, `folder/name (2).ext`, …
 async fn free_remote_key(
     provider: &S3StorageProvider,
     bucket: &str,
-    prefix: &str,
-    name: &str,
+    key: &str,
 ) -> Result<String, AppError> {
+    let split = key.rfind('/').map_or(0, |i| i + 1);
+    let (prefix, name) = key.split_at(split);
     for n in 1..=MAX_RENAME_ATTEMPTS {
         let candidate = format!("{prefix}{}", numbered_name(name, n));
         if !remote_exists(provider, bucket, &candidate).await? {
@@ -700,6 +698,228 @@ async fn free_remote_key(
         }
     }
     Err(no_free_name())
+}
+
+fn free_local_path(path: &std::path::Path) -> Option<std::path::PathBuf> {
+    let dir = path.parent()?;
+    let name = path.file_name()?.to_string_lossy().into_owned();
+    (1..=MAX_RENAME_ATTEMPTS)
+        .filter_map(|n| join_in_dir(dir, &numbered_name(&name, n)))
+        .find(|p| !p.exists())
+}
+
+/// Separates a folder selection (or folder key) from one file inside it in
+/// conflict item IDs, so a resend targets only that file. A unit separator
+/// does not occur in file names or real-world object keys.
+const ITEM_SEPARATOR: char = '\u{1f}';
+/// Keys gathered to check for existing objects before a folder upload; past
+/// this, remaining files fall back to one HEAD request each.
+const MAX_EXISTING_KEYS: usize = 100_000;
+
+struct UploadPlan {
+    item: String,
+    name: String,
+    path: std::path::PathBuf,
+    key: String,
+    size: Option<i64>,
+    /// `None` when unknown; checked with HEAD before queueing.
+    exists: Option<bool>,
+}
+
+struct DownloadPlan {
+    item: String,
+    name: String,
+    key: String,
+    path: std::path::PathBuf,
+    size: Option<i64>,
+}
+
+/// Expands one upload item: a file selection, a folder selection (every file
+/// inside it), or `<folder selection><SEP><relative path>` for one file.
+async fn plan_upload(
+    provider: &S3StorageProvider,
+    bucket: &str,
+    prefix: &str,
+    item: &str,
+    selections: &SelectionRegistry,
+) -> Result<Vec<UploadPlan>, AppError> {
+    let (selection_id, only) = match item.split_once(ITEM_SEPARATOR) {
+        Some((id, relative)) => (id, Some(relative)),
+        None => (item, None),
+    };
+    let selection = selections.get_any(
+        selection_id,
+        &[SelectionKind::File, SelectionKind::UploadDirectory],
+    )?;
+    let name = selection
+        .path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+
+    if selection.kind == SelectionKind::File {
+        let size = std::fs::metadata(&selection.path).map(|m| m.len()).ok();
+        return Ok(vec![UploadPlan {
+            item: item.to_owned(),
+            key: format!("{prefix}{name}"),
+            name,
+            path: selection.path,
+            size: size.and_then(|s| i64::try_from(s).ok()),
+            exists: None,
+        }]);
+    }
+
+    let base = format!("{prefix}{name}/");
+    let dir = selection.path.clone();
+    let mut files =
+        tauri::async_runtime::spawn_blocking(move || collect_files(&dir, MAX_FOLDER_FILES))
+            .await
+            .map_err(|_| AppError::internal("Reading the folder was interrupted."))??;
+    if let Some(relative) = only {
+        files.retain(|(_, r)| r == relative);
+    }
+    let existing = existing_keys(provider, bucket, &base).await?;
+
+    Ok(files
+        .into_iter()
+        .map(|(path, relative)| {
+            let key = format!("{base}{relative}");
+            let size = std::fs::metadata(&path).map(|m| m.len()).ok();
+            UploadPlan {
+                item: format!("{selection_id}{ITEM_SEPARATOR}{relative}"),
+                name: format!("{name}/{relative}"),
+                exists: existing.as_ref().map(|set| set.contains(&key)),
+                key,
+                path,
+                size: size.and_then(|s| i64::try_from(s).ok()),
+            }
+        })
+        .collect())
+}
+
+/// Expands one download item: an object key, a folder key ending in `/`
+/// (every object under it), or `<folder key><SEP><object key>`.
+async fn plan_download(
+    provider: &S3StorageProvider,
+    bucket: &str,
+    dir: &std::path::Path,
+    item: &str,
+) -> Result<Vec<DownloadPlan>, AppError> {
+    let (folder, only) = match item.split_once(ITEM_SEPARATOR) {
+        Some((folder, key)) => (Some(folder), Some(key)),
+        None if item.ends_with('/') => (Some(item), None),
+        None => (None, None),
+    };
+
+    let Some(folder) = folder else {
+        let base = item.rsplit('/').next().unwrap_or(item);
+        let path = safe_local_file_name(base)
+            .and_then(|name| join_in_dir(dir, &name))
+            .ok_or_else(unusable_name)?;
+        return Ok(vec![DownloadPlan {
+            item: item.to_owned(),
+            name: base.to_owned(),
+            key: item.to_owned(),
+            path,
+            size: None,
+        }]);
+    };
+
+    // Paths are relative to the folder's parent, so the folder itself is
+    // recreated inside the destination.
+    let trimmed = folder.trim_end_matches('/');
+    let parent = trimmed.rfind('/').map_or("", |i| &trimmed[..=i]);
+
+    let objects = match only {
+        Some(key) => vec![(key.to_owned(), None)],
+        None => list_folder(provider, bucket, folder).await?,
+    };
+    objects
+        .into_iter()
+        .filter(|(key, _)| !key.ends_with('/'))
+        .map(|(key, size)| {
+            let relative = key.strip_prefix(parent).unwrap_or(&key).to_owned();
+            let path = join_relative(dir, &relative).ok_or_else(unusable_name)?;
+            Ok(DownloadPlan {
+                item: format!("{folder}{ITEM_SEPARATOR}{key}"),
+                name: relative,
+                key,
+                path,
+                size,
+            })
+        })
+        .collect()
+}
+
+/// Every object under `prefix`, refusing folders larger than the limit.
+async fn list_folder(
+    provider: &S3StorageProvider,
+    bucket: &str,
+    prefix: &str,
+) -> Result<Vec<(String, Option<i64>)>, AppError> {
+    let mut objects = Vec::new();
+    let mut token: Option<String> = None;
+    loop {
+        let page = provider
+            .list_objects(ListQuery {
+                bucket,
+                prefix,
+                delimiter: None,
+                continuation_token: token.as_deref(),
+                page_size: Some(1000),
+            })
+            .await?;
+        objects.extend(page.objects.into_iter().map(|o| (o.key, o.size)));
+        if objects.len() > MAX_FOLDER_FILES {
+            return Err(AppError::new(
+                ErrorCode::OperationUnsupported,
+                format!(
+                    "This folder contains more than {MAX_FOLDER_FILES} objects, which is more than Bucklane can download at once."
+                ),
+            ));
+        }
+        if !page.is_truncated {
+            return Ok(objects);
+        }
+        token = page.next_continuation_token;
+    }
+}
+
+/// Keys already under `prefix`, or `None` if there are too many to gather
+/// (callers then check each file individually).
+async fn existing_keys(
+    provider: &S3StorageProvider,
+    bucket: &str,
+    prefix: &str,
+) -> Result<Option<std::collections::HashSet<String>>, AppError> {
+    let mut keys = std::collections::HashSet::new();
+    let mut token: Option<String> = None;
+    loop {
+        let page = provider
+            .list_objects(ListQuery {
+                bucket,
+                prefix,
+                delimiter: None,
+                continuation_token: token.as_deref(),
+                page_size: Some(1000),
+            })
+            .await?;
+        keys.extend(page.objects.into_iter().map(|o| o.key));
+        if keys.len() > MAX_EXISTING_KEYS {
+            return Ok(None);
+        }
+        if !page.is_truncated {
+            return Ok(Some(keys));
+        }
+        token = page.next_continuation_token;
+    }
+}
+
+fn unusable_name() -> AppError {
+    AppError::new(
+        ErrorCode::LocalFileError,
+        "This object's name cannot be used as a file name.",
+    )
 }
 
 fn rejected(item: &str, name: &str, error: AppError) -> EnqueueItemResult {
@@ -890,6 +1110,99 @@ mod s3_integration_tests {
             std::fs::read(&target).unwrap() == data,
             "downloaded bytes differ"
         );
+    }
+
+    #[tokio::test]
+    async fn folder_upload_plan_keeps_structure_and_detects_existing() {
+        let Some(f) = Fixture::new().await else {
+            return;
+        };
+        let local = f.dir.join("reports");
+        std::fs::create_dir_all(local.join("2026")).unwrap();
+        std::fs::write(local.join("summary.txt"), b"s").unwrap();
+        std::fs::write(local.join("2026/q3.pdf"), b"q").unwrap();
+        std::fs::write(local.join(".DS_Store"), b"x").unwrap();
+        // Already uploaded earlier.
+        f.client
+            .put_object()
+            .bucket(&f.bucket)
+            .key("docs/reports/summary.txt")
+            .body(aws_sdk_s3::primitives::ByteStream::from_static(b"old"))
+            .send()
+            .await
+            .unwrap();
+
+        let registry = SelectionRegistry::default();
+        let id = registry
+            .register_upload_items([local])
+            .pop()
+            .unwrap()
+            .selection_id;
+        let provider = S3StorageProvider::new(f.client.clone());
+        let plans = plan_upload(&provider, &f.bucket, "docs/", &id, &registry)
+            .await
+            .unwrap();
+
+        let summary: Vec<_> = plans.iter().map(|p| (p.key.as_str(), p.exists)).collect();
+        assert_eq!(
+            summary,
+            [
+                ("docs/reports/2026/q3.pdf", Some(false)),
+                ("docs/reports/summary.txt", Some(true))
+            ]
+        );
+
+        // A conflict resend targets only that one file.
+        let resend = plans[1].item.clone();
+        let single = plan_upload(&provider, &f.bucket, "docs/", &resend, &registry)
+            .await
+            .unwrap();
+        assert_eq!(single.len(), 1);
+        assert_eq!(single[0].key, "docs/reports/summary.txt");
+    }
+
+    #[tokio::test]
+    async fn folder_download_plan_recreates_structure_inside_destination() {
+        let Some(f) = Fixture::new().await else {
+            return;
+        };
+        for key in [
+            "media/brand/",
+            "media/brand/logo.svg",
+            "media/brand/print/card.pdf",
+            "media/other.txt",
+        ] {
+            f.client
+                .put_object()
+                .bucket(&f.bucket)
+                .key(key)
+                .body(aws_sdk_s3::primitives::ByteStream::from_static(b"x"))
+                .send()
+                .await
+                .unwrap();
+        }
+        let provider = S3StorageProvider::new(f.client.clone());
+        let plans = plan_download(&provider, &f.bucket, &f.dir, "media/brand/")
+            .await
+            .unwrap();
+
+        let mut paths: Vec<_> = plans
+            .iter()
+            .map(|p| {
+                p.path
+                    .strip_prefix(&f.dir)
+                    .unwrap()
+                    .to_string_lossy()
+                    .replace('\\', "/")
+            })
+            .collect();
+        paths.sort();
+        assert_eq!(
+            paths,
+            ["brand/logo.svg", "brand/print/card.pdf"],
+            "marker skipped, sibling excluded"
+        );
+        assert!(plans.iter().all(|p| p.path.starts_with(&f.dir)));
     }
 
     #[tokio::test]

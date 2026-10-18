@@ -151,10 +151,13 @@ const folders: Record<string, Entry[]> = {
 };
 
 function listObjects(prefix: string) {
-  const entries = folders[prefix] ?? [];
+  // A prefix that does not end in "/" is a name search within its folder.
+  const folder = prefix.slice(0, prefix.lastIndexOf("/") + 1);
+  const search = prefix.slice(folder.length);
+  const entries = (folders[folder] ?? []).filter(([name]) => name.startsWith(search));
   return {
     objects: entries.map(([name, size, minutes]) => ({
-      key: prefix + name,
+      key: folder + name,
       name,
       size,
       lastModified: size === null ? null : ago(minutes),
@@ -311,6 +314,49 @@ function respond(cmd: string, args: Record<string, unknown> = {}): unknown {
         storageClass: "STANDARD",
         metadata: { "uploaded-by": "dewi.anggraini", department: "marketing" },
       };
+    case "create_share_link": {
+      const input = args.input as { bucket: string; key: string; expiresInSeconds: number };
+      return {
+        url: `https://${input.bucket}.s3.ap-southeast-1.amazonaws.com/${input.key}?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Expires=${input.expiresInSeconds}&X-Amz-Signature=3f9a1c…`,
+        expiresAt: new Date(Date.now() + input.expiresInSeconds * 1000).toISOString(),
+      };
+    }
+    case "preview_object": {
+      const key = String(args.key);
+      const encode = (text: string) => btoa(unescape(encodeURIComponent(text)));
+      if (/\.(png|jpe?g|webp|svg)$/i.test(key)) {
+        const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#0e7490"/><stop offset="1" stop-color="#0f172a"/></linearGradient></defs><rect width="1200" height="630" fill="url(#g)"/><text x="80" y="300" font-family="Helvetica,Arial" font-size="72" font-weight="700" fill="#fff">Launch week 2026</text><text x="80" y="380" font-family="Helvetica,Arial" font-size="32" fill="#a5f3fc">Faster uploads, shareable links, folder transfers</text></svg>`;
+        return {
+          kind: "IMAGE",
+          contentType: "image/svg+xml",
+          dataBase64: encode(svg),
+          truncated: false,
+          size: 1_288_412,
+        };
+      }
+      if (/\.(md|txt|csv|json)$/i.test(key)) {
+        const body = key.endsWith(".json")
+          ? JSON.stringify({
+              release: "0.2.0",
+              date: "2026-10-15",
+              highlights: ["UI refresh", "Overview dashboard", "Share links"],
+            })
+          : "# Release notes\n\n## 0.2.0\n\n- Refreshed interface with light and dark themes\n- Overview dashboard with pinned buckets\n- Share links for any file\n- Upload and download whole folders\n";
+        return {
+          kind: "TEXT",
+          contentType: "text/markdown",
+          dataBase64: encode(body),
+          truncated: false,
+          size: 4_210,
+        };
+      }
+      throw {
+        code: "OPERATION_UNSUPPORTED",
+        message: "This type of file can't be previewed. Download it to open it.",
+        details: null,
+        retryable: false,
+      };
+    }
     default:
       throw {
         code: "OPERATION_UNSUPPORTED",

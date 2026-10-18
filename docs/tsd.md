@@ -587,7 +587,13 @@ move_object
 delete_objects
 prepare_prefix_delete
 execute_prefix_delete
+create_share_link
+preview_object
 ```
+
+`preview_object` mengambil isi objek untuk preview di aplikasi: gambar (≤ 15 MB) dan PDF (≤ 25 MB) utuh, teks hanya 512 KB pertama melalui HTTP Range. Isi dikirim sebagai base64 dan ditampilkan melalui `blob:` URL, sehingga CSP cukup ditambah `img-src blob:` dan `frame-src blob:` tanpa mengizinkan origin remote.
+
+`create_share_link` membuat presigned GET URL untuk satu objek (60 detik sampai 7 hari, batas SigV4). Keberadaan objek dicek lebih dulu. URL tidak disimpan maupun dicatat di log karena berfungsi sebagai bearer credential (SEC-004); link hanya bisa dicabut lebih awal dengan merotasi access key.
 
 Rename adalah `move_object` dengan bucket yang sama dan key tujuan baru; tidak ada command rename terpisah.
 
@@ -630,6 +636,8 @@ interface ListObjectsResponse {
 Continuation token harus diperlakukan sebagai opaque value dan tidak dimodifikasi frontend.
 
 Object listing menggunakan API S3 ListObjectsV2 dengan prefix, delimiter, dan pagination.
+
+Pencarian nama di server memakai listing yang sama dengan `prefix = folder + query` (query tanpa `/`). S3 hanya mencocokkan awal key dan bersifat case-sensitive, jadi hasilnya adalah item di folder aktif yang namanya diawali query. Field `name` selalu relatif terhadap folder yang memuat prefix (bagian sampai `/` terakhir), sehingga hasil pencarian tetap menampilkan nama lengkap.
 
 ### 6.3.1 Bulk Delete Result
 
@@ -710,7 +718,10 @@ get_transfer
 cancel_transfer
 retry_transfer
 clear_transfer_history
+reveal_transfer
 ```
+
+`reveal_transfer(id)` menampilkan file lokal sebuah transfer di Finder / File Explorer. Path hanya dibaca di backend dari baris transfer; frontend cukup mengirim ID. Plugin opener dipakai sebagai library Rust dan tidak didaftarkan, sehingga tidak ada command opener yang terbuka ke frontend.
 
 Operasi berjalan melalui scheduler tanpa menahan IPC request hingga transfer selesai.
 
@@ -757,6 +768,13 @@ interface TransferDto {
   completedAt?: string;
 }
 ```
+
+### 6.5.0 Folders
+
+- `pick_upload_folder` dan drag-and-drop folder mendaftarkan selection jenis `UploadDirectory`. Selection ini hanya bisa dibaca: tidak dapat dipakai sebagai tujuan download.
+- `enqueue_upload` mengekspansi folder secara rekursif (symlink dan file metadata OS seperti `.DS_Store` dilewati); setiap file menjadi transfer terpisah dengan key `<prefix><nama folder>/<path relatif>`. Keberadaan objek dicek dengan satu listing prefix tujuan, bukan HEAD per file.
+- `enqueue_download` menerima key folder (berakhiran `/`); semua objek di bawahnya diunduh dengan struktur folder dibuat ulang di tujuan. Setiap segmen path disanitasi sehingga key tidak dapat menempatkan file di luar folder tujuan.
+- Batas 10.000 file per folder. Item konflik untuk file di dalam folder diberi ID `<folder><U+001F><path/key>` sehingga pengiriman ulang dengan pilihan pengguna hanya memproses file tersebut.
 
 ### 6.5.1 Conflict Policy
 
@@ -1093,6 +1111,8 @@ Pinia stores:
 - Active prefix.
 - Object listing.
 - Pagination state.
+- Server search query (dikosongkan saat pindah folder).
+- Sort order (nama, ukuran, tanggal; folder selalu di atas). Diurutkan di client atas item yang sudah dimuat, disimpan di localStorage sebagai preferensi.
 - Selection state.
 
 **transferStore**

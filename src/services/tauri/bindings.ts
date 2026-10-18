@@ -37,11 +37,25 @@ export const commands = {
 	deleteObjects: (input: DeleteObjectsInput) => typedError<DeleteObjectsResult, AppError>(__TAURI_INVOKE("delete_objects", { input })),
 	preparePrefixDelete: (connectionId: string, bucket: string, prefix: string) => typedError<PrefixDeletePlan, AppError>(__TAURI_INVOKE("prepare_prefix_delete", { connectionId, bucket, prefix })),
 	executePrefixDelete: (planId: string) => typedError<DeleteObjectsResult, AppError>(__TAURI_INVOKE("execute_prefix_delete", { planId })),
+	/**  Presigned download URL; anyone with the link can download until it expires. */
+	createShareLink: (input: CreateShareLinkInput) => typedError<ShareLink, AppError>(__TAURI_INVOKE("create_share_link", { input })),
+	/**  Loads an image, PDF, or the beginning of a text file for preview. */
+	previewObject: (connectionId: string, bucket: string, key: string) => typedError<ObjectPreview, AppError>(__TAURI_INVOKE("preview_object", { connectionId, bucket, key })),
 	/**
 	 *  Opens the native file picker from Rust and returns opaque selections; the
 	 *  frontend never sees a path it could send back (TSD §6.4, ADR-012).
 	 */
 	pickUploadFiles: () => typedError<LocalFileSelection[], AppError>(__TAURI_INVOKE("pick_upload_files")),
+	/**  Picks a folder to upload recursively. Returns `None` when canceled. */
+	pickUploadFolder: () => typedError<{
+	selectionId: string,
+	fileName: string,
+	sizeBytes: number | null,
+	/**  For display only; never accepted back as input. */
+	displayPath: string,
+	/**  A folder to upload recursively; `size_bytes` is 0 for folders. */
+	isDirectory: boolean,
+} | null, AppError>(__TAURI_INVOKE("pick_upload_folder")),
 	/**  Returns `None` when the user cancels the dialog. */
 	pickDownloadDirectory: () => typedError<{
 	selectionId: string,
@@ -59,6 +73,8 @@ export const commands = {
 	retryTransfer: (id: string) => typedError<TransferDto, AppError>(__TAURI_INVOKE("retry_transfer", { id })),
 	/**  Removes finished transfers from history; returns how many were removed. */
 	clearTransferHistory: () => typedError<number, AppError>(__TAURI_INVOKE("clear_transfer_history")),
+	/**  Reveals the transfer's local file in the system file manager. */
+	revealTransfer: (id: string) => typedError<null, AppError>(__TAURI_INVOKE("reveal_transfer", { id })),
 	getSettings: () => typedError<AppSettings, AppError>(__TAURI_INVOKE("get_settings")),
 	/**  Validates, saves, and applies the settings immediately. */
 	updateSettings: (settings: AppSettings) => typedError<AppSettings, AppError>(__TAURI_INVOKE("update_settings", { settings })),
@@ -176,6 +192,14 @@ export type CreateFolderInput = {
 	name: string,
 };
 
+export type CreateShareLinkInput = {
+	connectionId: string,
+	bucket: string,
+	key: string,
+	/**  60 seconds to 7 days (the SigV4 maximum). */
+	expiresInSeconds: number,
+};
+
 export type DeleteConnectionResult = {
 	/**
 	 *  `false` if the connection was removed but its keychain entry could not
@@ -272,13 +296,15 @@ export type LocalDirectorySelection = {
 	displayPath: string,
 };
 
-/**  A local file the user picked or dropped; sent to the frontend. */
+/**  A local file or folder the user picked or dropped; sent to the frontend. */
 export type LocalFileSelection = {
 	selectionId: string,
 	fileName: string,
 	sizeBytes: number | null,
 	/**  For display only; never accepted back as input. */
 	displayPath: string,
+	/**  A folder to upload recursively; `size_bytes` is 0 for folders. */
+	isDirectory: boolean,
 };
 
 export type ObjectMetadata = {
@@ -299,6 +325,19 @@ export type ObjectOperationOutcome = { kind: "completed" } |
 /**  Move only: the copy succeeded but the source was deliberately kept. */
 { kind: "sourceKept"; reason: string };
 
+/**
+ *  Object contents for in-app preview, fetched by the backend so the
+ *  webview's CSP never has to allow remote origins.
+ */
+export type ObjectPreview = {
+	kind: PreviewKind,
+	contentType: string,
+	dataBase64: string,
+	/**  Text previews include only the beginning of large files. */
+	truncated: boolean,
+	size: number | null,
+};
+
 /**  Snapshot of the keys a folder delete will remove (TSD §6.3.2). */
 export type PrefixDeletePlan = {
 	planId: string,
@@ -309,6 +348,8 @@ export type PrefixDeletePlan = {
 	sampleKeys: string[],
 	expiresAt: string,
 };
+
+export type PreviewKind = "IMAGE" | "PDF" | "TEXT";
 
 /**
  *  Defaults and form hints for a provider (TSD §5.3). Profiles never replace
@@ -334,6 +375,15 @@ export type ProviderType = "aws" | "supabase" | "minio" | "cloudflare_r2" | "was
  *  redacted so it cannot leak through logs or error formatting (SEC-004).
  */
 export type SecretString = string;
+
+/**
+ *  A presigned download URL. Never persisted or logged (SEC-004); it grants
+ *  access to anyone holding it until `expires_at`.
+ */
+export type ShareLink = {
+	url: string,
+	expiresAt: string,
+};
 
 /**
  *  An entry in a listing: either an object or a virtual folder (common prefix).

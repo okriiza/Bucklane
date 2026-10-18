@@ -94,6 +94,16 @@ export function useTransferActions() {
     }
   }
 
+  async function pickAndUploadFolder(target: UploadTarget) {
+    try {
+      const folder = await unwrap(commands.pickUploadFolder());
+      if (folder) await uploadSelections(target, [folder]);
+    } catch (err) {
+      toast.error(toAppError(err).message);
+    }
+  }
+
+  /** `keys` may include folder prefixes (ending in `/`); they download recursively. */
   async function pickAndDownload(connectionId: string, bucket: string, keys: string[]) {
     if (!keys.length) return;
     try {
@@ -115,5 +125,5 @@ export function useTransferActions() {
     }
   }
 
-  return { uploadSelections, pickAndUpload, pickAndDownload };
+  return { uploadSelections, pickAndUpload, pickAndUploadFolder, pickAndDownload };
 }

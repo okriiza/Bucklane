@@ -1,5 +1,16 @@
 <script setup lang="ts">
-import { Copy, Download, FolderInput, Info, MoreHorizontal, Pencil, Trash2 } from "@lucide/vue";
+import {
+  ClipboardCopy,
+  Copy,
+  Download,
+  Eye,
+  FolderInput,
+  Info,
+  Link2,
+  MoreHorizontal,
+  Pencil,
+  Trash2,
+} from "@lucide/vue";
 import {
   DropdownMenuContent,
   DropdownMenuItem,
@@ -14,7 +25,11 @@ import type { StorageObject } from "@/services/tauri";
 defineProps<{ entry: StorageObject }>();
 const emit = defineEmits<{
   details: [];
+  preview: [];
   download: [];
+  share: [];
+  copyKey: [];
+  copyUri: [];
   rename: [];
   copy: [];
   move: [];
@@ -42,12 +57,22 @@ const itemClass =
         class="bg-popover text-popover-foreground data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 z-50 min-w-44 rounded-lg border p-1 shadow-[var(--shadow-float)]"
       >
         <template v-if="!entry.isPrefix">
+          <DropdownMenuItem :class="itemClass" @select="emit('preview')">
+            <Eye /> {{ $t("preview.action") }}
+            <span class="text-muted-foreground ml-auto pl-4 text-xs">{{
+              $t("preview.spaceKey")
+            }}</span>
+          </DropdownMenuItem>
           <DropdownMenuItem :class="itemClass" @select="emit('details')">
             <Info /> {{ $t("explorer.details") }}
           </DropdownMenuItem>
           <DropdownMenuItem :class="itemClass" @select="emit('download')">
             <Download /> {{ $t("transfers.downloadAction") }}
           </DropdownMenuItem>
+          <DropdownMenuItem :class="itemClass" @select="emit('share')">
+            <Link2 /> {{ $t("share.menu") }}
+          </DropdownMenuItem>
+          <DropdownMenuSeparator class="bg-border -mx-1 my-1 h-px" />
           <DropdownMenuItem :class="itemClass" @select="emit('rename')">
             <Pencil /> {{ $t("ops.rename") }}
             <span class="text-muted-foreground ml-auto pl-4 text-xs">F2</span>
@@ -61,6 +86,10 @@ const itemClass =
           <DropdownMenuSeparator class="bg-border -mx-1 my-1 h-px" />
         </template>
         <template v-else>
+          <DropdownMenuItem :class="itemClass" @select="emit('download')">
+            <Download /> {{ $t("transfers.downloadFolder") }}
+          </DropdownMenuItem>
+          <DropdownMenuSeparator class="bg-border -mx-1 my-1 h-px" />
           <!-- Shown disabled so users learn why folders can't be renamed yet. -->
           <DropdownMenuItem :class="itemClass" disabled>
             <Pencil /> {{ $t("ops.rename") }}
@@ -73,6 +102,13 @@ const itemClass =
           </p>
           <DropdownMenuSeparator class="bg-border -mx-1 my-1 h-px" />
         </template>
+        <DropdownMenuItem :class="itemClass" @select="emit('copyKey')">
+          <ClipboardCopy /> {{ $t("share.copyKey") }}
+        </DropdownMenuItem>
+        <DropdownMenuItem :class="itemClass" @select="emit('copyUri')">
+          <ClipboardCopy /> {{ $t("share.copyUri") }}
+        </DropdownMenuItem>
+        <DropdownMenuSeparator class="bg-border -mx-1 my-1 h-px" />
         <DropdownMenuItem
           :class="[itemClass, 'text-destructive data-[highlighted]:text-destructive']"
           @select="emit('delete')"

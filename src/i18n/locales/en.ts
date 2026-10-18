@@ -111,8 +111,16 @@ export default {
     breadcrumb: "Location",
     up: "Up one folder",
     refresh: "Refresh",
-    filter: "Filter loaded items",
-    filterLoadedOnly: "The filter only covers loaded items. Load more to search further.",
+    filter: "Filter or search",
+    filterLoadedOnly: "The filter only covers loaded items.",
+    searchServer: 'Search the whole folder for names starting with "{query}"',
+    searchHint:
+      "Press Enter to search the whole folder. Matches the start of names, case-sensitive.",
+    searchNoSlash: "Searching inside subfolders is not supported. Open the folder first.",
+    searchActive: 'Names starting with "{query}"',
+    searchNoResults: 'No items in this folder start with "{query}".',
+    clearSearch: "Clear search",
+    sortBy: "Sort by {column}",
     name: "Name",
     size: "Size",
     lastModified: "Last modified",
@@ -167,6 +175,34 @@ export default {
     folderRenameUnsupported:
       "Renaming or moving folders isn't available yet. You can rename the files inside.",
   },
+  preview: {
+    action: "Preview",
+    spaceKey: "Space",
+    truncated: "Showing the first 512 KB of this file. Download it to see everything.",
+    pdfUnsupported: "PDF preview isn't available on Linux. Download the file to open it.",
+  },
+  share: {
+    menu: "Share link…",
+    button: "Share",
+    title: "Share link",
+    expiresIn: "Link expires after",
+    durations: { "15m": "15 minutes", "1h": "1 hour", "1d": "1 day", "7d": "7 days" },
+    create: "Create link",
+    regenerate: "Create new link",
+    creating: "Creating…",
+    copy: "Copy",
+    copied: "Copied",
+    expiresAt: "Valid until {time}. The link is copied to your clipboard.",
+    warning:
+      "Anyone with this link can download the file until it expires. Bucklane doesn't keep a record of created links, and they can't be revoked early except by rotating the access key.",
+    insecure: "This connection uses HTTP, so the link isn't encrypted in transit.",
+    copyKey: "Copy key",
+    copyUri: "Copy S3 URI",
+    copyKeyLabel: "Key",
+    copyUriLabel: "S3 URI",
+    copiedValue: "{label} copied to clipboard",
+    copyFailed: "Couldn't copy to the clipboard.",
+  },
   delete: {
     title: "Delete {count} item? | Delete {count} items?",
     fromBucket: "From bucket “{bucket}”. This cannot be undone.",
@@ -189,9 +225,16 @@ export default {
     upload: "Upload",
     download: "Download",
     uploadAction: "Upload",
+    uploadFiles: "Files…",
+    uploadFolder: "Folder…",
+    downloadFolder: "Download folder",
     downloadAction: "Download",
     cancel: "Cancel transfer",
     retry: "Retry transfer",
+    eta: "{time} left",
+    revealMac: "Show in Finder",
+    revealWindows: "Show in File Explorer",
+    revealLinux: "Show in file manager",
     queued: "Queued {count} transfer | Queued {count} transfers",
     skipped: "Skipped {count} existing item | Skipped {count} existing items",
     status: {
@@ -213,8 +256,8 @@ export default {
   drop: {
     title: "Drop to upload to",
     openFolderFirst: "Open a bucket folder to upload files by dropping them.",
-    skippedFolders:
-      "{count} dropped folder was skipped. Folder upload isn't available yet. | {count} dropped folders were skipped. Folder upload isn't available yet.",
+    skippedItems:
+      "{count} dropped item couldn't be read and was skipped. | {count} dropped items couldn't be read and were skipped.",
   },
   status: {
     checking: "Checking backend…",
@@ -277,11 +320,11 @@ export default {
       },
       transfers: {
         title: "Uploads and downloads in the background",
-        body: "Queue transfers, watch progress, cancel or retry, and send large files in parallel parts without filling your memory.",
+        body: "Transfer files or entire folders, watch progress, cancel or retry, and send large files in parallel parts without filling your memory.",
       },
       dragDrop: {
         title: "Drag and drop",
-        body: "Drop files from your computer to upload them, or drag files onto a folder to move them within a bucket.",
+        body: "Drop files or whole folders from your computer to upload them, or drag files onto a folder to move them within a bucket.",
       },
       safeOps: {
         title: "Nothing lost by accident",
@@ -312,6 +355,7 @@ export default {
     shortcuts: {
       title: "Keyboard shortcuts",
       open: "Open a folder or show file details",
+      preview: "Preview the focused file",
       rename: "Rename the focused file",
       delete: "Delete the focused item",
       cancelDrag: "Cancel a drag in progress",

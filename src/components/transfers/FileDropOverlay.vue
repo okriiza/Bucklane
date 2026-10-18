@@ -26,7 +26,7 @@ onMounted(async () => {
     await events.filesDropped.listen(async ({ payload }) => {
       hovering.value = false;
       if (payload.skipped) {
-        toast.info(t("drop.skippedFolders", { count: payload.skipped }, payload.skipped));
+        toast.info(t("drop.skippedItems", { count: payload.skipped }, payload.skipped));
       }
       if (!payload.files.length) return;
       if (!target.value) {

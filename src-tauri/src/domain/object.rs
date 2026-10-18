@@ -144,3 +144,44 @@ pub struct PrefixDeletePlan {
     pub sample_keys: Vec<String>,
     pub expires_at: String,
 }
+
+#[derive(Debug, Clone, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateShareLinkInput {
+    pub connection_id: String,
+    pub bucket: String,
+    pub key: String,
+    /// 60 seconds to 7 days (the SigV4 maximum).
+    pub expires_in_seconds: u32,
+}
+
+/// A presigned download URL. Never persisted or logged (SEC-004); it grants
+/// access to anyone holding it until `expires_at`.
+#[derive(Debug, Clone, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct ShareLink {
+    pub url: String,
+    pub expires_at: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Type)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum PreviewKind {
+    Image,
+    Pdf,
+    Text,
+}
+
+/// Object contents for in-app preview, fetched by the backend so the
+/// webview's CSP never has to allow remote origins.
+#[derive(Debug, Clone, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct ObjectPreview {
+    pub kind: PreviewKind,
+    pub content_type: String,
+    pub data_base64: String,
+    /// Text previews include only the beginning of large files.
+    pub truncated: bool,
+    #[specta(type = Option<f64>)]
+    pub size: Option<i64>,
+}

@@ -1,7 +1,15 @@
 import { describe, expect, it } from "vitest";
 
-import { endpointHost, formatBytes, formatDateTime, formatRelative } from "./format";
-import { extensionOf, parentPrefix, prefixSegments } from "./prefix";
+import { s3Uri } from "./clipboard";
+import {
+  endpointHost,
+  formatBytes,
+  formatDateTime,
+  formatDuration,
+  formatRelative,
+  formatSpeed,
+} from "./format";
+import { extensionOf, parentPrefix, prefixSegments, uploadChangesListing } from "./prefix";
 
 describe("formatBytes", () => {
   it.each([
@@ -73,5 +81,48 @@ describe("endpointHost", () => {
     expect(endpointHost("https://abc.supabase.co/storage/v1/s3", "x")).toBe("abc.supabase.co");
     expect(endpointHost("http://localhost:9000", "x")).toBe("localhost:9000");
     expect(endpointHost(null, "ap-southeast-1")).toBe("s3.ap-southeast-1.amazonaws.com");
+  });
+});
+
+describe("s3Uri", () => {
+  it("joins bucket and key", () => {
+    expect(s3Uri("media", "marketing/deck.pdf")).toBe("s3://media/marketing/deck.pdf");
+    expect(s3Uri("media", "folder/")).toBe("s3://media/folder/");
+  });
+});
+
+describe("uploadChangesListing", () => {
+  const listed = new Set(["docs/existing/", "docs/a.txt"]);
+
+  it("refreshes for files directly in the folder", () => {
+    expect(uploadChangesListing("docs/", "docs/new.txt", listed)).toBe(true);
+  });
+
+  it("refreshes once for a new subfolder, not for every file in it", () => {
+    expect(uploadChangesListing("docs/", "docs/reports/2026/q3.pdf", listed)).toBe(true);
+    expect(uploadChangesListing("docs/", "docs/existing/deep/file.txt", listed)).toBe(false);
+  });
+
+  it("ignores uploads elsewhere", () => {
+    expect(uploadChangesListing("docs/", "other/file.txt", listed)).toBe(false);
+  });
+
+  it("works at the bucket root", () => {
+    expect(uploadChangesListing("", "reports/q3.pdf", new Set())).toBe(true);
+  });
+});
+
+describe("formatSpeed and formatDuration", () => {
+  it("formats transfer speed", () => {
+    expect(formatSpeed(12.4 * 1024 * 1024)).toBe("12 MB/s");
+    expect(formatSpeed(null)).toBe("—");
+  });
+
+  it("formats remaining time compactly", () => {
+    expect(formatDuration(42.2)).toBe("43 s");
+    expect(formatDuration(150)).toBe("3 min");
+    expect(formatDuration(3_900)).toBe("1 h 5 min");
+    expect(formatDuration(7_200)).toBe("2 h");
+    expect(formatDuration(null)).toBe("—");
   });
 });

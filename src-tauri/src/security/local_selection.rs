@@ -9,8 +9,12 @@ use specta::Type;
 use crate::errors::{AppError, ErrorCode};
 
 const SELECTION_TTL: Duration = Duration::from_secs(30 * 60);
+/// Upper bound for one folder upload or download, like folder deletes.
+pub const MAX_FOLDER_FILES: usize = 10_000;
+/// OS metadata files that are never worth uploading.
+const JUNK_FILES: [&str; 3] = [".DS_Store", "Thumbs.db", "desktop.ini"];
 
-/// A local file the user picked or dropped; sent to the frontend.
+/// A local file or folder the user picked or dropped; sent to the frontend.
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct LocalFileSelection {
@@ -20,6 +24,8 @@ pub struct LocalFileSelection {
     pub size_bytes: i64,
     /// For display only; never accepted back as input.
     pub display_path: String,
+    /// A folder to upload recursively; `size_bytes` is 0 for folders.
+    pub is_directory: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Type)]
@@ -32,7 +38,10 @@ pub struct LocalDirectorySelection {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SelectionKind {
     File,
+    /// A download destination; the only kind that may be written to.
     Directory,
+    /// A folder picked or dropped for upload; read-only by intent.
+    UploadDirectory,
 }
 
 #[derive(Debug, Clone)]
@@ -52,23 +61,31 @@ pub struct SelectionRegistry {
 }
 
 impl SelectionRegistry {
-    /// Registers regular files; directories and unreadable paths are skipped
-    /// (folder upload is post-MVP).
-    pub fn register_files(
+    /// Registers regular files and folders for upload; unreadable paths and
+    /// other entries (sockets, devices) are skipped.
+    pub fn register_upload_items(
         &self,
         paths: impl IntoIterator<Item = PathBuf>,
     ) -> Vec<LocalFileSelection> {
         paths
             .into_iter()
             .filter_map(|path| {
-                let meta = std::fs::metadata(&path).ok().filter(|m| m.is_file())?;
+                let meta = std::fs::metadata(&path).ok()?;
+                let (kind, size) = if meta.is_file() {
+                    (SelectionKind::File, meta.len())
+                } else if meta.is_dir() {
+                    (SelectionKind::UploadDirectory, 0)
+                } else {
+                    return None;
+                };
                 let file_name = path.file_name()?.to_string_lossy().into_owned();
-                let selection_id = self.insert(path.clone(), SelectionKind::File);
+                let selection_id = self.insert(path.clone(), kind);
                 Some(LocalFileSelection {
                     selection_id,
                     file_name,
-                    size_bytes: i64::try_from(meta.len()).unwrap_or(i64::MAX),
+                    size_bytes: i64::try_from(size).unwrap_or(i64::MAX),
                     display_path: path.display().to_string(),
+                    is_directory: kind == SelectionKind::UploadDirectory,
                 })
             })
             .collect()
@@ -86,10 +103,15 @@ impl SelectionRegistry {
     }
 
     pub fn get(&self, id: &str, kind: SelectionKind) -> Result<Selection, AppError> {
+        self.get_any(id, &[kind])
+    }
+
+    /// Like `get`, accepting any of `kinds`.
+    pub fn get_any(&self, id: &str, kinds: &[SelectionKind]) -> Result<Selection, AppError> {
         let selections = self.selections.lock().expect("selection registry poisoned");
         selections
             .get(id)
-            .filter(|s| s.kind == kind && s.expires_at > Instant::now())
+            .filter(|s| kinds.contains(&s.kind) && s.expires_at > Instant::now())
             .cloned()
             .ok_or_else(|| {
                 AppError::new(
@@ -114,6 +136,55 @@ impl SelectionRegistry {
         );
         id
     }
+}
+
+/// Every regular file under `dir`, with its path relative to `dir` using `/`
+/// separators. Symlinks are skipped (no loops, no escaping the folder) and so
+/// are OS metadata files. Fails rather than truncating past `limit` files.
+pub fn collect_files(dir: &Path, limit: usize) -> Result<Vec<(PathBuf, String)>, AppError> {
+    let mut files = Vec::new();
+    let mut pending = vec![(dir.to_path_buf(), String::new())];
+    while let Some((current, relative)) = pending.pop() {
+        let entries = std::fs::read_dir(&current).map_err(|err| {
+            AppError::new(ErrorCode::LocalFileError, "A folder could not be read.")
+                .with_details(err.to_string())
+        })?;
+        for entry in entries.flatten() {
+            let Ok(file_type) = entry.file_type() else {
+                continue;
+            };
+            let name = entry.file_name().to_string_lossy().into_owned();
+            let child = format!("{relative}{name}");
+            if file_type.is_dir() {
+                pending.push((entry.path(), format!("{child}/")));
+            } else if file_type.is_file() && !JUNK_FILES.contains(&name.as_str()) {
+                files.push((entry.path(), child));
+                if files.len() > limit {
+                    return Err(AppError::new(
+                        ErrorCode::OperationUnsupported,
+                        format!(
+                            "This folder contains more than {limit} files, which is more than Bucklane can transfer at once."
+                        ),
+                    ));
+                }
+            }
+        }
+    }
+    files.sort_by(|a, b| a.1.cmp(&b.1));
+    Ok(files)
+}
+
+/// Joins a `/`-separated relative key path under `dir`, sanitizing every
+/// segment. Returns `None` if any segment is unusable, so an object key can
+/// never place a file outside `dir`.
+pub fn join_relative(dir: &Path, relative: &str) -> Option<PathBuf> {
+    let mut path = dir.to_path_buf();
+    let mut pushed = false;
+    for segment in relative.split('/').filter(|s| !s.is_empty()) {
+        path.push(safe_local_file_name(segment)?);
+        pushed = true;
+    }
+    (pushed && path.starts_with(dir)).then_some(path)
 }
 
 /// Makes an S3 key segment safe to use as a local file name. Separators and
@@ -173,9 +244,46 @@ mod tests {
     }
 
     #[test]
-    fn skips_directories_when_registering_files() {
+    fn upload_folders_cannot_be_used_as_download_destinations() {
         let registry = SelectionRegistry::default();
-        assert!(registry.register_files([std::env::temp_dir()]).is_empty());
+        let items = registry.register_upload_items([std::env::temp_dir()]);
+        assert_eq!(items.len(), 1);
+        assert!(items[0].is_directory);
+        let id = &items[0].selection_id;
+        assert!(registry.get(id, SelectionKind::UploadDirectory).is_ok());
+        assert!(registry.get(id, SelectionKind::Directory).is_err());
+    }
+
+    #[test]
+    fn collects_files_recursively_and_skips_junk() {
+        let dir = std::env::temp_dir().join(format!("bucklane-walk-{}", uuid::Uuid::now_v7()));
+        std::fs::create_dir_all(dir.join("a/b")).unwrap();
+        std::fs::write(dir.join("top.txt"), b"1").unwrap();
+        std::fs::write(dir.join("a/b/deep.txt"), b"2").unwrap();
+        std::fs::write(dir.join(".DS_Store"), b"x").unwrap();
+        std::fs::create_dir_all(dir.join("empty")).unwrap();
+
+        let files = collect_files(&dir, 10).unwrap();
+        let relative: Vec<_> = files.iter().map(|(_, r)| r.as_str()).collect();
+        assert_eq!(relative, ["a/b/deep.txt", "top.txt"]);
+        assert!(collect_files(&dir, 1).is_err(), "limit is enforced");
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn join_relative_stays_inside_and_sanitizes() {
+        let dir = Path::new("/tmp/dl");
+        assert_eq!(
+            join_relative(dir, "reports/2026/q3.pdf"),
+            Some(PathBuf::from("/tmp/dl/reports/2026/q3.pdf"))
+        );
+        assert_eq!(
+            join_relative(dir, "a//b"),
+            Some(PathBuf::from("/tmp/dl/a/b"))
+        );
+        assert_eq!(join_relative(dir, "../escape.txt"), None);
+        assert_eq!(join_relative(dir, "x/../../y"), None);
+        assert_eq!(join_relative(dir, ""), None);
     }
 
     #[test]

@@ -1,14 +1,24 @@
 <script setup lang="ts">
-import { ArrowDown, ArrowUp, ChevronDown, ChevronUp, RotateCw, X } from "@lucide/vue";
+import { ArrowDown, ArrowUp, ChevronDown, ChevronUp, FolderSearch, RotateCw, X } from "@lucide/vue";
 import { onUnmounted, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
 
 import { Button } from "@/components/ui/button";
 import { toAppError, type TransferDto } from "@/services/tauri";
 import { useTransferStore } from "@/stores/transfers";
-import { formatBytes } from "@/utils/format";
+import { formatBytes, formatDuration, formatSpeed } from "@/utils/format";
 
 const store = useTransferStore();
+const { t: translate } = useI18n();
+/** The file manager has a different name on each platform. */
+const revealLabel = translate(
+  navigator.userAgent.includes("Mac")
+    ? "transfers.revealMac"
+    : navigator.userAgent.includes("Windows")
+      ? "transfers.revealWindows"
+      : "transfers.revealLinux",
+);
 // Collapsed while idle so it doesn't take space from the page. It opens when
 // a transfer starts, and closes again shortly after a batch finishes cleanly.
 // Failures keep it open, and a manual toggle always wins.
@@ -122,7 +132,7 @@ const STATUS_CLASS: Record<TransferDto["status"], string> = {
         <li
           v-for="t in store.transfers"
           :key="t.id"
-          class="hover:bg-accent/40 grid grid-cols-[1rem_minmax(0,1fr)_10rem_7rem_3.5rem] items-center gap-3 px-4 py-2 transition-colors"
+          class="hover:bg-accent/40 grid grid-cols-[1rem_minmax(0,1fr)_10rem_9rem_3.5rem] items-center gap-3 px-4 py-2 transition-colors"
         >
           <component
             :is="t.direction === 'UPLOAD' ? ArrowUp : ArrowDown"
@@ -161,12 +171,23 @@ const STATUS_CLASS: Record<TransferDto["status"], string> = {
               <template v-if="t.bytesTotal != null">/ {{ formatBytes(t.bytesTotal) }}</template>
             </div>
           </div>
-          <span :class="STATUS_CLASS[t.status]">
-            {{ $t(`transfers.status.${t.status}`) }}
-            <template v-if="t.status === 'RUNNING' && percent(t) != null">
-              {{ percent(t) }}%
-            </template>
-          </span>
+          <div class="min-w-0">
+            <div :class="STATUS_CLASS[t.status]">
+              {{ $t(`transfers.status.${t.status}`) }}
+              <template v-if="t.status === 'RUNNING' && percent(t) != null">
+                {{ percent(t) }}%
+              </template>
+            </div>
+            <div
+              v-if="t.status === 'RUNNING' && store.speedOf(t.id) != null"
+              class="text-muted-foreground tabular truncate font-mono text-[11px]"
+            >
+              {{ formatSpeed(store.speedOf(t.id)) }}
+              <template v-if="store.etaOf(t) != null">
+                · {{ $t("transfers.eta", { time: formatDuration(store.etaOf(t)) }) }}
+              </template>
+            </div>
+          </div>
           <div class="flex justify-end">
             <Button
               v-if="t.status === 'QUEUED' || t.status === 'RUNNING'"
@@ -178,6 +199,17 @@ const STATUS_CLASS: Record<TransferDto["status"], string> = {
               @click="run(() => store.cancel(t.id))"
             >
               <X />
+            </Button>
+            <Button
+              v-else-if="t.status === 'COMPLETED'"
+              variant="ghost"
+              size="icon"
+              class="size-6"
+              :title="revealLabel"
+              :aria-label="revealLabel"
+              @click="run(() => store.reveal(t.id))"
+            >
+              <FolderSearch />
             </Button>
             <Button
               v-else-if="t.status === 'FAILED' && t.connectionId"

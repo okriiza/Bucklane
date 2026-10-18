@@ -12,6 +12,7 @@ import TransferPanel from "@/components/transfers/TransferPanel.vue";
 import { useExplorerStore } from "@/stores/explorer";
 import { useSettingsStore } from "@/stores/settings";
 import { useTransferStore } from "@/stores/transfers";
+import { uploadChangesListing } from "@/utils/prefix";
 
 const transfers = useTransferStore();
 const explorer = useExplorerStore();
@@ -24,8 +25,9 @@ let refreshTimer: ReturnType<typeof setTimeout> | undefined;
 const stopListening = transfers.onCompleted((t) => {
   const loc = explorer.location;
   if (t.direction !== "UPLOAD" || !loc || t.connectionId !== loc.connectionId) return;
-  if (t.bucket !== loc.bucket || !t.objectKey.startsWith(loc.prefix)) return;
-  if (t.objectKey.slice(loc.prefix.length).includes("/")) return;
+  if (t.bucket !== loc.bucket) return;
+  const listed = new Set(explorer.entries.map((e) => e.key));
+  if (!uploadChangesListing(loc.prefix, t.objectKey, listed)) return;
   clearTimeout(refreshTimer);
   refreshTimer = setTimeout(() => explorer.refresh(), 500);
 });

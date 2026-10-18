@@ -4,6 +4,7 @@ use async_trait::async_trait;
 use aws_sdk_s3::Client;
 use aws_sdk_s3::config::http::HttpResponse;
 use aws_sdk_s3::error::{ProvideErrorMetadata, SdkError};
+use aws_sdk_s3::presigning::PresigningConfig;
 use aws_sdk_s3::primitives::ByteStream;
 use aws_sdk_s3::primitives::{DateTime, DateTimeFormat};
 use aws_sdk_s3::types::{CommonPrefix, Delete, Object, ObjectIdentifier};
@@ -161,6 +162,54 @@ impl StorageProvider for S3StorageProvider {
             .map_err(|e| map_sdk_error(e, ErrorCode::ObjectNotFound))
     }
 
+    async fn get_bytes(
+        &self,
+        bucket: &str,
+        key: &str,
+        max_bytes: Option<u64>,
+    ) -> Result<Vec<u8>, AppError> {
+        let range = max_bytes
+            .filter(|n| *n > 0)
+            .map(|n| format!("bytes=0-{}", n - 1));
+        let output = self
+            .client
+            .get_object()
+            .bucket(bucket)
+            .key(key)
+            .set_range(range)
+            .send()
+            .await
+            .map_err(|e| map_sdk_error(e, ErrorCode::ObjectNotFound))?;
+        let bytes = output.body.collect().await.map_err(|err| {
+            AppError::new(
+                ErrorCode::TransferFailed,
+                "The connection was interrupted while loading the preview.",
+            )
+            .with_details(err.to_string())
+        })?;
+        Ok(bytes.into_bytes().to_vec())
+    }
+
+    async fn presign_get(
+        &self,
+        bucket: &str,
+        key: &str,
+        expires_in: std::time::Duration,
+    ) -> Result<String, AppError> {
+        let config = PresigningConfig::expires_in(expires_in).map_err(|_| {
+            AppError::new(ErrorCode::InvalidInput, "The link duration is not valid.")
+        })?;
+        let request = self
+            .client
+            .get_object()
+            .bucket(bucket)
+            .key(key)
+            .presigned(config)
+            .await
+            .map_err(|e| map_sdk_error(e, ErrorCode::ObjectNotFound))?;
+        Ok(request.uri().to_owned())
+    }
+
     async fn delete_object(&self, bucket: &str, key: &str) -> Result<(), AppError> {
         self.client
             .delete_object()
@@ -233,12 +282,16 @@ fn copy_source(bucket: &str, key: &str) -> String {
 /// Converts one ListObjectsV2 page into explorer entries: folders first, then
 /// files. The marker object for the listed folder itself (`prefix` + nothing)
 /// is hidden, since it represents the folder the user is already in.
+///
+/// Names are relative to the folder containing `prefix`, so a name search
+/// (`photos/ca`) still yields `cat.jpg` rather than `t.jpg`.
 fn listing_entries(
     prefix: &str,
     common_prefixes: &[CommonPrefix],
     contents: &[Object],
 ) -> Vec<StorageObject> {
-    let relative = |key: &str| key.strip_prefix(prefix).unwrap_or(key).to_owned();
+    let folder = &prefix[..prefix.rfind('/').map_or(0, |i| i + 1)];
+    let relative = |key: &str| key.strip_prefix(folder).unwrap_or(key).to_owned();
 
     let folders = common_prefixes
         .iter()
@@ -328,8 +381,21 @@ pub(crate) fn map_service_error(code: Option<&str>, status: u16, not_found: Erro
     use ErrorCode::*;
 
     let (error_code, message) = match (code, status) {
-        (Some("InvalidAccessKeyId" | "SignatureDoesNotMatch" | "InvalidSecurity"), _)
-        | (None, 401) => (
+        (Some("InvalidAccessKeyId"), _) => (
+            AuthenticationFailed,
+            "This storage doesn't recognize the access key ID. Check that it was copied completely.",
+        ),
+        // A mismatched signature has several causes besides a wrong secret;
+        // self-hosted setups most often hit region or proxy problems.
+        (Some("SignatureDoesNotMatch"), _) => (
+            AuthenticationFailed,
+            "The request signature was rejected. Check the secret access key, and that the region matches the server's (self-hosted Supabase defaults to \"stub\"). A reverse proxy that changes the Host header or path also causes this.",
+        ),
+        (Some("RequestTimeTooSkewed"), _) => (
+            AuthenticationFailed,
+            "Your computer's clock is too far off for the storage to accept requests. Turn on automatic date and time, then try again.",
+        ),
+        (Some("InvalidSecurity" | "InvalidToken" | "ExpiredToken"), _) | (None, 401) => (
             AuthenticationFailed,
             "The access key ID or secret access key is incorrect.",
         ),
@@ -426,6 +492,19 @@ mod tests {
     }
 
     #[test]
+    fn signature_errors_point_beyond_the_secret() {
+        let err = map_service_error(
+            Some("SignatureDoesNotMatch"),
+            403,
+            ErrorCode::BucketNotFound,
+        );
+        assert_eq!(err.code, ErrorCode::AuthenticationFailed);
+        assert!(err.message.contains("region"));
+        let skew = map_service_error(Some("RequestTimeTooSkewed"), 403, ErrorCode::BucketNotFound);
+        assert!(skew.message.contains("clock"));
+    }
+
+    #[test]
     fn throttling_and_server_errors_are_retryable() {
         let err = map_service_error(Some("SlowDown"), 503, ErrorCode::BucketNotFound);
         assert_eq!(err.code, ErrorCode::EndpointUnreachable);
@@ -452,6 +531,19 @@ mod tests {
             [("2026/", true, None), ("cat.jpg", false, Some(2048))]
         );
         assert_eq!(entries[1].key, "photos/cat.jpg");
+    }
+
+    #[test]
+    fn name_search_keeps_names_relative_to_the_folder() {
+        let prefixes = [CommonPrefix::builder().prefix("photos/cats/").build()];
+        let contents = [Object::builder().key("photos/cat.jpg").build()];
+
+        let entries = listing_entries("photos/ca", &prefixes, &contents);
+
+        let names: Vec<_> = entries.iter().map(|e| e.name.as_str()).collect();
+        assert_eq!(names, ["cats/", "cat.jpg"]);
+        let root = listing_entries("rep", &[], &[Object::builder().key("report.pdf").build()]);
+        assert_eq!(root[0].name, "report.pdf");
     }
 
     #[test]

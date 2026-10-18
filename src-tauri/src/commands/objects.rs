@@ -2,9 +2,9 @@ use tauri::State;
 
 use crate::app_state::AppState;
 use crate::domain::object::{
-    CopyObjectInput, CreateFolderInput, DeleteObjectsInput, DeleteObjectsResult,
-    ListObjectsRequest, ListObjectsResponse, ObjectMetadata, ObjectOperationOutcome,
-    PrefixDeletePlan,
+    CopyObjectInput, CreateFolderInput, CreateShareLinkInput, DeleteObjectsInput,
+    DeleteObjectsResult, ListObjectsRequest, ListObjectsResponse, ObjectMetadata,
+    ObjectOperationOutcome, ObjectPreview, PrefixDeletePlan, ShareLink,
 };
 use crate::errors::AppError;
 
@@ -90,4 +90,29 @@ pub async fn execute_prefix_delete(
     plan_id: String,
 ) -> Result<DeleteObjectsResult, AppError> {
     state.objects()?.execute_prefix_delete(&plan_id).await
+}
+
+/// Presigned download URL; anyone with the link can download until it expires.
+#[tauri::command]
+#[specta::specta]
+pub async fn create_share_link(
+    state: State<'_, AppState>,
+    input: CreateShareLinkInput,
+) -> Result<ShareLink, AppError> {
+    state.objects()?.create_share_link(input).await
+}
+
+/// Loads an image, PDF, or the beginning of a text file for preview.
+#[tauri::command]
+#[specta::specta]
+pub async fn preview_object(
+    state: State<'_, AppState>,
+    connection_id: String,
+    bucket: String,
+    key: String,
+) -> Result<ObjectPreview, AppError> {
+    state
+        .objects()?
+        .preview_object(&connection_id, &bucket, &key)
+        .await
 }
