@@ -10,6 +10,7 @@ mod repositories;
 mod security;
 mod services;
 mod transfers;
+mod updates;
 
 use std::sync::Arc;
 
@@ -32,6 +33,7 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             events::TransferUpdate,
             events::FilesDropped,
             events::FileDragHover,
+            updates::UpdateProgress,
         ])
         .commands(tauri_specta::collect_commands![
             commands::health::health,
@@ -72,6 +74,10 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::settings::get_settings,
             commands::settings::update_settings,
             commands::settings::reset_settings,
+            commands::updates::check_for_update,
+            commands::updates::install_update,
+            commands::updates::restart_app,
+            commands::updates::open_release_page,
         ])
 }
 
@@ -90,6 +96,9 @@ pub fn run() {
     tauri::Builder::default()
         // Used from Rust only; no dialog permission is granted to the frontend.
         .plugin(tauri_plugin_dialog::init())
+        // Same for the updater: the UI uses the commands in `commands::updates`.
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .manage(updates::UpdateState::default())
         .invoke_handler(builder.invoke_handler())
         .on_window_event(handle_file_drop)
         .setup(move |app| {

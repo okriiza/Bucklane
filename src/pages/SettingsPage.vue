@@ -64,6 +64,16 @@ async function reset() {
   }
 }
 
+async function setCheckForUpdates(value: boolean) {
+  form.checkForUpdates = value;
+  try {
+    await store.save({ ...store.settings, checkForUpdates: value });
+  } catch (err) {
+    error.value = toAppError(err);
+    form.checkForUpdates = store.settings.checkForUpdates;
+  }
+}
+
 /** The theme is applied and saved as soon as it is picked. */
 async function setTheme(value: Theme) {
   form.theme = value;
@@ -124,6 +134,23 @@ async function setTheme(value: Theme) {
           />
           <p class="text-muted-foreground col-span-2 text-xs">
             {{ $t(`settings.fields.${field.key}.hint`, { min: field.min, max: field.max }) }}
+          </p>
+        </div>
+      </section>
+
+      <section class="grid gap-4">
+        <h2 class="text-[15px] font-semibold tracking-tight">{{ $t("settings.updates") }}</h2>
+        <div class="grid grid-cols-[auto_1fr] items-start gap-x-3 gap-y-1">
+          <input
+            id="s-check-updates"
+            type="checkbox"
+            class="accent-primary mt-0.5 size-4"
+            :checked="form.checkForUpdates"
+            @change="setCheckForUpdates(($event.target as HTMLInputElement).checked)"
+          />
+          <Label for="s-check-updates">{{ $t("settings.checkForUpdates") }}</Label>
+          <p class="text-muted-foreground col-start-2 text-xs">
+            {{ $t("settings.checkForUpdatesHint") }}
           </p>
         </div>
       </section>

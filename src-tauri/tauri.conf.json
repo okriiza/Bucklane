@@ -32,6 +32,15 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEI1NjE2Mjk2MjgzNUM1QzQKUldURXhUVW9sbUpodGNzNnlWMzI0akhSbmI0VGhQUmtmTTJGRU5qc0o0SnZFbmZRcGNmcjBkc2kK",
+      "endpoints": [
+        "https://github.com/okriiza/Bucklane/releases/latest/download/latest.json"
+      ]
+    }
   }
 }

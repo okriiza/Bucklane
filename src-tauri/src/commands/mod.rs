@@ -5,3 +5,4 @@ pub mod health;
 pub mod objects;
 pub mod settings;
 pub mod transfers;
+pub mod updates;

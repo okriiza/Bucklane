@@ -29,6 +29,7 @@ mime_guess = "2"
 base64 = "0.22"
 tauri-plugin-dialog = "2.8"
 tauri-plugin-opener = "2.7"
+tauri-plugin-updater = "2.14"
 sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "sqlite", "migrate", "macros"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }

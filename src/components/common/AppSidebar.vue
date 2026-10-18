@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { Info, Settings } from "@lucide/vue";
+import { ArrowDownCircle, Info, Settings } from "@lucide/vue";
 
 import ConnectionList from "@/components/connections/ConnectionList.vue";
+import { useUpdateStore } from "@/stores/updates";
 
 import BackendStatusBadge from "./BackendStatusBadge.vue";
 import BrandMark from "./BrandMark.vue";
@@ -10,6 +11,8 @@ const links = [
   { to: "/settings", label: "nav.settings", icon: Settings },
   { to: "/about", label: "nav.about", icon: Info },
 ] as const;
+
+const updates = useUpdateStore();
 </script>
 
 <template>
@@ -35,6 +38,14 @@ const links = [
     </nav>
 
     <div class="border-sidebar-border flex flex-col gap-px border-t p-2">
+      <RouterLink
+        v-if="updates.update && ['available', 'installing', 'ready'].includes(updates.status)"
+        to="/about"
+        class="bg-primary/10 text-primary hover:bg-primary/15 mb-1 flex items-center gap-2.5 rounded-md px-2 py-1.5 text-[13px] font-medium transition-colors"
+      >
+        <ArrowDownCircle class="size-4" />
+        {{ $t("updates.sidebar", { version: updates.update.version }) }}
+      </RouterLink>
       <RouterLink
         v-for="link in links"
         :key="link.to"

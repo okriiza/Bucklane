@@ -166,7 +166,9 @@ chmod +x Bucklane_<version>_amd64.AppImage
 
 ### Updating
 
-Download the newer installer from the Releases page and install it over the existing app. Your connections, bookmarks, settings, and transfer history are kept.
+From **v0.4.0**, Bucklane updates itself. It checks for a new release when it starts (you can turn this off in Settings), shows **Update to …** in the sidebar when one is available, and installs it from **About → Updates**. Updates are signed, and Bucklane refuses any package that fails verification. On Windows the installer closes the app and reopens it; on macOS and Linux, click **Restart now** when the download finishes.
+
+To update manually, or from v0.3.0 and earlier, download the newer installer from the Releases page and install it over the existing app. Your connections, bookmarks, settings, and transfer history are kept either way.
 
 ### Uninstalling
 
@@ -298,13 +300,14 @@ The **Transfers** panel shows every upload and download with its progress, speed
 
 Open **Settings** in the sidebar.
 
-| Setting              | Default      | What it does                                                              |
-| -------------------- | ------------ | ------------------------------------------------------------------------- |
-| Theme                | Match system | Light, dark, or follow your system.                                       |
-| Concurrent transfers | 3            | How many uploads and downloads run at the same time (1–10).               |
-| Multipart threshold  | 64 MB        | Files this size or larger are uploaded in parts (5–5120 MB).              |
-| Part size            | 16 MB        | Size of each part; raised automatically for very large files (5–5120 MB). |
-| Items per page       | 100          | How many items the explorer loads at a time (50–1000).                    |
+| Setting                      | Default      | What it does                                                              |
+| ---------------------------- | ------------ | ------------------------------------------------------------------------- |
+| Theme                        | Match system | Light, dark, or follow your system.                                       |
+| Concurrent transfers         | 3            | How many uploads and downloads run at the same time (1–10).               |
+| Multipart threshold          | 64 MB        | Files this size or larger are uploaded in parts (5–5120 MB).              |
+| Part size                    | 16 MB        | Size of each part; raised automatically for very large files (5–5120 MB). |
+| Items per page               | 100          | How many items the explorer loads at a time (50–1000).                    |
+| Check for updates on startup | On           | Asks GitHub once per launch whether a newer release exists.               |
 
 **Reset to defaults** restores all settings without affecting your connections.
 
@@ -325,6 +328,8 @@ Open **Settings** in the sidebar.
 - Your secret access keys — they live only in the system keychain (macOS Keychain, Windows Credential Manager, or Linux Secret Service)
 - Your files, except where you choose to upload or download them
 - Usage data or crash reports — Bucklane has no telemetry
+
+The only request Bucklane makes on its own is the update check: one download of `latest.json` from GitHub Releases when the app starts. It sends nothing about you, your connections, or your files, and you can turn it off in Settings.
 
 Deleting a connection removes its secret from the keychain. Buckets and files on your storage provider are never affected by removing a connection.
 

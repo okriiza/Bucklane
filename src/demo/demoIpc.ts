@@ -281,7 +281,7 @@ const theme = params.get("theme") === "light" ? "light" : "dark";
 function respond(cmd: string, args: Record<string, unknown> = {}): unknown {
   switch (cmd) {
     case "health":
-      return { appVersion: "0.1.0", databaseOk: true, databaseError: null };
+      return { appVersion: "0.3.0", databaseOk: true, databaseError: null };
     case "list_connections":
       return connections;
     case "list_provider_profiles":
@@ -293,6 +293,7 @@ function respond(cmd: string, args: Record<string, unknown> = {}): unknown {
         multipartThresholdMb: 64,
         multipartPartSizeMb: 16,
         explorerPageSize: 100,
+        checkForUpdates: true,
       };
     case "list_transfers":
       return transfers;
@@ -304,6 +305,12 @@ function respond(cmd: string, args: Record<string, unknown> = {}): unknown {
       const request = args.request as { prefix?: string | null };
       return listObjects(request.prefix ?? "");
     }
+    case "check_for_update":
+      return { version: "0.4.0", currentVersion: "0.3.0" };
+    case "install_update":
+    case "open_release_page":
+    case "restart_app":
+      return null;
     case "head_object":
       return {
         key: args.key,
