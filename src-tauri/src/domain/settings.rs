@@ -22,6 +22,8 @@ pub struct AppSettings {
     pub multipart_threshold_mb: u32,
     pub multipart_part_size_mb: u32,
     pub explorer_page_size: u32,
+    /// Look for a new release on startup. Manual checks always work.
+    pub check_for_updates: bool,
 }
 
 impl Default for AppSettings {
@@ -32,6 +34,7 @@ impl Default for AppSettings {
             multipart_threshold_mb: 64,
             multipart_part_size_mb: 16,
             explorer_page_size: 100,
+            check_for_updates: true,
         }
     }
 }

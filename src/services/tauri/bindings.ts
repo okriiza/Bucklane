@@ -79,6 +79,23 @@ export const commands = {
 	/**  Validates, saves, and applies the settings immediately. */
 	updateSettings: (settings: AppSettings) => typedError<AppSettings, AppError>(__TAURI_INVOKE("update_settings", { settings })),
 	resetSettings: () => typedError<AppSettings, AppError>(__TAURI_INVOKE("reset_settings")),
+	/**  Asks the update server for a newer release; `None` when up to date. */
+	checkForUpdate: () => typedError<{
+	version: string,
+	currentVersion: string,
+} | null, AppError>(__TAURI_INVOKE("check_for_update")),
+	/**
+	 *  Installs the update found by the last check. Progress arrives as
+	 *  `update-progress` events. On Windows the app exits to run the installer.
+	 */
+	installUpdate: () => typedError<null, AppError>(__TAURI_INVOKE("install_update")),
+	/**  Relaunches the app to finish an installed update. */
+	restartApp: () => __TAURI_INVOKE<void>("restart_app"),
+	/**
+	 *  Opens the GitHub release page for `version` in the default browser. The
+	 *  URL is built here, so the frontend cannot open arbitrary addresses.
+	 */
+	openReleasePage: (version: string) => typedError<null, AppError>(__TAURI_INVOKE("open_release_page", { version })),
 };
 
 /** Events */
@@ -86,6 +103,7 @@ export const events = {
 	fileDragHover: makeEvent<FileDragHover>("file-drag-hover"),
 	filesDropped: makeEvent<FilesDropped>("files-dropped"),
 	transferUpdate: makeEvent<TransferUpdate>("transfer-update"),
+	updateProgress: makeEvent<UpdateProgress>("update-progress"),
 };
 
 /* Types */
@@ -119,6 +137,8 @@ export type AppSettings = {
 	multipartThresholdMb: number,
 	multipartPartSizeMb: number,
 	explorerPageSize: number,
+	/**  Look for a new release on startup. Manual checks always work. */
+	checkForUpdates: boolean,
 };
 
 /**
@@ -463,6 +483,17 @@ export type UpdateBucketBookmarkInput = {
 export type UpdateConnectionInput = {
 	id: string,
 } & ConnectionConfigInput;
+
+export type UpdateInfo = {
+	version: string,
+	currentVersion: string,
+};
+
+/**  Download progress of the update package. */
+export type UpdateProgress = {
+	downloaded: number | null,
+	total: number | null,
+};
 
 /* Tauri Specta runtime */
 async function typedError<T, E>(result: Promise<T>): Promise<{ status: "ok"; data: T } | { status: "error"; error: E }> {

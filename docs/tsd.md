@@ -937,6 +937,14 @@ Jika proses gagal, rollback atau recovery harus mencegah koneksi menunjuk ke sec
 - Content Security Policy dikonfigurasi.
 - Tidak menggunakan remote scripts yang tidak dipercaya.
 
+## 8.5 In-App Updates
+
+- Memakai `tauri-plugin-updater` dari Rust saja (`src-tauri/src/updates.rs`). Permission updater tidak diberikan ke frontend; UI memakai command `check_for_update`, `install_update`, `restart_app`, dan `open_release_page(version)`. URL release dibangun di Rust dari string versi yang divalidasi.
+- Endpoint: `https://github.com/okriiza/Bucklane/releases/latest/download/latest.json`. Draft release tidak terlihat oleh updater.
+- Paket update ditandatangani (minisign) oleh workflow rilis memakai secret `TAURI_SIGNING_PRIVATE_KEY`. Aplikasi memverifikasi tanda tangan terhadap `plugins.updater.pubkey` sebelum memasang; paket yang gagal verifikasi ditolak.
+- Cek otomatis sekali saat aplikasi dibuka, bisa dimatikan lewat setting `updates.check_on_startup`. Tidak ada data pengguna yang dikirim. Build development tidak melakukan cek otomatis.
+- Progress unduhan dikirim lewat event `update-progress`. Di Windows installer menutup aplikasi; di macOS/Linux UI meminta restart. UI meminta konfirmasi bila masih ada transfer berjalan.
+
 # 9. Transfer Engine Design
 
 ## 9.1 Architecture

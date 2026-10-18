@@ -33,8 +33,25 @@ A run takes roughly 15–25 minutes. You can also start it manually from the Act
 ## 3. Publish
 
 1. Open **Releases** on GitHub and find the draft named `Bucklane v<version>`.
-2. Check that every platform's files are attached and edit the notes if needed.
+2. Check that every platform's files are attached, including `latest.json` and the `.sig` files, and edit the notes if needed.
 3. Click **Publish release**. The files are now downloadable by anyone who can see the repository.
+
+Publishing also releases the update: installed copies of Bucklane read `releases/latest/download/latest.json`, so they see the new version on their next check. A draft is invisible to the updater.
+
+## In-app updates
+
+Bucklane updates itself with the Tauri updater (v0.4.0 and later; older versions must be updated by hand once). Every update package is signed, and the app refuses packages that do not match the public key in `src-tauri/tauri.conf.json` (`plugins.updater.pubkey`).
+
+The release workflow signs with two repository secrets:
+
+| Secret | Value |
+| --- | --- |
+| `TAURI_SIGNING_PRIVATE_KEY` | Contents of the private key file (e.g. `~/.tauri/bucklane.key`) |
+| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | The key's password |
+
+The build fails without them, because `bundle.createUpdaterArtifacts` is on.
+
+**Keep a backup of the private key and its password.** If the key is lost, existing installs can no longer verify updates and every user has to reinstall manually with a new key. To rotate keys, generate a new pair with `pnpm tauri signer generate -w ~/.tauri/bucklane.key`, update the secrets and the public key, and ship one release signed with the old key that carries the new public key.
 
 If a build fails, fix it, delete the tag (`git push --delete origin v0.1.0` and `git tag -d v0.1.0`), delete the draft release, and tag again.
 

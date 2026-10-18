@@ -11,6 +11,7 @@ const MAX_CONCURRENT: &str = "transfers.max_concurrent";
 const MULTIPART_THRESHOLD: &str = "transfers.multipart_threshold_mb";
 const PART_SIZE: &str = "transfers.multipart_part_size_mb";
 const PAGE_SIZE: &str = "explorer.page_size";
+const CHECK_UPDATES: &str = "updates.check_on_startup";
 
 pub struct SettingsService<'a> {
     repo: SettingsRepository<'a>,
@@ -39,6 +40,7 @@ impl<'a> SettingsService<'a> {
         );
         read(&stored, PART_SIZE, &mut settings.multipart_part_size_mb);
         read(&stored, PAGE_SIZE, &mut settings.explorer_page_size);
+        read(&stored, CHECK_UPDATES, &mut settings.check_for_updates);
         if settings.validate().is_err() {
             tracing::warn!("stored settings out of range; using defaults");
             return Ok(AppSettings::default());
@@ -55,6 +57,7 @@ impl<'a> SettingsService<'a> {
                 (MULTIPART_THRESHOLD, json(&settings.multipart_threshold_mb)),
                 (PART_SIZE, json(&settings.multipart_part_size_mb)),
                 (PAGE_SIZE, json(&settings.explorer_page_size)),
+                (CHECK_UPDATES, json(&settings.check_for_updates)),
             ])
             .await?;
         Ok(settings)
