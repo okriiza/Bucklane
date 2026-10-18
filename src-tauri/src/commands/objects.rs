@@ -4,7 +4,7 @@ use crate::app_state::AppState;
 use crate::domain::object::{
     CopyObjectInput, CreateFolderInput, CreateShareLinkInput, DeleteObjectsInput,
     DeleteObjectsResult, ListObjectsRequest, ListObjectsResponse, ObjectMetadata,
-    ObjectOperationOutcome, PrefixDeletePlan, ShareLink,
+    ObjectOperationOutcome, ObjectPreview, PrefixDeletePlan, ShareLink,
 };
 use crate::errors::AppError;
 
@@ -100,4 +100,19 @@ pub async fn create_share_link(
     input: CreateShareLinkInput,
 ) -> Result<ShareLink, AppError> {
     state.objects()?.create_share_link(input).await
+}
+
+/// Loads an image, PDF, or the beginning of a text file for preview.
+#[tauri::command]
+#[specta::specta]
+pub async fn preview_object(
+    state: State<'_, AppState>,
+    connection_id: String,
+    bucket: String,
+    key: String,
+) -> Result<ObjectPreview, AppError> {
+    state
+        .objects()?
+        .preview_object(&connection_id, &bucket, &key)
+        .await
 }

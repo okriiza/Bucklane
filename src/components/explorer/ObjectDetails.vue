@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Copy, Download, FolderInput, Link2, Pencil, Trash2, X } from "@lucide/vue";
+import { Copy, Download, Eye, FolderInput, Link2, Pencil, Trash2, X } from "@lucide/vue";
 
 import { Button } from "@/components/ui/button";
 import { useExplorerStore } from "@/stores/explorer";
@@ -7,7 +7,7 @@ import { formatBytes, formatDateTime } from "@/utils/format";
 
 const explorer = useExplorerStore();
 const emit = defineEmits<{
-  action: [action: "download" | "share" | "rename" | "copy" | "move" | "delete"];
+  action: [action: "preview" | "download" | "share" | "rename" | "copy" | "move" | "delete"];
 }>();
 </script>
 
@@ -34,7 +34,10 @@ const emit = defineEmits<{
         {{ explorer.selected?.name }}
       </p>
       <div class="mb-5 flex flex-wrap gap-1.5">
-        <Button size="sm" @click="emit('action', 'download')">
+        <Button size="sm" @click="emit('action', 'preview')">
+          <Eye /> {{ $t("preview.action") }}
+        </Button>
+        <Button variant="outline" size="sm" @click="emit('action', 'download')">
           <Download /> {{ $t("transfers.downloadAction") }}
         </Button>
         <Button variant="outline" size="sm" @click="emit('action', 'share')">

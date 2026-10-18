@@ -42,6 +42,7 @@ const never = [
 
 const shortcuts = [
   { keys: ["Enter"], label: "about.shortcuts.open" },
+  { keys: ["Space"], label: "about.shortcuts.preview" },
   { keys: ["F2"], label: "about.shortcuts.rename" },
   { keys: ["Delete"], label: "about.shortcuts.delete" },
   { keys: ["Esc"], label: "about.shortcuts.cancelDrag" },

@@ -167,6 +167,12 @@ export default {
     folderRenameUnsupported:
       "Renaming or moving folders isn't available yet. You can rename the files inside.",
   },
+  preview: {
+    action: "Preview",
+    spaceKey: "Space",
+    truncated: "Showing the first 512 KB of this file. Download it to see everything.",
+    pdfUnsupported: "PDF preview isn't available on Linux. Download the file to open it.",
+  },
   share: {
     menu: "Share link…",
     button: "Share",
@@ -337,6 +343,7 @@ export default {
     shortcuts: {
       title: "Keyboard shortcuts",
       open: "Open a folder or show file details",
+      preview: "Preview the focused file",
       rename: "Rename the focused file",
       delete: "Delete the focused item",
       cancelDrag: "Cancel a drag in progress",

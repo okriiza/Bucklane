@@ -588,7 +588,10 @@ delete_objects
 prepare_prefix_delete
 execute_prefix_delete
 create_share_link
+preview_object
 ```
+
+`preview_object` mengambil isi objek untuk preview di aplikasi: gambar (≤ 15 MB) dan PDF (≤ 25 MB) utuh, teks hanya 512 KB pertama melalui HTTP Range. Isi dikirim sebagai base64 dan ditampilkan melalui `blob:` URL, sehingga CSP cukup ditambah `img-src blob:` dan `frame-src blob:` tanpa mengizinkan origin remote.
 
 `create_share_link` membuat presigned GET URL untuk satu objek (60 detik sampai 7 hari, batas SigV4). Keberadaan objek dicek lebih dulu. URL tidak disimpan maupun dicatat di log karena berfungsi sebagai bearer credential (SEC-004); link hanya bisa dicabut lebih awal dengan merotasi access key.
 

@@ -24,6 +24,7 @@ import DeleteObjectsDialog from "@/components/explorer/DeleteObjectsDialog.vue";
 import ExplorerBreadcrumb from "@/components/explorer/ExplorerBreadcrumb.vue";
 import ObjectDetails from "@/components/explorer/ObjectDetails.vue";
 import ObjectTable, { type RowAction } from "@/components/explorer/ObjectTable.vue";
+import PreviewDialog from "@/components/explorer/PreviewDialog.vue";
 import ShareLinkDialog from "@/components/explorer/ShareLinkDialog.vue";
 import UploadButton from "@/components/explorer/UploadButton.vue";
 import { Button } from "@/components/ui/button";
@@ -218,8 +219,14 @@ async function copyToClipboard(text: string, label: string) {
   }
 }
 
+const previewOpen = ref(false);
+const previewKey = ref("");
+
 function onRowAction(action: RowAction, entry: StorageObject) {
-  if (action === "share") {
+  if (action === "preview") {
+    previewKey.value = entry.key;
+    previewOpen.value = true;
+  } else if (action === "share") {
     shareKey.value = entry.key;
     shareOpen.value = true;
   } else if (action === "copyKey") {
@@ -542,6 +549,13 @@ function goTo(prefix: string) {
       @confirm="confirmOverwrite"
     />
     <DeleteObjectsDialog v-model:open="deleteOpen" :entries="deleteTargets" />
+    <PreviewDialog
+      v-model:open="previewOpen"
+      :connection-id="id"
+      :bucket="bucket"
+      :object-key="previewKey"
+      @download="pickAndDownload(id, bucket, [previewKey])"
+    />
     <ShareLinkDialog
       v-model:open="shareOpen"
       :connection-id="id"

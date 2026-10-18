@@ -163,3 +163,25 @@ pub struct ShareLink {
     pub url: String,
     pub expires_at: String,
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Type)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum PreviewKind {
+    Image,
+    Pdf,
+    Text,
+}
+
+/// Object contents for in-app preview, fetched by the backend so the
+/// webview's CSP never has to allow remote origins.
+#[derive(Debug, Clone, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct ObjectPreview {
+    pub kind: PreviewKind,
+    pub content_type: String,
+    pub data_base64: String,
+    /// Text previews include only the beginning of large files.
+    pub truncated: bool,
+    #[specta(type = Option<f64>)]
+    pub size: Option<i64>,
+}

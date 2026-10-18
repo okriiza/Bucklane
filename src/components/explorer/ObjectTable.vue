@@ -9,7 +9,7 @@ import { extensionOf } from "@/utils/prefix";
 import RowActions from "./RowActions.vue";
 
 export type RowAction =
-  "download" | "share" | "copyKey" | "copyUri" | "rename" | "copy" | "move" | "delete";
+  "preview" | "download" | "share" | "copyKey" | "copyUri" | "rename" | "copy" | "move" | "delete";
 
 const props = defineProps<{
   entries: StorageObject[];
@@ -99,6 +99,8 @@ function activate(entry: StorageObject) {
         @keydown.enter.self.prevent="activate(entry)"
         @keydown.delete.self.prevent="emit('action', 'delete', entry)"
         @keydown.f2.self.prevent="!entry.isPrefix && emit('action', 'rename', entry)"
+        @keydown.space.self.prevent="!entry.isPrefix && emit('action', 'preview', entry)"
+        @dblclick="!entry.isPrefix && emit('action', 'preview', entry)"
       >
         <td class="pl-4" @click.stop>
           <input
@@ -131,6 +133,7 @@ function activate(entry: StorageObject) {
           <RowActions
             :entry="entry"
             @details="emit('select', entry.key)"
+            @preview="emit('action', 'preview', entry)"
             @download="emit('action', 'download', entry)"
             @share="emit('action', 'share', entry)"
             @copy-key="emit('action', 'copyKey', entry)"

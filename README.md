@@ -41,6 +41,7 @@ Available for **macOS** (Apple Silicon and Intel), **Windows**, and **Linux**.
 | **Drag and drop**                         | Drop files or whole folders from your desktop into Bucklane to upload them with their structure intact, or drag files onto another folder to move them inside the bucket.                                             |
 | **Safe file operations**                  | Rename, copy, and move files. A move deletes the original only after the copy is verified. Replacing an existing file always asks first.                                                                              |
 | **Folder delete you can trust**           | Before deleting a folder, Bucklane counts exactly how many objects and bytes will be removed and deletes only those.                                                                                                  |
+| **Quick preview**                         | Press Space or double-click to preview images, PDFs, and text or code files without downloading them first.                                                                                                           |
 | **Share links**                           | Create a time-limited download link for any file (15 minutes to 7 days) and copy it in one click. Copy an object's key or `s3://` URI just as quickly.                                                                |
 | **Bookmarks and pinned buckets**          | Open a bucket by name even when your keys can't list buckets, and star the ones you use most so they appear on the Overview.                                                                                          |
 | **Overview dashboard**                    | See active transfers, what you uploaded and downloaded today, your connections, pinned buckets, and recent activity at a glance.                                                                                      |
@@ -247,6 +248,13 @@ Nothing is ever overwritten without your confirmation.
 - Open the **⋯** menu on a file and choose **Rename**, **Copy**, or **Move**. You can also press **F2** to rename.
 - To move files into a folder, **drag** them onto that folder or onto a folder in the breadcrumb. Tick several files first to move them together.
 
+### Previewing files
+
+- Select a file and press **Space**, double-click it, or choose **Preview** from the **⋯** menu or the details panel.
+- **Images** (PNG, JPG, GIF, WebP, SVG, AVIF, BMP, ICO) up to 15 MB and **PDFs** up to 25 MB open in full.
+- **Text and code** (TXT, Markdown, JSON, CSV, logs, YAML, XML, SQL, and more) show the first 512 KB, so even huge log files open instantly. JSON is formatted automatically.
+- Other file types, or files over the limits, can be downloaded from the same window.
+
 ### Sharing files
 
 - Open the **⋯** menu on a file and choose **Share link…**, or click the file and use **Share** in the details panel.
@@ -278,6 +286,7 @@ The **Transfers** panel shows every upload and download with its progress and st
 | Key      | Action                                          |
 | -------- | ----------------------------------------------- |
 | `Enter`  | Open a folder, or show a file's details         |
+| `Space`  | Preview the focused file                        |
 | `F2`     | Rename the focused file                         |
 | `Delete` | Delete the focused item (asks for confirmation) |
 | `Esc`    | Cancel a drag in progress                       |
@@ -343,6 +352,7 @@ Deleting a connection removes its secret from the keychain. Buckets and files on
 - A single folder delete is limited to **100,000** objects.
 - Transfers don't resume after the app is closed; they're marked as failed and can be retried from the start.
 - Installers aren't code-signed yet (see [Download and install](#download-and-install)).
+- PDF preview isn't available on Linux (the system web view has no PDF viewer); download the file instead.
 - The interface is in English.
 
 ---

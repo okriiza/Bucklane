@@ -57,6 +57,7 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::objects::prepare_prefix_delete,
             commands::objects::execute_prefix_delete,
             commands::objects::create_share_link,
+            commands::objects::preview_object,
             commands::files::pick_upload_files,
             commands::files::pick_upload_folder,
             commands::files::pick_download_directory,

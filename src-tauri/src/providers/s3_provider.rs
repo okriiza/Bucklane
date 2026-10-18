@@ -162,6 +162,34 @@ impl StorageProvider for S3StorageProvider {
             .map_err(|e| map_sdk_error(e, ErrorCode::ObjectNotFound))
     }
 
+    async fn get_bytes(
+        &self,
+        bucket: &str,
+        key: &str,
+        max_bytes: Option<u64>,
+    ) -> Result<Vec<u8>, AppError> {
+        let range = max_bytes
+            .filter(|n| *n > 0)
+            .map(|n| format!("bytes=0-{}", n - 1));
+        let output = self
+            .client
+            .get_object()
+            .bucket(bucket)
+            .key(key)
+            .set_range(range)
+            .send()
+            .await
+            .map_err(|e| map_sdk_error(e, ErrorCode::ObjectNotFound))?;
+        let bytes = output.body.collect().await.map_err(|err| {
+            AppError::new(
+                ErrorCode::TransferFailed,
+                "The connection was interrupted while loading the preview.",
+            )
+            .with_details(err.to_string())
+        })?;
+        Ok(bytes.into_bytes().to_vec())
+    }
+
     async fn presign_get(
         &self,
         bucket: &str,

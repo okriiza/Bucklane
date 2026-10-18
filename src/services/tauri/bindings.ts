@@ -39,6 +39,8 @@ export const commands = {
 	executePrefixDelete: (planId: string) => typedError<DeleteObjectsResult, AppError>(__TAURI_INVOKE("execute_prefix_delete", { planId })),
 	/**  Presigned download URL; anyone with the link can download until it expires. */
 	createShareLink: (input: CreateShareLinkInput) => typedError<ShareLink, AppError>(__TAURI_INVOKE("create_share_link", { input })),
+	/**  Loads an image, PDF, or the beginning of a text file for preview. */
+	previewObject: (connectionId: string, bucket: string, key: string) => typedError<ObjectPreview, AppError>(__TAURI_INVOKE("preview_object", { connectionId, bucket, key })),
 	/**
 	 *  Opens the native file picker from Rust and returns opaque selections; the
 	 *  frontend never sees a path it could send back (TSD §6.4, ADR-012).
@@ -321,6 +323,19 @@ export type ObjectOperationOutcome = { kind: "completed" } |
 /**  Move only: the copy succeeded but the source was deliberately kept. */
 { kind: "sourceKept"; reason: string };
 
+/**
+ *  Object contents for in-app preview, fetched by the backend so the
+ *  webview's CSP never has to allow remote origins.
+ */
+export type ObjectPreview = {
+	kind: PreviewKind,
+	contentType: string,
+	dataBase64: string,
+	/**  Text previews include only the beginning of large files. */
+	truncated: boolean,
+	size: number | null,
+};
+
 /**  Snapshot of the keys a folder delete will remove (TSD §6.3.2). */
 export type PrefixDeletePlan = {
 	planId: string,
@@ -331,6 +346,8 @@ export type PrefixDeletePlan = {
 	sampleKeys: string[],
 	expiresAt: string,
 };
+
+export type PreviewKind = "IMAGE" | "PDF" | "TEXT";
 
 /**
  *  Defaults and form hints for a provider (TSD §5.3). Profiles never replace

@@ -4,7 +4,7 @@ use crate::domain::bucket::validate_bucket_name;
 use crate::domain::object::{
     ConflictPolicy, CopyObjectInput, CreateFolderInput, CreateShareLinkInput, DeleteObjectsInput,
     DeleteObjectsResult, ListObjectsRequest, ListObjectsResponse, ObjectMetadata,
-    ObjectOperationOutcome, PrefixDeletePlan, ShareLink,
+    ObjectOperationOutcome, ObjectPreview, PrefixDeletePlan, PreviewKind, ShareLink,
 };
 use crate::errors::{AppError, ErrorCode};
 use crate::providers::s3_provider::S3StorageProvider;
@@ -21,6 +21,11 @@ const MAX_SINGLE_COPY_BYTES: i64 = 5 * 1024 * 1024 * 1024;
 const DELETE_BATCH: usize = 1000;
 const MAX_PREFIX_DELETE_OBJECTS: usize = 100_000;
 const SAMPLE_KEYS: usize = 10;
+/// Preview limits: images and PDFs load whole, text loads only its beginning.
+const MAX_IMAGE_PREVIEW_BYTES: i64 = 15 * 1024 * 1024;
+const MAX_PDF_PREVIEW_BYTES: i64 = 25 * 1024 * 1024;
+const TEXT_PREVIEW_BYTES: u64 = 512 * 1024;
+
 /// Presigned URL lifetime bounds; SigV4 signatures are valid for at most 7 days.
 const MIN_SHARE_SECONDS: u32 = 60;
 const MAX_SHARE_SECONDS: u32 = 7 * 24 * 60 * 60;
@@ -85,6 +90,66 @@ impl<'a> ObjectService<'a> {
             .await?
             .head_object(bucket, key)
             .await
+    }
+
+    /// Loads an object for in-app preview within the size limits above.
+    pub async fn preview_object(
+        &self,
+        connection_id: &str,
+        bucket: &str,
+        key: &str,
+    ) -> Result<ObjectPreview, AppError> {
+        use base64::Engine;
+
+        let bucket = validate_bucket_name(bucket)?;
+        validate_key(key)?;
+        let provider = self.provider(connection_id, bucket).await?;
+        let metadata = provider.head_object(bucket, key).await?;
+        let Some(kind) = preview_kind(key, metadata.content_type.as_deref()) else {
+            return Err(AppError::new(
+                ErrorCode::OperationUnsupported,
+                "This type of file can't be previewed. Download it to open it.",
+            ));
+        };
+
+        let size = metadata.size.unwrap_or(0);
+        let limit = match kind {
+            PreviewKind::Image => Some(MAX_IMAGE_PREVIEW_BYTES),
+            PreviewKind::Pdf => Some(MAX_PDF_PREVIEW_BYTES),
+            PreviewKind::Text => None,
+        };
+        if let Some(limit) = limit.filter(|limit| size > *limit) {
+            return Err(AppError::new(
+                ErrorCode::OperationUnsupported,
+                format!(
+                    "This file is too large to preview (limit {} MB). Download it to open it.",
+                    limit / (1024 * 1024)
+                ),
+            ));
+        }
+
+        let range = (kind == PreviewKind::Text).then_some(TEXT_PREVIEW_BYTES);
+        let bytes = provider.get_bytes(bucket, key, range).await?;
+        let truncated = kind == PreviewKind::Text && size > bytes.len() as i64;
+        let content_type = metadata
+            .content_type
+            .filter(|t| {
+                !t.is_empty() && t != "application/octet-stream" && t != "binary/octet-stream"
+            })
+            .unwrap_or_else(|| {
+                mime_guess::from_path(key)
+                    .first_raw()
+                    .unwrap_or("application/octet-stream")
+                    .to_owned()
+            });
+
+        Ok(ObjectPreview {
+            kind,
+            content_type,
+            data_base64: base64::engine::general_purpose::STANDARD.encode(bytes),
+            truncated,
+            size: metadata.size,
+        })
     }
 
     /// Presigned download link for one object. The object's existence is
@@ -456,6 +521,44 @@ fn validate_key(key: &str) -> Result<(), AppError> {
     check_len(key, "object key")
 }
 
+const IMAGE_EXTENSIONS: [&str; 9] = [
+    "png", "jpg", "jpeg", "gif", "webp", "svg", "avif", "bmp", "ico",
+];
+const TEXT_EXTENSIONS: [&str; 27] = [
+    "txt", "md", "markdown", "json", "jsonl", "ndjson", "csv", "tsv", "log", "xml", "yaml", "yml",
+    "toml", "ini", "conf", "env", "html", "htm", "css", "js", "mjs", "ts", "sql", "sh", "py", "rs",
+    "go",
+];
+
+/// Decides how an object can be previewed: by extension first, then by its
+/// stored content type. `None` means no preview.
+fn preview_kind(key: &str, content_type: Option<&str>) -> Option<PreviewKind> {
+    let name = key.rsplit('/').next().unwrap_or(key);
+    let extension = name
+        .rfind('.')
+        .filter(|i| *i > 0)
+        .map(|i| name[i + 1..].to_ascii_lowercase());
+    match extension.as_deref() {
+        Some(ext) if IMAGE_EXTENSIONS.contains(&ext) => return Some(PreviewKind::Image),
+        Some("pdf") => return Some(PreviewKind::Pdf),
+        Some(ext) if TEXT_EXTENSIONS.contains(&ext) => return Some(PreviewKind::Text),
+        _ => {}
+    }
+    let content_type = content_type?.to_ascii_lowercase();
+    if content_type.starts_with("image/") {
+        Some(PreviewKind::Image)
+    } else if content_type == "application/pdf" {
+        Some(PreviewKind::Pdf)
+    } else if content_type.starts_with("text/")
+        || content_type == "application/json"
+        || content_type == "application/xml"
+    {
+        Some(PreviewKind::Text)
+    } else {
+        None
+    }
+}
+
 fn validate_share_duration(seconds: u32) -> Result<u32, AppError> {
     if (MIN_SHARE_SECONDS..=MAX_SHARE_SECONDS).contains(&seconds) {
         Ok(seconds)
@@ -502,6 +605,30 @@ mod tests {
         for bad in ["", "  ", "a/b", ".", "..", "tab\there"] {
             assert!(validate_folder_name(bad).is_err(), "{bad:?}");
         }
+    }
+
+    #[test]
+    fn detects_preview_kinds() {
+        assert_eq!(preview_kind("a/photo.JPG", None), Some(PreviewKind::Image));
+        assert_eq!(preview_kind("deck.pdf", None), Some(PreviewKind::Pdf));
+        assert_eq!(
+            preview_kind("data/export.csv", None),
+            Some(PreviewKind::Text)
+        );
+        assert_eq!(
+            preview_kind("noext", Some("text/plain")),
+            Some(PreviewKind::Text)
+        );
+        assert_eq!(
+            preview_kind("blob", Some("image/heic")),
+            Some(PreviewKind::Image)
+        );
+        assert_eq!(preview_kind("archive.zip", Some("application/zip")), None);
+        assert_eq!(
+            preview_kind(".env", None),
+            None,
+            "dotfiles have no extension"
+        );
     }
 
     #[test]
@@ -714,6 +841,55 @@ mod s3_integration_tests {
             .unwrap_err();
         assert_eq!(err.code, ErrorCode::ObjectNotFound);
         assert!(!f.exists("elsewhere.txt").await);
+    }
+
+    #[tokio::test]
+    async fn preview_loads_only_the_start_of_large_text_files() {
+        use base64::Engine;
+
+        let Some(f) = Fixture::new().await else {
+            return;
+        };
+        let big = "0123456789abcdef".repeat(40 * 1024); // 640 KiB
+        f.raw()
+            .await
+            .put_object()
+            .bucket(&f.bucket)
+            .key("logs/app.log")
+            .body(ByteStream::from(big.clone().into_bytes()))
+            .send()
+            .await
+            .unwrap();
+        f.put("img/pixel.png", b"\x89PNG fake").await;
+        f.put("bundle.zip", b"PK").await;
+
+        let text = f
+            .service()
+            .preview_object(&f.connection_id, &f.bucket, "logs/app.log")
+            .await
+            .unwrap();
+        let decoded = base64::engine::general_purpose::STANDARD
+            .decode(&text.data_base64)
+            .unwrap();
+        assert_eq!(text.kind, PreviewKind::Text);
+        assert!(text.truncated);
+        assert_eq!(decoded.len(), TEXT_PREVIEW_BYTES as usize);
+        assert_eq!(decoded, &big.as_bytes()[..TEXT_PREVIEW_BYTES as usize]);
+
+        let image = f
+            .service()
+            .preview_object(&f.connection_id, &f.bucket, "img/pixel.png")
+            .await
+            .unwrap();
+        assert_eq!(image.kind, PreviewKind::Image);
+        assert!(!image.truncated);
+
+        let err = f
+            .service()
+            .preview_object(&f.connection_id, &f.bucket, "bundle.zip")
+            .await
+            .unwrap_err();
+        assert_eq!(err.code, ErrorCode::OperationUnsupported);
     }
 
     /// The link must download the object without any credentials.

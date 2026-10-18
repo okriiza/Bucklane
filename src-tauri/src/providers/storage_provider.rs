@@ -43,6 +43,14 @@ pub trait StorageProvider: Send + Sync {
 
     async fn delete_object(&self, bucket: &str, key: &str) -> Result<(), AppError>;
 
+    /// Object bytes, or only the first `max_bytes` when given (HTTP Range).
+    async fn get_bytes(
+        &self,
+        bucket: &str,
+        key: &str,
+        max_bytes: Option<u64>,
+    ) -> Result<Vec<u8>, AppError>;
+
     /// Presigned GET URL valid for `expires_in`. Signing is local; no request
     /// is sent to the provider.
     async fn presign_get(

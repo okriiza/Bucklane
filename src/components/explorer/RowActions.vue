@@ -3,6 +3,7 @@ import {
   ClipboardCopy,
   Copy,
   Download,
+  Eye,
   FolderInput,
   Info,
   Link2,
@@ -24,6 +25,7 @@ import type { StorageObject } from "@/services/tauri";
 defineProps<{ entry: StorageObject }>();
 const emit = defineEmits<{
   details: [];
+  preview: [];
   download: [];
   share: [];
   copyKey: [];
@@ -55,6 +57,12 @@ const itemClass =
         class="bg-popover text-popover-foreground data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 z-50 min-w-44 rounded-lg border p-1 shadow-[var(--shadow-float)]"
       >
         <template v-if="!entry.isPrefix">
+          <DropdownMenuItem :class="itemClass" @select="emit('preview')">
+            <Eye /> {{ $t("preview.action") }}
+            <span class="text-muted-foreground ml-auto pl-4 text-xs">{{
+              $t("preview.spaceKey")
+            }}</span>
+          </DropdownMenuItem>
           <DropdownMenuItem :class="itemClass" @select="emit('details')">
             <Info /> {{ $t("explorer.details") }}
           </DropdownMenuItem>
