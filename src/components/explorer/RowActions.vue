@@ -1,5 +1,15 @@
 <script setup lang="ts">
-import { Copy, Download, FolderInput, Info, MoreHorizontal, Pencil, Trash2 } from "@lucide/vue";
+import {
+  ClipboardCopy,
+  Copy,
+  Download,
+  FolderInput,
+  Info,
+  Link2,
+  MoreHorizontal,
+  Pencil,
+  Trash2,
+} from "@lucide/vue";
 import {
   DropdownMenuContent,
   DropdownMenuItem,
@@ -15,6 +25,9 @@ defineProps<{ entry: StorageObject }>();
 const emit = defineEmits<{
   details: [];
   download: [];
+  share: [];
+  copyKey: [];
+  copyUri: [];
   rename: [];
   copy: [];
   move: [];
@@ -48,6 +61,10 @@ const itemClass =
           <DropdownMenuItem :class="itemClass" @select="emit('download')">
             <Download /> {{ $t("transfers.downloadAction") }}
           </DropdownMenuItem>
+          <DropdownMenuItem :class="itemClass" @select="emit('share')">
+            <Link2 /> {{ $t("share.menu") }}
+          </DropdownMenuItem>
+          <DropdownMenuSeparator class="bg-border -mx-1 my-1 h-px" />
           <DropdownMenuItem :class="itemClass" @select="emit('rename')">
             <Pencil /> {{ $t("ops.rename") }}
             <span class="text-muted-foreground ml-auto pl-4 text-xs">F2</span>
@@ -73,6 +90,13 @@ const itemClass =
           </p>
           <DropdownMenuSeparator class="bg-border -mx-1 my-1 h-px" />
         </template>
+        <DropdownMenuItem :class="itemClass" @select="emit('copyKey')">
+          <ClipboardCopy /> {{ $t("share.copyKey") }}
+        </DropdownMenuItem>
+        <DropdownMenuItem :class="itemClass" @select="emit('copyUri')">
+          <ClipboardCopy /> {{ $t("share.copyUri") }}
+        </DropdownMenuItem>
+        <DropdownMenuSeparator class="bg-border -mx-1 my-1 h-px" />
         <DropdownMenuItem
           :class="[itemClass, 'text-destructive data-[highlighted]:text-destructive']"
           @select="emit('delete')"

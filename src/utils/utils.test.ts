@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { s3Uri } from "./clipboard";
 import { endpointHost, formatBytes, formatDateTime, formatRelative } from "./format";
 import { extensionOf, parentPrefix, prefixSegments } from "./prefix";
 
@@ -73,5 +74,12 @@ describe("endpointHost", () => {
     expect(endpointHost("https://abc.supabase.co/storage/v1/s3", "x")).toBe("abc.supabase.co");
     expect(endpointHost("http://localhost:9000", "x")).toBe("localhost:9000");
     expect(endpointHost(null, "ap-southeast-1")).toBe("s3.ap-southeast-1.amazonaws.com");
+  });
+});
+
+describe("s3Uri", () => {
+  it("joins bucket and key", () => {
+    expect(s3Uri("media", "marketing/deck.pdf")).toBe("s3://media/marketing/deck.pdf");
+    expect(s3Uri("media", "folder/")).toBe("s3://media/folder/");
   });
 });

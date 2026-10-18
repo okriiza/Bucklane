@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use async_trait::async_trait;
 
 use crate::domain::bucket::BucketInfo;
@@ -40,6 +42,15 @@ pub trait StorageProvider: Send + Sync {
     ) -> Result<(), AppError>;
 
     async fn delete_object(&self, bucket: &str, key: &str) -> Result<(), AppError>;
+
+    /// Presigned GET URL valid for `expires_in`. Signing is local; no request
+    /// is sent to the provider.
+    async fn presign_get(
+        &self,
+        bucket: &str,
+        key: &str,
+        expires_in: Duration,
+    ) -> Result<String, AppError>;
 
     /// Deletes up to 1000 keys, reporting per-key failures.
     async fn delete_objects(

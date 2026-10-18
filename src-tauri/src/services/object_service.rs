@@ -2,9 +2,9 @@ use chrono::{SecondsFormat, Utc};
 
 use crate::domain::bucket::validate_bucket_name;
 use crate::domain::object::{
-    ConflictPolicy, CopyObjectInput, CreateFolderInput, DeleteObjectsInput, DeleteObjectsResult,
-    ListObjectsRequest, ListObjectsResponse, ObjectMetadata, ObjectOperationOutcome,
-    PrefixDeletePlan,
+    ConflictPolicy, CopyObjectInput, CreateFolderInput, CreateShareLinkInput, DeleteObjectsInput,
+    DeleteObjectsResult, ListObjectsRequest, ListObjectsResponse, ObjectMetadata,
+    ObjectOperationOutcome, PrefixDeletePlan, ShareLink,
 };
 use crate::errors::{AppError, ErrorCode};
 use crate::providers::s3_provider::S3StorageProvider;
@@ -21,6 +21,9 @@ const MAX_SINGLE_COPY_BYTES: i64 = 5 * 1024 * 1024 * 1024;
 const DELETE_BATCH: usize = 1000;
 const MAX_PREFIX_DELETE_OBJECTS: usize = 100_000;
 const SAMPLE_KEYS: usize = 10;
+/// Presigned URL lifetime bounds; SigV4 signatures are valid for at most 7 days.
+const MIN_SHARE_SECONDS: u32 = 60;
+const MAX_SHARE_SECONDS: u32 = 7 * 24 * 60 * 60;
 
 /// Object operations for the explorer (EXP-*, FIL-003..006).
 pub struct ObjectService<'a> {
@@ -82,6 +85,36 @@ impl<'a> ObjectService<'a> {
             .await?
             .head_object(bucket, key)
             .await
+    }
+
+    /// Presigned download link for one object. The object's existence is
+    /// checked first so the user never shares a link that cannot work.
+    pub async fn create_share_link(
+        &self,
+        input: CreateShareLinkInput,
+    ) -> Result<ShareLink, AppError> {
+        let bucket = validate_bucket_name(&input.bucket)?;
+        validate_key(&input.key)?;
+        if input.key.ends_with('/') {
+            return Err(AppError::new(
+                ErrorCode::OperationUnsupported,
+                "Links can only be created for files, not folders.",
+            ));
+        }
+        let seconds = validate_share_duration(input.expires_in_seconds)?;
+
+        let provider = self.provider(&input.connection_id, bucket).await?;
+        provider.head_object(bucket, &input.key).await?;
+        let expires_in = std::time::Duration::from_secs(u64::from(seconds));
+        let url = provider.presign_get(bucket, &input.key, expires_in).await?;
+        let expires_at = Utc::now() + chrono::Duration::seconds(i64::from(seconds));
+
+        // The URL itself is a bearer credential and is deliberately not logged.
+        tracing::info!(connection_id = %input.connection_id, seconds, "share link created");
+        Ok(ShareLink {
+            url,
+            expires_at: expires_at.to_rfc3339_opts(SecondsFormat::Millis, true),
+        })
     }
 
     /// Creates a zero-byte `name/` marker so an empty folder is visible
@@ -423,6 +456,16 @@ fn validate_key(key: &str) -> Result<(), AppError> {
     check_len(key, "object key")
 }
 
+fn validate_share_duration(seconds: u32) -> Result<u32, AppError> {
+    if (MIN_SHARE_SECONDS..=MAX_SHARE_SECONDS).contains(&seconds) {
+        Ok(seconds)
+    } else {
+        Err(invalid(
+            "A link must be valid for between 1 minute and 7 days.",
+        ))
+    }
+}
+
 fn validate_folder_name(name: &str) -> Result<&str, AppError> {
     let name = name.trim();
     if name.is_empty() {
@@ -459,6 +502,14 @@ mod tests {
         for bad in ["", "  ", "a/b", ".", "..", "tab\there"] {
             assert!(validate_folder_name(bad).is_err(), "{bad:?}");
         }
+    }
+
+    #[test]
+    fn share_duration_is_bounded_by_sigv4_limit() {
+        assert!(validate_share_duration(59).is_err());
+        assert!(validate_share_duration(60).is_ok());
+        assert!(validate_share_duration(7 * 24 * 3600).is_ok());
+        assert!(validate_share_duration(7 * 24 * 3600 + 1).is_err());
     }
 
     #[test]
@@ -663,6 +714,45 @@ mod s3_integration_tests {
             .unwrap_err();
         assert_eq!(err.code, ErrorCode::ObjectNotFound);
         assert!(!f.exists("elsewhere.txt").await);
+    }
+
+    /// The link must download the object without any credentials.
+    #[tokio::test]
+    async fn share_link_downloads_without_credentials() {
+        let Some(f) = Fixture::new().await else {
+            return;
+        };
+        f.put("reports/q3.txt", b"quarterly numbers").await;
+
+        let link = f
+            .service()
+            .create_share_link(CreateShareLinkInput {
+                connection_id: f.connection_id.clone(),
+                bucket: f.bucket.clone(),
+                key: "reports/q3.txt".into(),
+                expires_in_seconds: 300,
+            })
+            .await
+            .unwrap();
+
+        let output = std::process::Command::new("curl")
+            .args(["-sf", &link.url])
+            .output()
+            .expect("curl is available");
+        assert!(output.status.success(), "link request failed");
+        assert_eq!(output.stdout, b"quarterly numbers");
+
+        let missing = f
+            .service()
+            .create_share_link(CreateShareLinkInput {
+                connection_id: f.connection_id.clone(),
+                bucket: f.bucket.clone(),
+                key: "reports/missing.txt".into(),
+                expires_in_seconds: 300,
+            })
+            .await
+            .unwrap_err();
+        assert_eq!(missing.code, ErrorCode::ObjectNotFound);
     }
 
     #[tokio::test]

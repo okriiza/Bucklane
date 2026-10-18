@@ -41,6 +41,7 @@ Available for **macOS** (Apple Silicon and Intel), **Windows**, and **Linux**.
 | **Drag and drop**                         | Drop files from your desktop or Finder/Explorer into a folder to upload them, or drag files onto another folder to move them inside the bucket.                              |
 | **Safe file operations**                  | Rename, copy, and move files. A move deletes the original only after the copy is verified. Replacing an existing file always asks first.                                     |
 | **Folder delete you can trust**           | Before deleting a folder, Bucklane counts exactly how many objects and bytes will be removed and deletes only those.                                                         |
+| **Share links**                           | Create a time-limited download link for any file (15 minutes to 7 days) and copy it in one click. Copy an object's key or `s3://` URI just as quickly.                       |
 | **Bookmarks and pinned buckets**          | Open a bucket by name even when your keys can't list buckets, and star the ones you use most so they appear on the Overview.                                                 |
 | **Overview dashboard**                    | See active transfers, what you uploaded and downloaded today, your connections, pinned buckets, and recent activity at a glance.                                             |
 | **Light and dark mode**                   | Follows your system, or pick one in Settings.                                                                                                                                |
@@ -244,6 +245,13 @@ Nothing is ever overwritten without your confirmation.
 
 - Open the **⋯** menu on a file and choose **Rename**, **Copy**, or **Move**. You can also press **F2** to rename.
 - To move files into a folder, **drag** them onto that folder or onto a folder in the breadcrumb. Tick several files first to move them together.
+
+### Sharing files
+
+- Open the **⋯** menu on a file and choose **Share link…**, or click the file and use **Share** in the details panel.
+- Pick how long the link should work (15 minutes, 1 hour, 1 day, or 7 days) and click **Create link**. The link is copied to your clipboard.
+- Anyone with the link can download the file until it expires. Bucklane doesn't keep a list of created links; to cut off a link early, rotate the connection's access key.
+- To copy where an object lives, use **Copy key** or **Copy S3 URI** (`s3://bucket/key`) from the **⋯** menu. These work for folders too.
 
 ### Creating folders
 

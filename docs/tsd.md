@@ -587,7 +587,10 @@ move_object
 delete_objects
 prepare_prefix_delete
 execute_prefix_delete
+create_share_link
 ```
+
+`create_share_link` membuat presigned GET URL untuk satu objek (60 detik sampai 7 hari, batas SigV4). Keberadaan objek dicek lebih dulu. URL tidak disimpan maupun dicatat di log karena berfungsi sebagai bearer credential (SEC-004); link hanya bisa dicabut lebih awal dengan merotasi access key.
 
 Rename adalah `move_object` dengan bucket yang sama dan key tujuan baru; tidak ada command rename terpisah.
 

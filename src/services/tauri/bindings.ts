@@ -37,6 +37,8 @@ export const commands = {
 	deleteObjects: (input: DeleteObjectsInput) => typedError<DeleteObjectsResult, AppError>(__TAURI_INVOKE("delete_objects", { input })),
 	preparePrefixDelete: (connectionId: string, bucket: string, prefix: string) => typedError<PrefixDeletePlan, AppError>(__TAURI_INVOKE("prepare_prefix_delete", { connectionId, bucket, prefix })),
 	executePrefixDelete: (planId: string) => typedError<DeleteObjectsResult, AppError>(__TAURI_INVOKE("execute_prefix_delete", { planId })),
+	/**  Presigned download URL; anyone with the link can download until it expires. */
+	createShareLink: (input: CreateShareLinkInput) => typedError<ShareLink, AppError>(__TAURI_INVOKE("create_share_link", { input })),
 	/**
 	 *  Opens the native file picker from Rust and returns opaque selections; the
 	 *  frontend never sees a path it could send back (TSD §6.4, ADR-012).
@@ -174,6 +176,14 @@ export type CreateFolderInput = {
 	/**  Parent folder prefix; empty for the bucket root. */
 	prefix: string,
 	name: string,
+};
+
+export type CreateShareLinkInput = {
+	connectionId: string,
+	bucket: string,
+	key: string,
+	/**  60 seconds to 7 days (the SigV4 maximum). */
+	expiresInSeconds: number,
 };
 
 export type DeleteConnectionResult = {
@@ -334,6 +344,15 @@ export type ProviderType = "aws" | "supabase" | "minio" | "cloudflare_r2" | "was
  *  redacted so it cannot leak through logs or error formatting (SEC-004).
  */
 export type SecretString = string;
+
+/**
+ *  A presigned download URL. Never persisted or logged (SEC-004); it grants
+ *  access to anyone holding it until `expires_at`.
+ */
+export type ShareLink = {
+	url: string,
+	expiresAt: string,
+};
 
 /**
  *  An entry in a listing: either an object or a virtual folder (common prefix).

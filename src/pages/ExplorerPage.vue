@@ -24,7 +24,8 @@ import PromptDialog from "@/components/common/PromptDialog.vue";
 import DeleteObjectsDialog from "@/components/explorer/DeleteObjectsDialog.vue";
 import ExplorerBreadcrumb from "@/components/explorer/ExplorerBreadcrumb.vue";
 import ObjectDetails from "@/components/explorer/ObjectDetails.vue";
-import ObjectTable from "@/components/explorer/ObjectTable.vue";
+import ObjectTable, { type RowAction } from "@/components/explorer/ObjectTable.vue";
+import ShareLinkDialog from "@/components/explorer/ShareLinkDialog.vue";
 import { Button } from "@/components/ui/button";
 import { CommandError, type ObjectOperationOutcome, type StorageObject } from "@/services/tauri";
 import { useObjectDrag } from "@/composables/useObjectDrag";
@@ -32,6 +33,7 @@ import { useTransferActions } from "@/composables/useTransferActions";
 import { toAppError } from "@/services/tauri";
 import { useConnectionStore } from "@/stores/connections";
 import { useExplorerStore } from "@/stores/explorer";
+import { copyText, s3Uri } from "@/utils/clipboard";
 import { formatBytes } from "@/utils/format";
 import { extensionOf, parentPrefix } from "@/utils/prefix";
 
@@ -194,11 +196,28 @@ function downloadEntries(entries: StorageObject[]) {
   return pickAndDownload(props.id, props.bucket, keys);
 }
 
-function onRowAction(
-  action: "download" | "rename" | "copy" | "move" | "delete",
-  entry: StorageObject,
-) {
-  if (action === "download") {
+const shareOpen = ref(false);
+const shareKey = ref("");
+const insecureConnection = computed(() => connections.byId(props.id)?.allowInsecureHttp ?? false);
+
+async function copyToClipboard(text: string, label: string) {
+  try {
+    await copyText(text);
+    toast.success(t("share.copiedValue", { label }));
+  } catch {
+    toast.error(t("share.copyFailed"));
+  }
+}
+
+function onRowAction(action: RowAction, entry: StorageObject) {
+  if (action === "share") {
+    shareKey.value = entry.key;
+    shareOpen.value = true;
+  } else if (action === "copyKey") {
+    void copyToClipboard(entry.key, t("share.copyKeyLabel"));
+  } else if (action === "copyUri") {
+    void copyToClipboard(s3Uri(props.bucket, entry.key), t("share.copyUriLabel"));
+  } else if (action === "download") {
     // Downloading a checked row acts on the whole selection.
     void downloadEntries(explorer.checkedKeys.has(entry.key) ? explorer.checkedEntries : [entry]);
   } else if (action === "delete") {
@@ -520,6 +539,13 @@ function goTo(prefix: string) {
       @confirm="confirmOverwrite"
     />
     <DeleteObjectsDialog v-model:open="deleteOpen" :entries="deleteTargets" />
+    <ShareLinkDialog
+      v-model:open="shareOpen"
+      :connection-id="id"
+      :bucket="bucket"
+      :object-key="shareKey"
+      :insecure="insecureConnection"
+    />
 
     <!-- Drag preview following the pointer. -->
     <div

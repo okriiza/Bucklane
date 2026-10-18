@@ -311,6 +311,13 @@ function respond(cmd: string, args: Record<string, unknown> = {}): unknown {
         storageClass: "STANDARD",
         metadata: { "uploaded-by": "dewi.anggraini", department: "marketing" },
       };
+    case "create_share_link": {
+      const input = args.input as { bucket: string; key: string; expiresInSeconds: number };
+      return {
+        url: `https://${input.bucket}.s3.ap-southeast-1.amazonaws.com/${input.key}?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Expires=${input.expiresInSeconds}&X-Amz-Signature=3f9a1c…`,
+        expiresAt: new Date(Date.now() + input.expiresInSeconds * 1000).toISOString(),
+      };
+    }
     default:
       throw {
         code: "OPERATION_UNSUPPORTED",

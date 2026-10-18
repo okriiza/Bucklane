@@ -8,6 +8,9 @@ import { extensionOf } from "@/utils/prefix";
 
 import RowActions from "./RowActions.vue";
 
+export type RowAction =
+  "download" | "share" | "copyKey" | "copyUri" | "rename" | "copy" | "move" | "delete";
+
 const props = defineProps<{
   entries: StorageObject[];
   selectedKey: string | null;
@@ -18,7 +21,7 @@ const emit = defineEmits<{
   select: [key: string];
   toggle: [key: string, checked: boolean];
   toggleAll: [checked: boolean];
-  action: [action: "download" | "rename" | "copy" | "move" | "delete", entry: StorageObject];
+  action: [action: RowAction, entry: StorageObject];
 }>();
 
 const ICONS: Record<string, typeof File> = {
@@ -129,6 +132,9 @@ function activate(entry: StorageObject) {
             :entry="entry"
             @details="emit('select', entry.key)"
             @download="emit('action', 'download', entry)"
+            @share="emit('action', 'share', entry)"
+            @copy-key="emit('action', 'copyKey', entry)"
+            @copy-uri="emit('action', 'copyUri', entry)"
             @rename="emit('action', 'rename', entry)"
             @copy="emit('action', 'copy', entry)"
             @move="emit('action', 'move', entry)"

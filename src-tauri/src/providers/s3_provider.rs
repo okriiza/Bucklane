@@ -4,6 +4,7 @@ use async_trait::async_trait;
 use aws_sdk_s3::Client;
 use aws_sdk_s3::config::http::HttpResponse;
 use aws_sdk_s3::error::{ProvideErrorMetadata, SdkError};
+use aws_sdk_s3::presigning::PresigningConfig;
 use aws_sdk_s3::primitives::ByteStream;
 use aws_sdk_s3::primitives::{DateTime, DateTimeFormat};
 use aws_sdk_s3::types::{CommonPrefix, Delete, Object, ObjectIdentifier};
@@ -159,6 +160,26 @@ impl StorageProvider for S3StorageProvider {
             .await
             .map(|_| ())
             .map_err(|e| map_sdk_error(e, ErrorCode::ObjectNotFound))
+    }
+
+    async fn presign_get(
+        &self,
+        bucket: &str,
+        key: &str,
+        expires_in: std::time::Duration,
+    ) -> Result<String, AppError> {
+        let config = PresigningConfig::expires_in(expires_in).map_err(|_| {
+            AppError::new(ErrorCode::InvalidInput, "The link duration is not valid.")
+        })?;
+        let request = self
+            .client
+            .get_object()
+            .bucket(bucket)
+            .key(key)
+            .presigned(config)
+            .await
+            .map_err(|e| map_sdk_error(e, ErrorCode::ObjectNotFound))?;
+        Ok(request.uri().to_owned())
     }
 
     async fn delete_object(&self, bucket: &str, key: &str) -> Result<(), AppError> {

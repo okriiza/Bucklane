@@ -167,6 +167,28 @@ export default {
     folderRenameUnsupported:
       "Renaming or moving folders isn't available yet. You can rename the files inside.",
   },
+  share: {
+    menu: "Share link…",
+    button: "Share",
+    title: "Share link",
+    expiresIn: "Link expires after",
+    durations: { "15m": "15 minutes", "1h": "1 hour", "1d": "1 day", "7d": "7 days" },
+    create: "Create link",
+    regenerate: "Create new link",
+    creating: "Creating…",
+    copy: "Copy",
+    copied: "Copied",
+    expiresAt: "Valid until {time}. The link is copied to your clipboard.",
+    warning:
+      "Anyone with this link can download the file until it expires. Bucklane doesn't keep a record of created links, and they can't be revoked early except by rotating the access key.",
+    insecure: "This connection uses HTTP, so the link isn't encrypted in transit.",
+    copyKey: "Copy key",
+    copyUri: "Copy S3 URI",
+    copyKeyLabel: "Key",
+    copyUriLabel: "S3 URI",
+    copiedValue: "{label} copied to clipboard",
+    copyFailed: "Couldn't copy to the clipboard.",
+  },
   delete: {
     title: "Delete {count} item? | Delete {count} items?",
     fromBucket: "From bucket “{bucket}”. This cannot be undone.",
