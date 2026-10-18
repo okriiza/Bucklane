@@ -60,3 +60,21 @@ export function endpointHost(endpoint: string | null, region: string): string {
     return endpoint;
   }
 }
+
+/** "12.4 MB/s"; a dash when unknown. */
+export function formatSpeed(bytesPerSecond: number | null | undefined): string {
+  if (bytesPerSecond == null || !Number.isFinite(bytesPerSecond)) return "—";
+  return `${formatBytes(Math.round(bytesPerSecond))}/s`;
+}
+
+/** Compact remaining time: "45 s", "3 min", "1 h 5 min". */
+export function formatDuration(seconds: number | null | undefined): string {
+  if (seconds == null || !Number.isFinite(seconds)) return "—";
+  const s = Math.ceil(seconds);
+  if (s < 60) return `${s} s`;
+  const minutes = Math.ceil(s / 60);
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return rest ? `${hours} h ${rest} min` : `${hours} h`;
+}

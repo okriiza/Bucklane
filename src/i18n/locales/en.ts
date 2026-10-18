@@ -223,6 +223,10 @@ export default {
     downloadAction: "Download",
     cancel: "Cancel transfer",
     retry: "Retry transfer",
+    eta: "{time} left",
+    revealMac: "Show in Finder",
+    revealWindows: "Show in File Explorer",
+    revealLinux: "Show in file manager",
     queued: "Queued {count} transfer | Queued {count} transfers",
     skipped: "Skipped {count} existing item | Skipped {count} existing items",
     status: {

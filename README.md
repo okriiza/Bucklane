@@ -279,7 +279,7 @@ Click **New folder** in the toolbar.
 
 ### Transfers
 
-The **Transfers** panel shows every upload and download with its progress and status. You can **cancel** a running or queued transfer, **retry** a failed one, and **clear finished** ones from the list. The panel opens on its own when a transfer starts and tucks itself away when everything finishes successfully.
+The **Transfers** panel shows every upload and download with its progress, speed, time remaining, and status. Click the folder icon on a finished transfer to show the file in Finder or File Explorer. You can **cancel** a running or queued transfer, **retry** a failed one, and **clear finished** ones from the list. The panel opens on its own when a transfer starts and tucks itself away when everything finishes successfully.
 
 ### Keyboard shortcuts
 
@@ -331,16 +331,19 @@ Deleting a connection removes its secret from the keychain. Buckets and files on
 
 ## Troubleshooting
 
-| Message or problem                                                            | What to do                                                                                                                        |
-| ----------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| _"The access key ID or secret access key is incorrect."_                      | Re-enter the keys. Edit the connection and paste the secret again.                                                                |
-| _"The credentials were accepted but cannot list buckets."_                    | Your keys work but aren't allowed to list buckets. Add the bucket by name on the connection page, or enter it as **Test bucket**. |
-| _"The region or endpoint does not match this storage account."_               | Check the region and endpoint for your provider (see the table above).                                                            |
-| _"HTTP endpoints are insecure…"_                                              | Use an `https://` endpoint, or tick **Allow insecure HTTP** for a local server.                                                   |
-| _"Could not reach the storage endpoint."_                                     | Check your internet connection, VPN, firewall, and the endpoint URL.                                                              |
-| _"The system credential store is unavailable."_ (Linux)                       | Install and unlock GNOME Keyring or KWallet, then try again.                                                                      |
-| A transfer failed with _"Bucklane was closed before this transfer finished."_ | The app was closed while it was running. Click **retry** to start it again.                                                       |
-| macOS says the app "is damaged"                                               | See the [macOS install steps](#macos).                                                                                            |
+| Message or problem                                                            | What to do                                                                                                                                                                     |
+| ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| _"This storage doesn't recognize the access key ID."_                         | The access key ID is wrong or was copied incompletely. Edit the connection and paste it again.                                                                                 |
+| _"The request signature was rejected."_                                       | Usually the secret access key is wrong, the **region** doesn't match the server (self-hosted Supabase defaults to `stub`), or a reverse proxy changes the Host header or path. |
+| _"Your computer's clock is too far off…"_                                     | Turn on automatic date and time in your system settings, then try again.                                                                                                       |
+| _"The access key ID or secret access key is incorrect."_                      | Re-enter the keys. Edit the connection and paste the secret again.                                                                                                             |
+| _"The credentials were accepted but cannot list buckets."_                    | Your keys work but aren't allowed to list buckets. Add the bucket by name on the connection page, or enter it as **Test bucket**.                                              |
+| _"The region or endpoint does not match this storage account."_               | Check the region and endpoint for your provider (see the table above).                                                                                                         |
+| _"HTTP endpoints are insecure…"_                                              | Use an `https://` endpoint, or tick **Allow insecure HTTP** for a local server.                                                                                                |
+| _"Could not reach the storage endpoint."_                                     | Check your internet connection, VPN, firewall, and the endpoint URL.                                                                                                           |
+| _"The system credential store is unavailable."_ (Linux)                       | Install and unlock GNOME Keyring or KWallet, then try again.                                                                                                                   |
+| A transfer failed with _"Bucklane was closed before this transfer finished."_ | The app was closed while it was running. Click **retry** to start it again.                                                                                                    |
+| macOS says the app "is damaged"                                               | See the [macOS install steps](#macos).                                                                                                                                         |
 
 ---
 

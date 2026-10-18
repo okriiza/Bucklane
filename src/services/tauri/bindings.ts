@@ -73,6 +73,8 @@ export const commands = {
 	retryTransfer: (id: string) => typedError<TransferDto, AppError>(__TAURI_INVOKE("retry_transfer", { id })),
 	/**  Removes finished transfers from history; returns how many were removed. */
 	clearTransferHistory: () => typedError<number, AppError>(__TAURI_INVOKE("clear_transfer_history")),
+	/**  Reveals the transfer's local file in the system file manager. */
+	revealTransfer: (id: string) => typedError<null, AppError>(__TAURI_INVOKE("reveal_transfer", { id })),
 	getSettings: () => typedError<AppSettings, AppError>(__TAURI_INVOKE("get_settings")),
 	/**  Validates, saves, and applies the settings immediately. */
 	updateSettings: (settings: AppSettings) => typedError<AppSettings, AppError>(__TAURI_INVOKE("update_settings", { settings })),

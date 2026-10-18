@@ -226,6 +226,29 @@ impl TransferManager {
         Ok(dto)
     }
 
+    /// Shows a transfer's local file in Finder / File Explorer. The path
+    /// never leaves the backend; the frontend only names the transfer.
+    pub async fn reveal(&self, id: &str) -> Result<(), AppError> {
+        let t = self.inner.repo.get(id).await?.ok_or_else(not_found)?;
+        let path = std::path::PathBuf::from(&t.local_path);
+        if !tokio::fs::try_exists(&path).await.unwrap_or(false) {
+            return Err(AppError::new(
+                ErrorCode::LocalFileError,
+                "The file is no longer at its original location.",
+            ));
+        }
+        tauri::async_runtime::spawn_blocking(move || tauri_plugin_opener::reveal_item_in_dir(path))
+            .await
+            .map_err(|_| AppError::internal("Opening the file manager was interrupted."))?
+            .map_err(|err| {
+                AppError::new(
+                    ErrorCode::LocalFileError,
+                    "The file manager could not be opened.",
+                )
+                .with_details(err.to_string())
+            })
+    }
+
     pub async fn clear_history(&self) -> Result<u64, AppError> {
         self.inner.repo.clear_history().await
     }

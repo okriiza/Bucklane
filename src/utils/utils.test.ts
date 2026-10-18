@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vitest";
 
 import { s3Uri } from "./clipboard";
-import { endpointHost, formatBytes, formatDateTime, formatRelative } from "./format";
+import {
+  endpointHost,
+  formatBytes,
+  formatDateTime,
+  formatDuration,
+  formatRelative,
+  formatSpeed,
+} from "./format";
 import { extensionOf, parentPrefix, prefixSegments, uploadChangesListing } from "./prefix";
 
 describe("formatBytes", () => {
@@ -102,5 +109,20 @@ describe("uploadChangesListing", () => {
 
   it("works at the bucket root", () => {
     expect(uploadChangesListing("", "reports/q3.pdf", new Set())).toBe(true);
+  });
+});
+
+describe("formatSpeed and formatDuration", () => {
+  it("formats transfer speed", () => {
+    expect(formatSpeed(12.4 * 1024 * 1024)).toBe("12 MB/s");
+    expect(formatSpeed(null)).toBe("—");
+  });
+
+  it("formats remaining time compactly", () => {
+    expect(formatDuration(42.2)).toBe("43 s");
+    expect(formatDuration(150)).toBe("3 min");
+    expect(formatDuration(3_900)).toBe("1 h 5 min");
+    expect(formatDuration(7_200)).toBe("2 h");
+    expect(formatDuration(null)).toBe("—");
   });
 });

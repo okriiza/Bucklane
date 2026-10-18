@@ -377,8 +377,21 @@ pub(crate) fn map_service_error(code: Option<&str>, status: u16, not_found: Erro
     use ErrorCode::*;
 
     let (error_code, message) = match (code, status) {
-        (Some("InvalidAccessKeyId" | "SignatureDoesNotMatch" | "InvalidSecurity"), _)
-        | (None, 401) => (
+        (Some("InvalidAccessKeyId"), _) => (
+            AuthenticationFailed,
+            "This storage doesn't recognize the access key ID. Check that it was copied completely.",
+        ),
+        // A mismatched signature has several causes besides a wrong secret;
+        // self-hosted setups most often hit region or proxy problems.
+        (Some("SignatureDoesNotMatch"), _) => (
+            AuthenticationFailed,
+            "The request signature was rejected. Check the secret access key, and that the region matches the server's (self-hosted Supabase defaults to \"stub\"). A reverse proxy that changes the Host header or path also causes this.",
+        ),
+        (Some("RequestTimeTooSkewed"), _) => (
+            AuthenticationFailed,
+            "Your computer's clock is too far off for the storage to accept requests. Turn on automatic date and time, then try again.",
+        ),
+        (Some("InvalidSecurity" | "InvalidToken" | "ExpiredToken"), _) | (None, 401) => (
             AuthenticationFailed,
             "The access key ID or secret access key is incorrect.",
         ),
@@ -472,6 +485,19 @@ mod tests {
                 "{code:?} {status}"
             );
         }
+    }
+
+    #[test]
+    fn signature_errors_point_beyond_the_secret() {
+        let err = map_service_error(
+            Some("SignatureDoesNotMatch"),
+            403,
+            ErrorCode::BucketNotFound,
+        );
+        assert_eq!(err.code, ErrorCode::AuthenticationFailed);
+        assert!(err.message.contains("region"));
+        let skew = map_service_error(Some("RequestTimeTooSkewed"), 403, ErrorCode::BucketNotFound);
+        assert!(skew.message.contains("clock"));
     }
 
     #[test]

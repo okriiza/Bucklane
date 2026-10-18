@@ -716,7 +716,10 @@ get_transfer
 cancel_transfer
 retry_transfer
 clear_transfer_history
+reveal_transfer
 ```
+
+`reveal_transfer(id)` menampilkan file lokal sebuah transfer di Finder / File Explorer. Path hanya dibaca di backend dari baris transfer; frontend cukup mengirim ID. Plugin opener dipakai sebagai library Rust dan tidak didaftarkan, sehingga tidak ada command opener yang terbuka ke frontend.
 
 Operasi berjalan melalui scheduler tanpa menahan IPC request hingga transfer selesai.
 
