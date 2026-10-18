@@ -37,6 +37,7 @@ import { useExplorerStore } from "@/stores/explorer";
 import { copyText, s3Uri } from "@/utils/clipboard";
 import { formatBytes } from "@/utils/format";
 import { extensionOf, parentPrefix } from "@/utils/prefix";
+import { nextSort } from "@/utils/sort";
 
 const props = defineProps<{ id: string; bucket: string; prefix: string }>();
 
@@ -63,13 +64,34 @@ watch(
   { immediate: true },
 );
 
-// Client-side filter over loaded entries only (EXP-004); it does not search
-// the whole bucket.
+// Client-side filter over loaded entries only (EXP-004). Enter runs a
+// server-side name-prefix search over the whole folder instead.
 const visible = computed(() => {
   const q = filter.value.trim().toLowerCase();
-  if (!q) return explorer.entries;
-  return explorer.entries.filter((e) => e.name.toLowerCase().includes(q));
+  if (!q) return explorer.sortedEntries;
+  return explorer.sortedEntries.filter((e) => e.name.toLowerCase().includes(q));
 });
+
+const query = computed(() => filter.value.trim());
+/** Offer a server search when the loaded items may not be the whole folder. */
+const canSearchServer = computed(
+  () =>
+    !!query.value &&
+    !query.value.includes("/") &&
+    query.value !== explorer.search &&
+    (explorer.isTruncated || !!explorer.search),
+);
+
+function runSearch() {
+  if (!query.value) return void clearSearch();
+  if (query.value.includes("/")) return void toast.info(t("explorer.searchNoSlash"));
+  void explorer.searchServer(query.value);
+}
+
+function clearSearch() {
+  filter.value = "";
+  void explorer.clearSearch();
+}
 
 type Relocation = "copy" | "move" | "rename";
 type PromptKind = "newFolder" | Relocation;
@@ -353,7 +375,10 @@ function goTo(prefix: string) {
             type="search"
             :placeholder="$t('explorer.filter')"
             :aria-label="$t('explorer.filter')"
+            :title="$t('explorer.searchHint')"
             class="bg-muted/60 focus-visible:bg-background focus-visible:ring-ring/25 focus-visible:border-ring placeholder:text-muted-foreground/70 h-8 w-52 rounded-md border border-transparent pr-2 pl-8 text-[13px] transition-[background-color,box-shadow] outline-none focus-visible:ring-[3px]"
+            @keydown.enter.prevent="runSearch"
+            @keydown.esc="filter ? (filter = '') : clearSearch()"
           />
         </label>
         <Button
@@ -428,6 +453,17 @@ function goTo(prefix: string) {
         </template>
       </div>
 
+      <div
+        v-if="explorer.search"
+        class="bg-muted/40 flex h-9 shrink-0 items-center gap-2 border-b px-4 text-[12px]"
+      >
+        <Search class="text-muted-foreground size-3.5" aria-hidden="true" />
+        <span class="truncate">{{ $t("explorer.searchActive", { query: explorer.search }) }}</span>
+        <Button variant="ghost" size="sm" class="ml-auto h-6 px-2 text-xs" @click="clearSearch">
+          <X /> {{ $t("explorer.clearSearch") }}
+        </Button>
+      </div>
+
       <div class="min-h-0 flex-1 overflow-auto">
         <div
           v-if="explorer.error"
@@ -458,6 +494,15 @@ function goTo(prefix: string) {
           </div>
         </div>
         <div
+          v-else-if="!explorer.error && !explorer.entries.length && explorer.search"
+          class="text-muted-foreground flex flex-col items-center gap-3 p-10 text-center text-[13px]"
+        >
+          {{ $t("explorer.searchNoResults", { query: explorer.search }) }}
+          <Button variant="outline" size="sm" @click="clearSearch">
+            {{ $t("explorer.clearSearch") }}
+          </Button>
+        </div>
+        <div
           v-else-if="!explorer.error && !explorer.entries.length"
           class="flex h-full min-h-64 flex-col items-center justify-center gap-3 p-8 text-center"
         >
@@ -480,6 +525,8 @@ function goTo(prefix: string) {
             :entries="visible"
             :selected-key="explorer.selectedKey"
             :checked-keys="explorer.checkedKeys"
+            :sort="explorer.sort"
+            @sort="(key) => explorer.setSort(nextSort(explorer.sort, key))"
             @open-folder="goTo"
             @select="explorer.select"
             @toggle="explorer.toggleChecked"
@@ -495,6 +542,11 @@ function goTo(prefix: string) {
           <p v-if="filter && !visible.length" class="text-muted-foreground p-4 text-center text-sm">
             {{ $t("explorer.noMatches") }}
           </p>
+          <div v-if="canSearchServer" class="flex justify-center px-4 pt-3">
+            <Button variant="secondary" size="sm" @click="runSearch">
+              <Search /> {{ $t("explorer.searchServer", { query }) }}
+            </Button>
+          </div>
           <div v-if="explorer.isTruncated" class="flex flex-col items-center gap-1 p-4">
             <Button
               variant="outline"

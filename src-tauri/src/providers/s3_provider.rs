@@ -282,12 +282,16 @@ fn copy_source(bucket: &str, key: &str) -> String {
 /// Converts one ListObjectsV2 page into explorer entries: folders first, then
 /// files. The marker object for the listed folder itself (`prefix` + nothing)
 /// is hidden, since it represents the folder the user is already in.
+///
+/// Names are relative to the folder containing `prefix`, so a name search
+/// (`photos/ca`) still yields `cat.jpg` rather than `t.jpg`.
 fn listing_entries(
     prefix: &str,
     common_prefixes: &[CommonPrefix],
     contents: &[Object],
 ) -> Vec<StorageObject> {
-    let relative = |key: &str| key.strip_prefix(prefix).unwrap_or(key).to_owned();
+    let folder = &prefix[..prefix.rfind('/').map_or(0, |i| i + 1)];
+    let relative = |key: &str| key.strip_prefix(folder).unwrap_or(key).to_owned();
 
     let folders = common_prefixes
         .iter()
@@ -527,6 +531,19 @@ mod tests {
             [("2026/", true, None), ("cat.jpg", false, Some(2048))]
         );
         assert_eq!(entries[1].key, "photos/cat.jpg");
+    }
+
+    #[test]
+    fn name_search_keeps_names_relative_to_the_folder() {
+        let prefixes = [CommonPrefix::builder().prefix("photos/cats/").build()];
+        let contents = [Object::builder().key("photos/cat.jpg").build()];
+
+        let entries = listing_entries("photos/ca", &prefixes, &contents);
+
+        let names: Vec<_> = entries.iter().map(|e| e.name.as_str()).collect();
+        assert_eq!(names, ["cats/", "cat.jpg"]);
+        let root = listing_entries("rep", &[], &[Object::builder().key("report.pdf").build()]);
+        assert_eq!(root[0].name, "report.pdf");
     }
 
     #[test]

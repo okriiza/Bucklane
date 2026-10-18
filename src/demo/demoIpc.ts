@@ -151,10 +151,13 @@ const folders: Record<string, Entry[]> = {
 };
 
 function listObjects(prefix: string) {
-  const entries = folders[prefix] ?? [];
+  // A prefix that does not end in "/" is a name search within its folder.
+  const folder = prefix.slice(0, prefix.lastIndexOf("/") + 1);
+  const search = prefix.slice(folder.length);
+  const entries = (folders[folder] ?? []).filter(([name]) => name.startsWith(search));
   return {
     objects: entries.map(([name, size, minutes]) => ({
-      key: prefix + name,
+      key: folder + name,
       name,
       size,
       lastModified: size === null ? null : ago(minutes),

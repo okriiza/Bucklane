@@ -637,6 +637,8 @@ Continuation token harus diperlakukan sebagai opaque value dan tidak dimodifikas
 
 Object listing menggunakan API S3 ListObjectsV2 dengan prefix, delimiter, dan pagination.
 
+Pencarian nama di server memakai listing yang sama dengan `prefix = folder + query` (query tanpa `/`). S3 hanya mencocokkan awal key dan bersifat case-sensitive, jadi hasilnya adalah item di folder aktif yang namanya diawali query. Field `name` selalu relatif terhadap folder yang memuat prefix (bagian sampai `/` terakhir), sehingga hasil pencarian tetap menampilkan nama lengkap.
+
 ### 6.3.1 Bulk Delete Result
 
 ```typescript
@@ -1109,6 +1111,8 @@ Pinia stores:
 - Active prefix.
 - Object listing.
 - Pagination state.
+- Server search query (dikosongkan saat pindah folder).
+- Sort order (nama, ukuran, tanggal; folder selalu di atas). Diurutkan di client atas item yang sudah dimuat, disimpan di localStorage sebagai preferensi.
 - Selection state.
 
 **transferStore**

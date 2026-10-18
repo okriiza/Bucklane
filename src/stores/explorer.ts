@@ -14,11 +14,31 @@ import {
   type StorageObject,
 } from "@/services/tauri";
 import { useSettingsStore } from "@/stores/settings";
+import { sortEntries, type SortState } from "@/utils/sort";
 
 export interface ExplorerLocation {
   connectionId: string;
   bucket: string;
   prefix: string;
+}
+
+const SORT_STORAGE_KEY = "bucklane.explorer.sort";
+const DEFAULT_SORT: SortState = { key: "name", direction: "asc" };
+
+function loadSort(): SortState {
+  try {
+    const saved = JSON.parse(localStorage.getItem(SORT_STORAGE_KEY) ?? "null") as SortState | null;
+    if (
+      saved &&
+      ["name", "size", "lastModified"].includes(saved.key) &&
+      ["asc", "desc"].includes(saved.direction)
+    ) {
+      return saved;
+    }
+  } catch {
+    // Storage may be unavailable; the default order is fine.
+  }
+  return DEFAULT_SORT;
 }
 
 /**
@@ -34,6 +54,13 @@ export const useExplorerStore = defineStore("explorer", () => {
   const loading = ref(false);
   const loadingMore = ref(false);
   const error = ref<AppError | null>(null);
+  /**
+   * Server-side name search: lists `prefix + search` instead of the folder.
+   * S3 can only match the start of a key, so this finds names that begin
+   * with the query (case-sensitive) in the current folder.
+   */
+  const search = ref("");
+  const sort = ref<SortState>(loadSort());
 
   const selectedKey = ref<string | null>(null);
   const metadata = ref<ObjectMetadata | null>(null);
@@ -46,6 +73,17 @@ export const useExplorerStore = defineStore("explorer", () => {
   let listSeq = 0;
   let metadataSeq = 0;
 
+  const sortedEntries = computed(() => sortEntries(entries.value, sort.value));
+
+  function setSort(next: SortState) {
+    sort.value = next;
+    try {
+      localStorage.setItem(SORT_STORAGE_KEY, JSON.stringify(next));
+    } catch {
+      // Not persisted; the order still applies for this session.
+    }
+  }
+
   const checkedEntries = computed(() => entries.value.filter((e) => checkedKeys.value.has(e.key)));
 
   const selected = computed(
@@ -57,7 +95,7 @@ export const useExplorerStore = defineStore("explorer", () => {
       commands.listObjects({
         connectionId: loc.connectionId,
         bucket: loc.bucket,
-        prefix: loc.prefix || null,
+        prefix: loc.prefix + search.value || null,
         delimiter: "/",
         continuationToken: token,
         pageSize: useSettingsStore().settings.explorerPageSize,
@@ -65,7 +103,13 @@ export const useExplorerStore = defineStore("explorer", () => {
     );
   }
 
-  async function open(loc: ExplorerLocation) {
+  /** Opens a folder; a new location always starts without a search. */
+  function open(loc: ExplorerLocation) {
+    search.value = "";
+    return load(loc);
+  }
+
+  async function load(loc: ExplorerLocation) {
     const seq = ++listSeq;
     location.value = { ...loc };
     entries.value = [];
@@ -97,9 +141,7 @@ export const useExplorerStore = defineStore("explorer", () => {
     try {
       const page = await fetchPage(loc, nextToken.value);
       if (seq !== listSeq) return;
-      // A page boundary can split folders from files; keep folders grouped.
-      const merged = [...entries.value, ...page.objects];
-      entries.value = [...merged.filter((e) => e.isPrefix), ...merged.filter((e) => !e.isPrefix)];
+      entries.value = [...entries.value, ...page.objects];
       nextToken.value = page.nextContinuationToken;
       isTruncated.value = page.isTruncated;
     } catch (err) {
@@ -109,8 +151,21 @@ export const useExplorerStore = defineStore("explorer", () => {
     }
   }
 
+  /** Keeps the active search, if any. */
   function refresh() {
-    if (location.value) return open(location.value);
+    if (location.value) return load(location.value);
+  }
+
+  function searchServer(query: string) {
+    if (!location.value || query.includes("/")) return;
+    search.value = query;
+    return load(location.value);
+  }
+
+  function clearSearch() {
+    if (!search.value) return;
+    search.value = "";
+    return refresh();
   }
 
   async function select(key: string | null) {
@@ -237,6 +292,12 @@ export const useExplorerStore = defineStore("explorer", () => {
     prepareFolderDelete,
     deleteEntries,
     entries,
+    sortedEntries,
+    sort,
+    setSort,
+    search,
+    searchServer,
+    clearSearch,
     isTruncated,
     loading,
     loadingMore,

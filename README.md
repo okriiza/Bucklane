@@ -36,7 +36,7 @@ Available for **macOS** (Apple Silicon and Intel), **Windows**, and **Linux**.
 |                                           |                                                                                                                                                                                                                       |
 | ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Every S3-compatible provider**          | Amazon S3, Supabase Storage, MinIO, Cloudflare R2, Wasabi, DigitalOcean Spaces, or a custom endpoint. Save as many connections as you need.                                                                           |
-| **Browse buckets like folders**           | Open folders, go back with the breadcrumb, load large buckets page by page, filter what's loaded, and view any object's size, type, ETag, and metadata.                                                               |
+| **Browse buckets like folders**           | Open folders, go back with the breadcrumb, load large buckets page by page, sort and search, and view any object's size, type, ETag, and metadata.                                                                    |
 | **Upload and download in the background** | Transfer single files or entire folders. Every transfer joins a queue with live progress; cancel or retry at any time. Large files are sent in parallel parts and streamed from disk, so they never fill your memory. |
 | **Drag and drop**                         | Drop files or whole folders from your desktop into Bucklane to upload them with their structure intact, or drag files onto another folder to move them inside the bucket.                                             |
 | **Safe file operations**                  | Rename, copy, and move files. A move deletes the original only after the copy is verified. Replacing an existing file always asks first.                                                                              |
@@ -216,7 +216,8 @@ Uninstalling leaves your local data and keychain entries in place. To remove sec
 - Click a **folder** to open it. Use the **breadcrumb** or the **↑** button to go back up.
 - Click a **file** to see its details: size, content type, last modified, ETag, storage class, and custom metadata.
 - Large folders load 100 items at a time (adjustable in Settings) — click **Load more** at the bottom for the next page.
-- The **filter** box searches the items already loaded in the current folder.
+- Click a **column header** (Name, Size, Last modified) to sort; click again to reverse. Folders stay on top, and the order is remembered.
+- Typing in the **search** box filters the items already loaded. Press **Enter** to search the whole folder on the server for names that **start with** your text — S3 only matches the beginning of a name, and the match is case-sensitive.
 
 ### Uploading
 
