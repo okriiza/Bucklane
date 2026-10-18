@@ -4,6 +4,8 @@
 
 Bucklane lets you browse buckets like folders, upload and download files, and move, rename, or delete objects without touching the command line. It works with Amazon S3, Supabase Storage, MinIO, Cloudflare R2, Wasabi, DigitalOcean Spaces, and any custom S3-compatible endpoint.
 
+If you've used **Cyberduck**, **S3 Browser**, **Transmit**, or a provider's web console to manage buckets, Bucklane covers the same everyday work in one cross-platform app focused only on S3 — see [Alternatives](#alternatives).
+
 It is **local-first**: there is no Bucklane account and no server in between. The app talks to your storage provider directly, and your secret keys stay in your operating system's keychain.
 
 Available for **macOS** (Apple Silicon and Intel), **Windows**, and **Linux**.
@@ -16,6 +18,7 @@ Available for **macOS** (Apple Silicon and Intel), **Windows**, and **Linux**.
 
 - [Features](#features)
 - [Screenshots](#screenshots)
+- [Alternatives](#alternatives)
 - [Download and install](#download-and-install)
 - [Getting started](#getting-started)
 - [Connecting to each provider](#connecting-to-each-provider)
@@ -74,6 +77,28 @@ Available for **macOS** (Apple Silicon and Intel), **Windows**, and **Linux**.
     </td>
   </tr>
 </table>
+
+---
+
+## Alternatives
+
+Bucklane is an alternative to these common ways of working with S3 storage:
+
+| Instead of…                                                      | Type                         | Why you might choose Bucklane                                                                                                                  |
+| ---------------------------------------------------------------- | ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Cyberduck**                                                    | Desktop app (macOS, Windows) | A focused S3-only tool with an overview dashboard, pinned buckets, and safety checks on moves and deletes. Also runs on Linux.                 |
+| **S3 Browser**                                                   | Desktop app (Windows)        | The same S3 workflow on macOS and Linux as well as Windows.                                                                                    |
+| **Transmit**, **ForkLift**                                       | Desktop apps (macOS)         | Cross-platform, and built only for S3-compatible storage rather than many protocols.                                                           |
+| **WinSCP**                                                       | Desktop app (Windows)        | S3-first explorer with bucket bookmarks, multipart transfers, and provider presets.                                                            |
+| **AWS Management Console**, **Supabase / Cloudflare dashboards** | Web consoles                 | One app for every provider and account, drag-and-drop transfers that keep running in the background, and no browser session to keep signed in. |
+| **AWS CLI**, **s3cmd**, **MinIO Client (`mc`)**, **rclone**      | Command-line tools           | Visual browsing and point-and-click file management without remembering commands or flags.                                                     |
+
+### When another tool is a better fit
+
+- **Scripting, automation, or CI** — use a command-line tool such as the AWS CLI, `mc`, or rclone.
+- **Two-way sync or mounting a bucket as a drive** — Bucklane doesn't sync or mount; tools like rclone or Mountain Duck do.
+- **Other protocols** (SFTP, FTP, WebDAV, Google Drive…) — Bucklane is S3-only; Cyberduck, WinSCP, or Transmit cover more protocols.
+- **Account administration** (IAM policies, lifecycle rules, versioning, replication) — use your provider's console.
 
 ---
 
