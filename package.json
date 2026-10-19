@@ -16,7 +16,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "tauri": "tauri",
-    "screenshots": "node scripts/screenshots.mjs"
+    "screenshots": "node scripts/screenshots.mjs",
+    "social": "node scripts/social-images.mjs"
   },
   "dependencies": {
     "@fontsource-variable/geist": "^5.3.0",
