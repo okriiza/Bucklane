@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { commands, type ListObjectsResponse, type StorageObject } from "@/services/tauri";
 
-import { useExplorerStore } from "./explorer";
+import { AUTO_LOAD_LIMIT, useExplorerStore } from "./explorer";
 
 vi.mock("@/services/tauri/bindings", () => ({
   commands: {
@@ -48,7 +48,7 @@ describe("useExplorerStore", () => {
   });
 
   it("loads the first page and passes the prefix through", async () => {
-    mocked.listObjects.mockResolvedValue(page([entry("docs/a.txt")], "t1"));
+    mocked.listObjects.mockResolvedValue(page([entry("docs/a.txt")]));
     const store = useExplorerStore();
 
     await store.open(docs);
@@ -57,23 +57,68 @@ describe("useExplorerStore", () => {
       expect.objectContaining({ prefix: "docs/", continuationToken: null, delimiter: "/" }),
     );
     expect(store.entries.map((e) => e.key)).toEqual(["docs/a.txt"]);
-    expect(store.isTruncated).toBe(true);
+    expect(store.isTruncated).toBe(false);
   });
 
-  it("appends pages with the opaque token and keeps folders first", async () => {
+  it("loads the rest of a folder in the background, folders first", async () => {
     mocked.listObjects
       .mockResolvedValueOnce(page([entry("docs/a.txt")], "opaque==token"))
       .mockResolvedValueOnce(page([entry("docs/z/", true), entry("docs/b.txt")]));
     const store = useExplorerStore();
 
     await store.open(docs);
-    await store.loadMore();
+    await vi.waitFor(() => expect(store.autoLoading).toBe(false));
 
     expect(mocked.listObjects).toHaveBeenLastCalledWith(
-      expect.objectContaining({ continuationToken: "opaque==token" }),
+      expect.objectContaining({ continuationToken: "opaque==token", pageSize: 1000 }),
     );
     expect(store.sortedEntries.map((e) => e.key)).toEqual(["docs/z/", "docs/a.txt", "docs/b.txt"]);
     expect(store.isTruncated).toBe(false);
+  });
+
+  it("stops loading ahead at the limit and leaves the rest to Load more", async () => {
+    const big = (n: number) =>
+      Array.from({ length: n }, (_, i) => entry(`docs/f${String(i).padStart(5, "0")}`));
+    mocked.listObjects.mockImplementation(async () => page(big(1000), "more"));
+    const store = useExplorerStore();
+
+    await store.open(docs);
+    await vi.waitFor(() => expect(store.autoLoading).toBe(false));
+
+    expect(store.entries.length).toBe(AUTO_LOAD_LIMIT);
+    expect(store.isTruncated).toBe(true);
+    expect(store.loadingMore).toBe(false);
+  });
+
+  it("stops loading ahead when another folder opens", async () => {
+    let release!: (v: ReturnType<typeof page>) => void;
+    mocked.listObjects
+      .mockResolvedValueOnce(page([entry("docs/a.txt")], "t1"))
+      .mockReturnValueOnce(new Promise((r) => (release = r)))
+      .mockResolvedValueOnce(page([entry("photos/cat.jpg")]));
+    const store = useExplorerStore();
+
+    await store.open(docs);
+    await store.open({ ...docs, prefix: "photos/" });
+    release(page([entry("docs/stale.txt")]));
+    await vi.waitFor(() => expect(store.loading).toBe(false));
+
+    expect(store.entries.map((e) => e.key)).toEqual(["photos/cat.jpg"]);
+    expect(store.autoLoading).toBe(false);
+  });
+
+  it("keeps what loaded when a background page fails", async () => {
+    mocked.listObjects
+      .mockResolvedValueOnce(page([entry("docs/a.txt")], "t1"))
+      .mockRejectedValueOnce(new Error("network"));
+    const store = useExplorerStore();
+
+    await store.open(docs);
+    await vi.waitFor(() => expect(store.autoLoading).toBe(false));
+
+    expect(store.entries.map((e) => e.key)).toEqual(["docs/a.txt"]);
+    expect(store.error).toBeNull();
+    expect(store.isTruncated).toBe(true);
   });
 
   it("searches by name prefix on the server and keeps it across refresh", async () => {

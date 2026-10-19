@@ -2,6 +2,12 @@
 
 Notable changes to Bucklane. Versions follow [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Changed
+
+- Folders load completely in the background (up to 10,000 items), so subfolders always appear at the top and sorting and filtering cover the whole folder, not just the first page.
+
 ## 0.5.0 — 2026-10-19
 
 ### Security

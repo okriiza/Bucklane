@@ -219,7 +219,7 @@ Uninstalling leaves your local data and keychain entries in place. To remove sec
 - Click a **connection** in the sidebar to see its buckets, then click a **bucket** to open it.
 - Click a **folder** to open it. Use the **breadcrumb** or the **↑** button to go back up.
 - Click a **file** to see its details: size, content type, last modified, ETag, storage class, and custom metadata.
-- Large folders load 100 items at a time (adjustable in Settings) — click **Load more** at the bottom for the next page.
+- Large folders show their first 100 items right away (adjustable in Settings) and load the rest in the background, up to 10,000 items, so every subfolder ends up on top and sorting and filtering cover the whole folder. Past 10,000, click **Load more** at the bottom.
 - Click a **column header** (Name, Size, Last modified) to sort; click again to reverse. Folders stay on top, and the order is remembered.
 - Typing in the **search** box filters the items already loaded. Press **Enter** to search the whole folder on the server for names that **start with** your text — S3 only matches the beginning of a name, and the match is case-sensitive.
 
@@ -308,7 +308,7 @@ Open **Settings** in the sidebar.
 | Concurrent transfers         | 3            | How many uploads and downloads run at the same time (1–10).               |
 | Multipart threshold          | 64 MB        | Files this size or larger are uploaded in parts (5–5120 MB).              |
 | Part size                    | 16 MB        | Size of each part; raised automatically for very large files (5–5120 MB). |
-| Items per page               | 100          | How many items the explorer loads at a time (50–1000).                    |
+| Items per page               | 100          | How many items appear first when a folder opens (50–1000).                |
 | Check for updates on startup | On           | Asks GitHub once per launch whether a newer release exists.               |
 
 **Reset to defaults** restores all settings without affecting your connections.

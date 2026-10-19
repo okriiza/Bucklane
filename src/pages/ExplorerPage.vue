@@ -547,7 +547,10 @@ function goTo(prefix: string) {
               <Search /> {{ $t("explorer.searchServer", { query }) }}
             </Button>
           </div>
-          <div v-if="explorer.isTruncated" class="flex flex-col items-center gap-1 p-4">
+          <div
+            v-if="explorer.isTruncated && !explorer.autoLoading"
+            class="flex flex-col items-center gap-1 p-4"
+          >
             <Button
               variant="outline"
               size="sm"
@@ -569,6 +572,10 @@ function goTo(prefix: string) {
       >
         {{ $t("explorer.count", { count: explorer.entries.length }, explorer.entries.length) }}
         <template v-if="explorer.isTruncated">+</template>
+        <span v-if="explorer.autoLoading" class="ml-2 inline-flex items-center gap-1.5">
+          <RefreshCw class="size-3 animate-spin" aria-hidden="true" />
+          {{ $t("explorer.loadingRest") }}
+        </span>
       </footer>
     </div>
 
