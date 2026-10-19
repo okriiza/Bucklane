@@ -305,6 +305,18 @@ function respond(cmd: string, args: Record<string, unknown> = {}): unknown {
       const request = args.request as { prefix?: string | null };
       return listObjects(request.prefix ?? "");
     }
+    case "diagnostics":
+      return {
+        appVersion: "0.4.0",
+        tauriVersion: "2.12.0",
+        webviewVersion: "26.0",
+        os: "macos",
+        arch: "aarch64",
+        databaseOk: true,
+      };
+    case "log_frontend_error":
+    case "open_logs_folder":
+      return null;
     case "check_for_update":
       return { version: "0.4.0", currentVersion: "0.3.0" };
     case "install_update":

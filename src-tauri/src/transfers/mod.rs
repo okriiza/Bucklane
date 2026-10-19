@@ -31,7 +31,7 @@ use crate::repositories::transfer_repository::TransferRepository;
 use crate::security::credential_store::CredentialStore;
 use crate::security::local_selection::{
     MAX_FOLDER_FILES, SelectionKind, SelectionRegistry, collect_files, join_in_dir, join_relative,
-    numbered_name, safe_local_file_name,
+    numbered_name, safe_local_file_name, stays_within,
 };
 use crate::services::connection_service::ConnectionService;
 
@@ -840,6 +840,15 @@ async fn plan_download(
         .map(|(key, size)| {
             let relative = key.strip_prefix(parent).unwrap_or(&key).to_owned();
             let path = join_relative(dir, &relative).ok_or_else(unusable_name)?;
+            if !stays_within(dir, &path) {
+                return Err(AppError::new(
+                    ErrorCode::LocalFileError,
+                    format!(
+                        "\"{relative}\" would be saved outside the chosen folder because of a \
+                         shortcut (symbolic link) inside it. Choose another folder."
+                    ),
+                ));
+            }
             Ok(DownloadPlan {
                 item: format!("{folder}{ITEM_SEPARATOR}{key}"),
                 name: relative,

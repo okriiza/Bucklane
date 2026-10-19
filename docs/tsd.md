@@ -2,7 +2,7 @@
 
 **Document ID:** BUCK-TSD-001  
 **Version:** 1.0  
-**Status:** Draft for Implementation  
+**Status:** Maintained alongside the code  
 **Related Documents:** Bucklane PRD v1.0, [Database Design v1.0](database_design.md)  
 **Architecture:** Local-first Desktop Application  
 **Primary Stack:** Tauri 2 / Vue 3 / TypeScript / Rust
@@ -11,44 +11,44 @@
 
 # 1. System Overview
 
-Bucklane merupakan aplikasi desktop untuk mengakses dan mengelola Amazon S3 maupun S3-compatible object storage tanpa menggunakan backend cloud terpusat.
+Bucklane is a desktop application for accessing and managing Amazon S3 and S3-compatible object storage without a centralized cloud backend.
 
-Seluruh operasi penyimpanan, manajemen credentials, dan transfer file diproses melalui Rust backend yang berjalan sebagai bagian dari aplikasi desktop.
+All storage operations, credential management, and file transfers are handled by a Rust backend that runs as part of the desktop application.
 
-Frontend Vue berkomunikasi dengan Rust menggunakan Tauri IPC.
+The Vue frontend communicates with Rust through Tauri IPC.
 
 ## 1.1 System Boundaries
 
-Frontend bertanggung jawab untuk:
+The frontend is responsible for:
 
-- User interface dan navigasi.
+- User interface and navigation.
 - State management.
-- Rendering file explorer.
-- Menampilkan status koneksi.
-- Menampilkan dan mengontrol transfer.
-- Menampilkan error serta dialog konfirmasi.
+- Rendering the file explorer.
+- Displaying connection status.
+- Displaying and controlling transfers.
+- Displaying errors and confirmation dialogs.
 
-Rust backend bertanggung jawab untuk:
+The Rust backend is responsible for:
 
-- Validasi permintaan dan otorisasi operasi lokal.
-- Manajemen konfigurasi koneksi.
-- Penyimpanan kredensial secara aman.
-- Komunikasi dengan S3-compatible API.
-- Operasi bucket dan object.
-- Transfer file dan progress.
-- Penyimpanan SQLite.
-- Logging dan error mapping.
+- Request validation and authorization of local operations.
+- Connection configuration management.
+- Secure credential storage.
+- Communication with the S3-compatible API.
+- Bucket and object operations.
+- File transfers and progress.
+- SQLite storage.
+- Logging and error mapping.
 
 ## 1.2 Architectural Principles
 
-1. Local-first: tidak memerlukan akun Bucklane atau server aplikasi.
-2. Secure by default: secret tidak disimpan di SQLite atau state frontend.
-3. Provider agnostic: operasi S3 standar menggunakan abstraksi yang sama.
-4. Streaming-first: file besar tidak dimuat seluruhnya ke RAM.
-5. Non-blocking: request jaringan dan transfer tidak memblokir antarmuka.
-6. Explicit destructive actions: delete dan overwrite harus aman dan dapat ditelusuri.
-7. Testable components: business logic dipisahkan dari Tauri command handlers.
-8. Maintainable: interface dan repository dibuat sesuai kebutuhan, bukan untuk setiap model secara otomatis.
+1. Local-first: no Bucklane account or application server is required.
+2. Secure by default: secrets are not stored in SQLite or in frontend state.
+3. Provider agnostic: standard S3 operations use the same abstraction.
+4. Streaming-first: large files are never loaded entirely into RAM.
+5. Non-blocking: network requests and transfers do not block the interface.
+6. Explicit destructive actions: delete and overwrite must be safe and traceable.
+7. Testable components: business logic is separated from Tauri command handlers.
+8. Maintainable: interfaces and repositories are created as needed, not automatically for every model.
 
 ## 1.3 Technology Stack
 
@@ -73,14 +73,14 @@ Rust backend bertanggung jawab untuk:
 
 ## 1.4 Credential Scope (MVP)
 
-MVP hanya mendukung **static access key ID + secret access key**.
+The MVP supports only **static access key ID + secret access key**.
 
-Tidak didukung pada MVP:
+Not supported in the MVP:
 
 - Session token / STS temporary credentials.
 - AWS shared config/credentials profiles.
 - AWS SSO / IAM Identity Center.
-- Instance metadata atau default credential chain.
+- Instance metadata or the default credential chain.
 
 # 2. Backend Architecture
 
@@ -88,20 +88,20 @@ Tidak didukung pada MVP:
 
 ### Commands Layer
 
-Merupakan entry point Tauri IPC.
+The Tauri IPC entry point.
 
 Responsibilities:
 
-- Menerima request dari frontend.
-- Memvalidasi struktur input.
-- Memanggil service yang sesuai.
-- Mengembalikan response atau application error.
+- Receive requests from the frontend.
+- Validate input structure.
+- Call the appropriate service.
+- Return a response or an application error.
 
-Commands tidak diperbolehkan mengandung implementasi langsung operasi S3 atau query SQL.
+Commands must not contain direct implementations of S3 operations or SQL queries.
 
 ### Services Layer
 
-Menangani application use cases dan business rules.
+Handles application use cases and business rules.
 
 Core services:
 
@@ -113,9 +113,9 @@ Core services:
 
 ### Provider Layer
 
-Mengabstraksi implementasi akses object storage.
+Abstracts the object storage access implementation.
 
-Komponen:
+Components:
 
 - StorageProvider trait
 - S3StorageProvider
@@ -123,11 +123,11 @@ Komponen:
 - ProviderProfiles
 - CapabilityRegistry
 
-Pada MVP, seluruh provider menggunakan S3StorageProvider dengan konfigurasi endpoint yang berbeda.
+In the MVP, all providers use S3StorageProvider with different endpoint configurations.
 
 ### Repository Layer
 
-Menangani data lokal.
+Handles local data.
 
 Repositories:
 
@@ -136,11 +136,11 @@ Repositories:
 - TransferRepository
 - SettingsRepository
 
-Repository tidak bertanggung jawab mengakses objek pada remote S3.
+Repositories are not responsible for accessing objects in remote S3.
 
 ### Security Layer
 
-Menangani penyimpanan serta pengambilan credentials, validasi endpoint, dan kebijakan keamanan.
+Handles credential storage and retrieval, endpoint validation, and security policies.
 
 # 3. Rust Project Structure
 
@@ -245,11 +245,11 @@ pub enum ProviderType {
 }
 ```
 
-Representasi string (IPC dan SQLite): `aws`, `supabase`, `minio`, `cloudflare_r2`, `wasabi`, `digitalocean_spaces`, `custom`.
+String representation (IPC and SQLite): `aws`, `supabase`, `minio`, `cloudflare_r2`, `wasabi`, `digitalocean_spaces`, `custom`.
 
-Connection identifiers menggunakan UUID v7.
+Connection identifiers use UUID v7.
 
-Credentials tidak disertakan dalam response connection yang dikirim ke frontend.
+Credentials are not included in connection responses sent to the frontend.
 
 ## 4.2 StorageObject
 
@@ -264,9 +264,9 @@ pub struct StorageObject {
 }
 ```
 
-Ukuran tidak wajib untuk folder virtual.
+Size is optional for virtual folders.
 
-Object key harus diperlakukan sebagai identifier S3, bukan path filesystem lokal.
+An object key must be treated as an S3 identifier, not a local filesystem path.
 
 ## 4.3 Transfer
 
@@ -285,15 +285,15 @@ pub enum TransferStatus {
 }
 ```
 
-Transfer menyimpan connection ID (nullable setelah koneksi dihapus), snapshot nama koneksi, bucket, object key, local path, jumlah bytes, status, retry count, error code/message jika ada, dan multipart upload ID bila relevan.
+A transfer stores the connection ID (nullable after the connection is deleted), a snapshot of the connection name, bucket, object key, local path, byte counts, status, retry count, error code/message if any, and the multipart upload ID when relevant.
 
 # 5. Storage Provider Abstraction
 
-Provider abstraction merupakan bagian utama yang memungkinkan Bucklane mendukung berbagai S3-compatible storage.
+The provider abstraction is the core piece that lets Bucklane support a variety of S3-compatible storage.
 
 ## 5.1 StorageProvider Trait
 
-Contoh kontrak konseptual Rust:
+Example conceptual Rust contract:
 
 ```rust
 use async_trait::async_trait;
@@ -369,93 +369,93 @@ pub trait StorageProvider: Send + Sync {
 }
 ```
 
-File transfer diorkestrasi oleh TransferService (scheduler, progress, retry, cancel), sedangkan StorageProvider hanya menyediakan operasi S3 primitif di atas.
+File transfers are orchestrated by TransferService (scheduler, progress, retry, cancel), while StorageProvider only provides the primitive S3 operations above.
 
-Operasi upload/download tidak boleh memuat seluruh konten file ke memory; body request/response bersifat streaming.
+Upload/download operations must not load the entire file content into memory; request/response bodies are streamed.
 
 ## 5.2 Client Factory
 
-S3ClientFactory membuat client berdasarkan:
+S3ClientFactory builds clients based on:
 
 - Provider type.
 - Endpoint.
 - Region.
 - Access credentials.
 - Path-style configuration.
-- Timeout dan retry policy.
+- Timeout and retry policy.
 - TLS policy.
 
-Credentials diambil dari OS Keychain saat diperlukan.
+Credentials are fetched from the OS Keychain when needed.
 
-Client boleh di-cache secara in-memory menggunakan key `(connection_id, updated_at)`; `updated_at` berfungsi sebagai revision konfigurasi.
+Clients may be cached in memory using the key `(connection_id, updated_at)`; `updated_at` serves as the configuration revision.
 
-Cache harus diinvalidasi ketika connection diperbarui, credential dirotasi, atau connection dihapus.
+The cache must be invalidated when a connection is updated, a credential is rotated, or a connection is deleted.
 
-**AWS bucket region resolution:** ListBuckets pada AWS mengembalikan bucket dari semua region, sedangkan client dikonfigurasi untuk satu region. Untuk koneksi AWS tanpa custom endpoint, region bucket dideteksi sekali melalui header `x-amz-bucket-region` dari HeadBucket (header ini tetap dikirim pada respons 301/403), di-cache per `(connection_id, bucket)`, dan client untuk region tersebut dibuat dengan credentials yang sama. Pengguna tidak perlu membuat satu koneksi per region.
+**AWS bucket region resolution:** On AWS, ListBuckets returns buckets from all regions, while a client is configured for a single region. For AWS connections without a custom endpoint, a bucket's region is detected once from the `x-amz-bucket-region` header of HeadBucket (this header is still sent on 301/403 responses), cached per `(connection_id, bucket)`, and a client for that region is built with the same credentials. Users do not need to create one connection per region.
 
-Tidak diperbolehkan menggunakan default credential chain secara tidak sengaja untuk connection dengan kredensial eksplisit.
+The default credential chain must never be used accidentally for a connection with explicit credentials.
 
 ## 5.3 Provider Profiles
 
-Provider profiles menentukan default konfigurasi, tetapi tidak menggantikan validasi endpoint atau capability checks.
+Provider profiles define default configuration, but do not replace endpoint validation or capability checks.
 
 **AWS S3**
 
-- Region wajib.
-- Endpoint mengikuti AWS region secara default.
+- Region required.
+- Endpoint follows the AWS region by default.
 - HTTPS enabled.
-- Virtual-hosted addressing digunakan secara default jika kompatibel.
+- Virtual-hosted addressing is used by default when compatible.
 
 **Supabase**
 
-- Endpoint menggunakan `/storage/v1/s3`.
-- Region mengikuti konfigurasi proyek.
-- Path-style addressing diaktifkan.
-- Credentials menggunakan S3 access keys atau metode autentikasi yang didukung.
+- Endpoint uses `/storage/v1/s3`.
+- Region follows the project configuration.
+- Path-style addressing enabled.
+- Credentials use S3 access keys or another supported authentication method.
 
 **MinIO**
 
 - Custom endpoint.
 - Region configurable.
-- Path-style addressing sebagai default awal.
-- HTTP hanya diperbolehkan melalui explicit opt-in.
+- Path-style addressing as the initial default.
+- HTTP allowed only through explicit opt-in.
 
 **Cloudflare R2**
 
 - Account-specific endpoint.
-- Region dan S3 settings mengikuti ketentuan Cloudflare.
-- Compatibility testing wajib.
+- Region and S3 settings follow Cloudflare's requirements.
+- Compatibility testing required.
 
 **Wasabi**
 
-- Endpoint region-specific milik Wasabi.
-- Region wajib dan harus sesuai endpoint.
+- Wasabi's region-specific endpoint.
+- Region required and must match the endpoint.
 - HTTPS enabled.
-- Compatibility testing wajib.
+- Compatibility testing required.
 
 **DigitalOcean Spaces**
 
-- Endpoint berbasis region Spaces.
-- Region mengikuti datacenter Spaces.
+- Endpoint based on the Spaces region.
+- Region follows the Spaces datacenter.
 - HTTPS enabled.
-- Compatibility testing wajib.
+- Compatibility testing required.
 
 **Custom S3**
 
-- Endpoint manual.
-- Region manual.
+- Manual endpoint.
+- Manual region.
 - Path-style configurable.
-- Tidak mengasumsikan seluruh capability AWS S3 didukung.
+- Does not assume every AWS S3 capability is supported.
 
 ## 5.4 Capability System
 
-CapabilityRegistry menyediakan status:
+CapabilityRegistry provides the statuses:
 
 - Supported
 - Unsupported
 - Unknown
 
-Capability yang perlu dilacak:
+Capabilities to track:
 
 - LIST_BUCKETS
 - HEAD_BUCKET
@@ -467,23 +467,23 @@ Capability yang perlu dilacak:
 - MULTIPART_UPLOAD
 - PRESIGNED_URL
 
-Capability unknown tidak boleh dianggap supported secara otomatis untuk operasi yang berisiko.
+An unknown capability must not be automatically treated as supported for risky operations.
 
-Capability bisa berasal dari provider profile, dokumentasi vendor, serta hasil operasi aktual.
+Capabilities can come from the provider profile, vendor documentation, and the results of actual operations.
 
-Read-only credentials tidak berarti provider tidak mendukung upload; permission denied harus dipisahkan dari unsupported API.
+Read-only credentials do not mean the provider does not support uploads; permission denied must be distinguished from an unsupported API.
 
 # 6. Tauri IPC Contract
 
-Frontend hanya berkomunikasi dengan backend melalui commands yang terdaftar.
+The frontend communicates with the backend only through registered commands.
 
 ## 6.0 Type Generation
 
-Seluruh command input/output dan event payload didefinisikan sebagai struct Rust (`serde`, `camelCase`), lalu tipe TypeScript di-generate dengan `tauri-specta` ke `src/services/tauri/bindings.ts`. File hasil generate tidak diedit manual; CI gagal jika bindings tidak sinkron.
+All command inputs/outputs and event payloads are defined as Rust structs (`serde`, `camelCase`), and TypeScript types are generated with `tauri-specta` into `src/services/tauri/bindings.ts`. The generated file is never edited manually; CI fails if the bindings are out of sync.
 
-Contoh TypeScript di bawah bersifat ilustratif; sumber kebenarannya adalah struct Rust.
+The TypeScript examples below are illustrative; the Rust structs are the source of truth.
 
-Semua command mengembalikan `Result<T, AppError>` (lihat §11).
+All commands return `Result<T, AppError>` (see §11).
 
 ## 6.1 Connection Commands
 
@@ -497,9 +497,9 @@ test_connection
 list_provider_profiles
 ```
 
-`list_provider_profiles` mengembalikan default dan petunjuk form per provider (label, endpoint wajib/opsional, placeholder, default region, default path-style), sehingga frontend tidak menyimpan salinan konfigurasi provider sendiri.
+`list_provider_profiles` returns per-provider defaults and form hints (label, required/optional endpoint, placeholder, default region, default path-style), so the frontend does not keep its own copy of the provider configuration.
 
-`delete_connection` mengembalikan `{ secretRemoved: boolean }`; jika `false`, koneksi sudah terhapus tetapi entri credential store gagal dibersihkan dan UI menampilkan peringatan.
+`delete_connection` returns `{ secretRemoved: boolean }`; if `false`, the connection has been deleted but the credential store entry could not be cleaned up, and the UI shows a warning.
 
 ```typescript
 type ProviderType =
@@ -552,12 +552,12 @@ interface TestConnectionInput {
 
 **Update semantics:**
 
-- `secretAccessKey` kosong/tidak dikirim → secret lama tetap digunakan.
-- `secretAccessKey` diisi → jalankan alur credential rotation (§8.2).
-- Jika `accessKeyId` berubah, `secretAccessKey` **wajib** diisi.
-- Setiap update menginvalidasi client cache untuk koneksi tersebut.
+- `secretAccessKey` empty/not sent → the existing secret is kept.
+- `secretAccessKey` provided → run the credential rotation flow (§8.2).
+- If `accessKeyId` changes, `secretAccessKey` is **required**.
+- Every update invalidates the client cache for that connection.
 
-TestConnection harus dapat menggunakan konfigurasi sementara tanpa menyimpan credentials secara permanen. Jika ListBuckets ditolak dan `testBucket` diisi, pengujian menggunakan HeadBucket pada bucket tersebut.
+TestConnection must be able to use a temporary configuration without permanently storing credentials. If ListBuckets is denied and `testBucket` is provided, the test uses HeadBucket on that bucket.
 
 ## 6.2 Bucket Commands
 
@@ -570,11 +570,11 @@ update_bucket_bookmark
 remove_bucket_bookmark
 ```
 
-`list_buckets` menerima connection ID.
+`list_buckets` takes a connection ID.
 
-`head_bucket` menerima connection ID dan nama bucket.
+`head_bucket` takes a connection ID and a bucket name.
 
-Bookmark commands mengelola tabel `connection_buckets`. Jika ListBuckets ditolak, pengguna tetap dapat membuka bucket melalui bookmark; akses diverifikasi dengan `head_bucket` saat dibuka.
+Bookmark commands manage the `connection_buckets` table. If ListBuckets is denied, the user can still open a bucket through a bookmark; access is verified with `head_bucket` when it is opened.
 
 ## 6.3 Object Commands
 
@@ -591,24 +591,26 @@ create_share_link
 preview_object
 ```
 
-`preview_object` mengambil isi objek untuk preview di aplikasi: gambar (≤ 15 MB) dan PDF (≤ 25 MB) utuh, teks hanya 512 KB pertama melalui HTTP Range. Isi dikirim sebagai base64 dan ditampilkan melalui `blob:` URL, sehingga CSP cukup ditambah `img-src blob:` dan `frame-src blob:` tanpa mengizinkan origin remote.
+`preview_object` fetches object content for in-app preview: images (≤ 15 MB) and PDFs (≤ 25 MB) in full, text only the first 512 KB via HTTP Range. The content is sent as base64 and displayed through a `blob:` URL, so the CSP only needs `img-src blob:` and `frame-src blob:` added, without allowing remote origins.
 
-`create_share_link` membuat presigned GET URL untuk satu objek (60 detik sampai 7 hari, batas SigV4). Keberadaan objek dicek lebih dulu. URL tidak disimpan maupun dicatat di log karena berfungsi sebagai bearer credential (SEC-004); link hanya bisa dicabut lebih awal dengan merotasi access key.
+The preview content type is determined by the preview kind, not by the object's `Content-Type`, which anyone with write access to the bucket can set: PDFs are always `application/pdf`, images only use types from an allowlist (raster and `image/svg+xml`, which are safe in `<img>`), and everything else is `application/octet-stream`. The frontend also picks the blob type from the preview kind. Reading stops at the size limit even if HEAD does not report a size or the server ignores Range.
 
-Rename adalah `move_object` dengan bucket yang sama dan key tujuan baru; tidak ada command rename terpisah.
+`create_share_link` creates a presigned GET URL for a single object (60 seconds to 7 days, the SigV4 limit). The object's existence is checked first. The URL is neither stored nor logged because it acts as a bearer credential (SEC-004); a link can only be revoked early by rotating the access key.
 
-`copy_object` dan `move_object` menerima `conflictPolicy` (`ASK` | `OVERWRITE`) dan mengembalikan union berlabel:
+Rename is `move_object` with the same bucket and a new destination key; there is no separate rename command.
+
+`copy_object` and `move_object` take a `conflictPolicy` (`ASK` | `OVERWRITE`) and return a tagged union:
 
 ```typescript
 type ObjectOperationOutcome =
   | { kind: "completed" }
-  | { kind: "conflict"; existingSize: number | null; existingLastModified: string | null } // tidak ada yang diubah
-  | { kind: "sourceKept"; reason: string }; // move: copy berhasil, sumber sengaja dipertahankan
+  | { kind: "conflict"; existingSize: number | null; existingLastModified: string | null } // nothing was changed
+  | { kind: "sourceKept"; reason: string }; // move: copy succeeded, source deliberately kept
 ```
 
-Copy menggunakan `x-amz-copy-source-if-match` dengan ETag sumber agar sumber yang berubah di tengah proses tidak tersalin. Move hanya menghapus sumber setelah tujuan terverifikasi (ukuran sama) dan ETag sumber dicek ulang tidak berubah; jika ragu, hasilnya `sourceKept`.
+Copy uses `x-amz-copy-source-if-match` with the source ETag so that a source changed mid-operation is not copied. Move deletes the source only after the destination is verified (same size) and the source ETag is rechecked as unchanged; when in doubt, the result is `sourceKept`.
 
-`copy_object` dan `move_object` hanya berlaku untuk objek tunggal pada MVP. Copy/move folder (prefix) termasuk Post-MVP. Objek berukuran di atas 5 GiB ditolak dengan `OPERATION_UNSUPPORTED` karena membutuhkan multipart copy (lihat §9.6).
+`copy_object` and `move_object` apply only to single objects in the MVP. Folder (prefix) copy/move is Post-MVP. Objects larger than 5 GiB are rejected with `OPERATION_UNSUPPORTED` because they require multipart copy (see §9.6).
 
 ListObjectsRequest:
 
@@ -633,11 +635,11 @@ interface ListObjectsResponse {
 }
 ```
 
-Continuation token harus diperlakukan sebagai opaque value dan tidak dimodifikasi frontend.
+The continuation token must be treated as an opaque value and not modified by the frontend.
 
-Object listing menggunakan API S3 ListObjectsV2 dengan prefix, delimiter, dan pagination.
+Object listing uses the S3 ListObjectsV2 API with prefix, delimiter, and pagination.
 
-Pencarian nama di server memakai listing yang sama dengan `prefix = folder + query` (query tanpa `/`). S3 hanya mencocokkan awal key dan bersifat case-sensitive, jadi hasilnya adalah item di folder aktif yang namanya diawali query. Field `name` selalu relatif terhadap folder yang memuat prefix (bagian sampai `/` terakhir), sehingga hasil pencarian tetap menampilkan nama lengkap.
+Server-side name search uses the same listing with `prefix = folder + query` (query without `/`). S3 only matches the start of the key and is case-sensitive, so the results are items in the active folder whose names start with the query. The `name` field is always relative to the folder containing the prefix (the part up to the last `/`), so search results still show the full name.
 
 ### 6.3.1 Bulk Delete Result
 
@@ -648,11 +650,11 @@ interface DeleteObjectsResult {
 }
 ```
 
-`delete_objects` menggunakan DeleteObjects API dalam batch maksimal 1.000 key. Jika provider tidak mendukung DeleteObjects, fallback ke DeleteObject per key. Partial failure selalu dilaporkan; UI tidak boleh menampilkan sukses penuh jika `failed` tidak kosong.
+`delete_objects` uses the DeleteObjects API in batches of at most 1,000 keys. If the provider does not support DeleteObjects, it falls back to DeleteObject per key. Partial failures are always reported; the UI must not show full success if `failed` is not empty.
 
 ### 6.3.2 Folder (Prefix) Delete
 
-Menghapus folder berarti menghapus seluruh objek di bawah prefix, sehingga dilakukan dalam dua tahap:
+Deleting a folder means deleting every object under the prefix, so it is done in two phases:
 
 ```typescript
 interface PrefixDeletePlan {
@@ -666,19 +668,19 @@ interface PrefixDeletePlan {
 }
 ```
 
-1. `prepare_prefix_delete(connectionId, bucket, prefix)` — backend me-list seluruh objek di bawah prefix (tanpa delimiter), menyimpan snapshot key di memory, dan mengembalikan `PrefixDeletePlan`.
-2. UI menampilkan konfirmasi berisi nama bucket, prefix, jumlah objek, dan total ukuran.
-3. `execute_prefix_delete(planId)` — backend menghapus **hanya key dalam snapshot**, sehingga objek yang ditambahkan setelah plan dibuat tidak ikut terhapus. Hasil menggunakan `DeleteObjectsResult`.
+1. `prepare_prefix_delete(connectionId, bucket, prefix)` — the backend lists every object under the prefix (without a delimiter), keeps a snapshot of the keys in memory, and returns a `PrefixDeletePlan`.
+2. The UI shows a confirmation with the bucket name, prefix, object count, and total size.
+3. `execute_prefix_delete(planId)` — the backend deletes **only the keys in the snapshot**, so objects added after the plan was created are not deleted. The result uses `DeleteObjectsResult`.
 
-Ketentuan:
+Rules:
 
-- Plan kedaluwarsa setelah 10 menit dan hanya dapat dieksekusi sekali.
-- Plan dengan lebih dari 100.000 objek ditolak pada MVP dengan `OPERATION_UNSUPPORTED`.
-- Prefix kosong (root bucket) tidak diizinkan.
+- A plan expires after 10 minutes and can be executed only once.
+- Plans with more than 100,000 objects are rejected in the MVP with `OPERATION_UNSUPPORTED`.
+- An empty prefix (bucket root) is not allowed.
 
 ## 6.4 Local File Selection
 
-Frontend **tidak pernah** mengirim path filesystem ke backend untuk operasi baca/tulis. File dan folder lokal hanya dapat digunakan setelah dipilih pengguna melalui dialog native yang dibuka dari sisi Rust.
+The frontend **never** sends filesystem paths to the backend for read/write operations. Local files and folders can only be used after the user selects them through a native dialog opened from the Rust side.
 
 ```text
 pick_upload_files
@@ -699,14 +701,14 @@ interface LocalDirectorySelection {
 }
 ```
 
-Ketentuan:
+Rules:
 
-- Backend membuka dialog menggunakan `tauri-plugin-dialog` dari Rust dan menyimpan path hasil pilihan di `AppState` (in-memory registry).
-- Frontend hanya menerima `selectionId` yang opaque.
-- Selection berlaku 30 menit dan tidak dipersistenkan.
-- Drag & drop (FIL-008) diproses melalui window drag-drop event di Rust, yang mendaftarkan selection dan mengirim `selectionId` ke frontend.
-- Plugin `fs` Tauri tidak digunakan.
-- Transfer yang sudah dibuat menyimpan path di SQLite; `retry_transfer` menggunakan path tersebut, bukan selection baru.
+- The backend opens the dialog using `tauri-plugin-dialog` from Rust and stores the selected paths in `AppState` (in-memory registry).
+- The frontend only receives an opaque `selectionId`.
+- A selection is valid for 30 minutes and is not persisted.
+- Drag & drop (FIL-008) is handled through the window drag-drop event in Rust, which registers the selection and sends the `selectionId` to the frontend.
+- The Tauri `fs` plugin is not used.
+- Transfers that have already been created store the path in SQLite; `retry_transfer` uses that path, not a new selection.
 
 ## 6.5 Transfer Commands
 
@@ -721,9 +723,9 @@ clear_transfer_history
 reveal_transfer
 ```
 
-`reveal_transfer(id)` menampilkan file lokal sebuah transfer di Finder / File Explorer. Path hanya dibaca di backend dari baris transfer; frontend cukup mengirim ID. Plugin opener dipakai sebagai library Rust dan tidak didaftarkan, sehingga tidak ada command opener yang terbuka ke frontend.
+`reveal_transfer(id)` shows a transfer's local file in Finder / File Explorer. The path is read only in the backend from the transfer row; the frontend just sends the ID. The opener plugin is used as a Rust library and is not registered, so no opener command is exposed to the frontend.
 
-Operasi berjalan melalui scheduler tanpa menahan IPC request hingga transfer selesai.
+Operations run through the scheduler without holding the IPC request until the transfer finishes.
 
 ```typescript
 type ConflictPolicy = "ASK" | "OVERWRITE" | "SKIP" | "RENAME";
@@ -771,32 +773,32 @@ interface TransferDto {
 
 ### 6.5.0 Folders
 
-- `pick_upload_folder` dan drag-and-drop folder mendaftarkan selection jenis `UploadDirectory`. Selection ini hanya bisa dibaca: tidak dapat dipakai sebagai tujuan download.
-- `enqueue_upload` mengekspansi folder secara rekursif (symlink dan file metadata OS seperti `.DS_Store` dilewati); setiap file menjadi transfer terpisah dengan key `<prefix><nama folder>/<path relatif>`. Keberadaan objek dicek dengan satu listing prefix tujuan, bukan HEAD per file.
-- `enqueue_download` menerima key folder (berakhiran `/`); semua objek di bawahnya diunduh dengan struktur folder dibuat ulang di tujuan. Setiap segmen path disanitasi sehingga key tidak dapat menempatkan file di luar folder tujuan.
-- Batas 10.000 file per folder. Item konflik untuk file di dalam folder diberi ID `<folder><U+001F><path/key>` sehingga pengiriman ulang dengan pilihan pengguna hanya memproses file tersebut.
+- `pick_upload_folder` and folder drag-and-drop register a selection of kind `UploadDirectory`. This selection is read-only: it cannot be used as a download destination.
+- `enqueue_upload` expands folders recursively (symlinks and OS metadata files such as `.DS_Store` are skipped); each file becomes a separate transfer with the key `<prefix><folder name>/<relative path>`. Object existence is checked with a single listing of the destination prefix, not a HEAD per file.
+- `enqueue_download` accepts folder keys (ending in `/`); every object under it is downloaded, with the folder structure recreated at the destination. Each path segment is sanitized so that a key cannot place a file outside the destination folder.
+- Limit of 10,000 files per folder. Conflict items for files inside a folder are given the ID `<folder><U+001F><path/key>` so that resubmitting with the user's choice processes only those files.
 
 ### 6.5.1 Conflict Policy
 
 Upload:
 
-1. Untuk setiap file, backend menjalankan HeadObject pada key tujuan.
-2. Jika key sudah ada dan `conflictPolicy = "ASK"`, item **tidak** dimasukkan ke antrean dan dikembalikan sebagai `conflict`.
-3. UI menampilkan dialog Overwrite / Skip / Rename (dengan opsi "terapkan ke semua"), lalu memanggil `enqueue_upload` kembali untuk item tersebut dengan policy yang dipilih.
-4. `RENAME` menghasilkan key `name (1).ext`, `name (2).ext`, dst. hingga key belum digunakan.
+1. For each file, the backend runs HeadObject on the destination key.
+2. If the key already exists and `conflictPolicy = "ASK"`, the item is **not** queued and is returned as `conflict`.
+3. The UI shows an Overwrite / Skip / Rename dialog (with an "apply to all" option), then calls `enqueue_upload` again for those items with the chosen policy.
+4. `RENAME` produces the keys `name (1).ext`, `name (2).ext`, etc. until an unused key is found.
 
 Download:
 
-- Aturan yang sama berlaku terhadap file di direktori tujuan.
-- Keberadaan file tujuan diperiksa ulang saat finalisasi (§9.4); jika muncul file baru di antara pengecekan dan finalisasi, transfer gagal dengan `LOCAL_FILE_ERROR` alih-alih menimpa.
+- The same rules apply to files in the destination directory.
+- The destination file's existence is rechecked at finalization (§9.4); if a new file appears between the check and finalization, the transfer fails with `LOCAL_FILE_ERROR` instead of overwriting.
 
-Pengecekan konflik upload bersifat best-effort, bukan atomic, karena conditional write tidak didukung seragam oleh semua provider.
+The upload conflict check is best-effort, not atomic, because conditional writes are not uniformly supported by all providers.
 
 ### 6.5.2 Retry & History
 
-- `retry_transfer` hanya berlaku untuk status `FAILED`. Transfer yang sama berpindah ke `QUEUED`, `retry_count` bertambah, dan error dibersihkan.
-- Untuk multipart upload, retry mencoba `AbortMultipartUpload` pada upload ID lama (best-effort), menghapus `transfer_parts` terkait, lalu memulai upload dari awal.
-- `clear_transfer_history` hanya menghapus transfer berstatus terminal (`COMPLETED`, `FAILED`, `CANCELED`). Transfer dengan multipart upload yang belum berhasil dibersihkan tidak ikut dihapus.
+- `retry_transfer` applies only to the `FAILED` status. The same transfer moves to `QUEUED`, `retry_count` is incremented, and the error is cleared.
+- For multipart uploads, retry attempts `AbortMultipartUpload` on the old upload ID (best-effort), deletes the related `transfer_parts`, then starts the upload from the beginning.
+- `clear_transfer_history` deletes only transfers in a terminal status (`COMPLETED`, `FAILED`, `CANCELED`). Transfers with a multipart upload that has not been successfully cleaned up are not deleted.
 
 ## 6.6 Settings Commands
 
@@ -816,64 +818,64 @@ interface AppSettings {
 }
 ```
 
-Settings dikirim sebagai satu objek bertipe dan divalidasi oleh SettingsService; penyimpanan tetap key/value JSON di tabel `settings` (DB design §5). Nilai tersimpan yang tidak valid diabaikan dan diganti default. `update_settings` langsung menerapkan setting transfer ke TransferManager; menurunkan batas concurrency tidak menghentikan transfer yang sedang berjalan.
+Settings are sent as a single typed object and validated by SettingsService; storage remains key/value JSON in the `settings` table (DB design §5). Invalid stored values are ignored and replaced with defaults. `update_settings` applies transfer settings to the TransferManager immediately; lowering the concurrency limit does not stop transfers that are already running.
 
-Hanya setting yang benar-benar diterapkan aplikasi yang dapat diubah. Opsi yang melemahkan keamanan data (misalnya menonaktifkan konfirmasi delete/overwrite, SEC-005) sengaja tidak disediakan.
+Only settings the application actually applies can be changed. Options that weaken data safety (for example disabling delete/overwrite confirmation, SEC-005) are deliberately not provided.
 
 ## 6.7 Events
 
-Event didefinisikan sebagai struct Rust dan di-generate oleh `tauri-specta` (`events.*` di `bindings.ts`); nama event diturunkan dari nama struct.
+Events are defined as Rust structs and generated by `tauri-specta` (`events.*` in `bindings.ts`); event names are derived from the struct names.
 
-| Event | Payload | Kapan |
+| Event | Payload | When |
 | --- | --- | --- |
-| `transfer-update` | `TransferDto` lengkap | Setiap perubahan status dan berkala selama RUNNING |
-| `files-dropped` | `{ files: LocalFileSelection[], skipped: number }` | File dari OS di-drop ke jendela; sudah terdaftar di selection registry |
-| `file-drag-hover` | `boolean` | File dari OS mulai/berhenti diseret di atas jendela |
+| `transfer-update` | Full `TransferDto` | Every status change and periodically while RUNNING |
+| `files-dropped` | `{ files: LocalFileSelection[], skipped: number }` | Files from the OS are dropped onto the window; already registered in the selection registry |
+| `file-drag-hover` | `boolean` | Files from the OS start/stop being dragged over the window |
 
-Satu event `transfer-update` dengan DTO lengkap menggantikan lima event terpisah (`started`/`progress`/`completed`/`failed`/`canceled`): frontend cukup melakukan upsert berdasarkan `id`, dan tidak ada kemungkinan urutan event yang membuat status kontradiktif.
+A single `transfer-update` event with the full DTO replaces five separate events (`started`/`progress`/`completed`/`failed`/`canceled`): the frontend simply upserts by `id`, and no event ordering can produce a contradictory status.
 
-Progress dikirim setiap 300 ms dan dipersistenkan ke SQLite sekitar setiap 2 detik.
+Progress is sent every 300 ms and persisted to SQLite roughly every 2 seconds.
 
-Event bersifat informasi sementara. SQLite dan runtime transfer manager menjadi sumber status otoritatif. Frontend memuat ulang status melalui `list_transfers` saat startup.
+Events are transient information. SQLite and the runtime transfer manager are the authoritative source of status. The frontend reloads status through `list_transfers` on startup.
 
 # 7. Local Database Design
 
 Database: SQLite via SQLx.
 
-Lokasi database mengikuti application data directory masing-masing OS.
+The database location follows each OS's application data directory.
 
-Skema lengkap, constraint, index, migration awal, dan data lifecycle didefinisikan di **[Database Design](database_design.md)**, yang menjadi sumber kebenaran tunggal untuk skema. Bagian ini hanya meringkas.
+The full schema, constraints, indexes, initial migration, and data lifecycle are defined in **[Database Design](database_design.md)**, which is the single source of truth for the schema. This section only summarizes it.
 
 ## 7.1 Tables
 
 | Table                | Purpose                                                      |
 | -------------------- | ------------------------------------------------------------ |
-| `connections`        | Profil koneksi non-secret + `credential_ref` (UNIQUE, 1:1)   |
-| `connection_buckets` | Bookmark bucket per koneksi (cascade saat koneksi dihapus)   |
-| `transfers`          | Riwayat dan status transfer                                  |
-| `transfer_parts`     | Part multipart upload yang sudah selesai (cascade)           |
-| `settings`           | Preferensi aplikasi dalam JSON-encoded value                 |
+| `connections`        | Non-secret connection profiles + `credential_ref` (UNIQUE, 1:1) |
+| `connection_buckets` | Bucket bookmarks per connection (cascade on connection delete) |
+| `transfers`          | Transfer history and status                                  |
+| `transfer_parts`     | Completed multipart upload parts (cascade)                   |
+| `settings`           | Application preferences as JSON-encoded values               |
 
 ## 7.2 Connection Deletion Policy
 
-1. Transfer aktif (`QUEUED`/`RUNNING`) milik koneksi harus dibatalkan atau dihentikan terlebih dahulu.
-2. Koneksi dihapus; bookmark ikut terhapus (`ON DELETE CASCADE`).
-3. Riwayat transfer **dipertahankan**: `transfers.connection_id` menjadi `NULL` (`ON DELETE SET NULL`) dan `connection_name_snapshot` tetap menampilkan nama koneksi.
-4. Secret dihapus dari OS credential store.
+1. Active transfers (`QUEUED`/`RUNNING`) belonging to the connection must be canceled or stopped first.
+2. The connection is deleted; its bookmarks are deleted with it (`ON DELETE CASCADE`).
+3. Transfer history is **retained**: `transfers.connection_id` becomes `NULL` (`ON DELETE SET NULL`) and `connection_name_snapshot` still shows the connection name.
+4. The secret is deleted from the OS credential store.
 
 ## 7.3 Migration Strategy
 
-- Setiap perubahan skema dibuat dalam versioned migration.
-- Migration dijalankan ketika aplikasi startup.
-- Migration harus atomic jika memungkinkan.
-- Kegagalan migration harus menghentikan operasi yang membutuhkan database.
-- Upgrade tidak boleh menghapus konfigurasi pengguna secara otomatis.
+- Every schema change is made in a versioned migration.
+- Migrations run at application startup.
+- Migrations must be atomic where possible.
+- A migration failure must stop operations that require the database.
+- Upgrades must never automatically delete user configuration.
 
 # 8. Credentials & Security
 
 ## 8.1 Secure Credential Store
 
-Antarmuka:
+Interface:
 
 ```rust
 pub trait CredentialStore {
@@ -899,57 +901,64 @@ Implementation adapters:
 
 - macOS: Keychain.
 - Windows: Credential Manager.
-- Linux: Secret Service-compatible keyring, jika tersedia.
+- Linux: Secret Service-compatible keyring, if available.
 
-Jika secure credential store tidak tersedia, Bucklane tidak boleh diam-diam menyimpan secret ke plaintext. Aplikasi harus menampilkan error atau menawarkan metode aman yang secara eksplisit didukung.
+If a secure credential store is not available, Bucklane must never silently store secrets in plaintext. The application must show an error or offer an explicitly supported secure method.
 
-Pada Linux tanpa Secret Service (misalnya tanpa GNOME Keyring/KWallet), koneksi tidak dapat disimpan. Aplikasi menampilkan error yang menjelaskan dependency yang dibutuhkan; dokumentasi instalasi Linux mencantumkan dependency ini.
+On Linux without Secret Service (for example without GNOME Keyring/KWallet), connections cannot be saved. The application shows an error explaining the required dependency; the Linux installation documentation lists this dependency.
 
 ## 8.2 Credential Rotation
 
-Ketika pengguna mengganti Secret Access Key:
+When the user changes the Secret Access Key:
 
-1. Validasi konfigurasi baru.
-2. Simpan credential baru dengan referensi baru.
-3. Perbarui referensi dalam SQLite transaction.
-4. Invalidasi client cache.
-5. Hapus credential lama setelah pergantian berhasil.
+1. Validate the new configuration.
+2. Save the new credential under a new reference.
+3. Update the reference in an SQLite transaction.
+4. Invalidate the client cache.
+5. Delete the old credential after the switch succeeds.
 
-Jika proses gagal, rollback atau recovery harus mencegah koneksi menunjuk ke secret yang tidak tersedia.
+If the process fails, rollback or recovery must prevent the connection from pointing to an unavailable secret.
 
 ## 8.3 Endpoint Security
 
-- HTTPS default.
-- Certificate verification wajib secara default.
-- Tidak mendukung opsi global ignore TLS errors pada MVP.
-- HTTP hanya diizinkan melalui konfigurasi eksplisit.
-- Endpoint dan region divalidasi sebelum client dibuat.
-- Authorization headers dan secret tidak boleh masuk log.
-- Redirect yang tidak diharapkan harus ditangani dengan aman, terutama untuk endpoint custom.
+- HTTPS by default.
+- Certificate verification required by default.
+- No global ignore-TLS-errors option in the MVP.
+- HTTP allowed only through explicit configuration.
+- Endpoint and region are validated before the client is built.
+- Authorization headers and secrets must never be logged.
+- Unexpected redirects must be handled safely, especially for custom endpoints.
 
 ## 8.4 Tauri Security
 
 - Minimal application capabilities.
-- Hanya command yang diperlukan yang diregistrasikan.
-- Tidak ada arbitrary shell execution.
-- Tidak ada arbitrary filesystem read/write IPC; path lokal hanya melalui selection registry (§6.4).
-- Plugin `fs` dan `shell` tidak digunakan.
-- Content Security Policy dikonfigurasi.
-- Tidak menggunakan remote scripts yang tidak dipercaya.
+- Only required commands are registered.
+- No arbitrary shell execution.
+- No arbitrary filesystem read/write IPC; local paths only through the selection registry (§6.4).
+- The `fs` and `shell` plugins are not used.
+- Content Security Policy is configured.
+- No untrusted remote scripts.
+
+Additional hardening:
+
+- The `navigation-guard` plugin blocks webview navigation outside the application origin (`tauri://localhost`, `http(s)://tauri.localhost`, `blob:`, `about:blank`, and the dev server only in debug builds).
+- Folder downloads are rejected if an existing parent folder points outside the destination folder through a symlink (`stays_within`). Windows device names (`CON`, `NUL`, `COM1`, ...) get a `_` suffix.
+- `log_frontend_error` writes UI errors to the log with URLs and `X-Amz-*`/`Signature=`/`Credential=` parameters redacted, at most 200 entries per session. `diagnostics` returns only the version, OS, architecture, WebView version, and database status.
+- CI runs `cargo audit` and `pnpm audit --prod`.
 
 ## 8.5 In-App Updates
 
-- Memakai `tauri-plugin-updater` dari Rust saja (`src-tauri/src/updates.rs`). Permission updater tidak diberikan ke frontend; UI memakai command `check_for_update`, `install_update`, `restart_app`, dan `open_release_page(version)`. URL release dibangun di Rust dari string versi yang divalidasi.
-- Endpoint: `https://github.com/okriiza/Bucklane/releases/latest/download/latest.json`. Draft release tidak terlihat oleh updater.
-- Paket update ditandatangani (minisign) oleh workflow rilis memakai secret `TAURI_SIGNING_PRIVATE_KEY`. Aplikasi memverifikasi tanda tangan terhadap `plugins.updater.pubkey` sebelum memasang; paket yang gagal verifikasi ditolak.
-- Cek otomatis sekali saat aplikasi dibuka, bisa dimatikan lewat setting `updates.check_on_startup`. Tidak ada data pengguna yang dikirim. Build development tidak melakukan cek otomatis.
-- Progress unduhan dikirim lewat event `update-progress`. Di Windows installer menutup aplikasi; di macOS/Linux UI meminta restart. UI meminta konfirmasi bila masih ada transfer berjalan.
+- Uses `tauri-plugin-updater` from Rust only (`src-tauri/src/updates.rs`). Updater permissions are not granted to the frontend; the UI uses the commands `check_for_update`, `install_update`, `restart_app`, and `open_release_page(version)`. The release URL is built in Rust from a validated version string.
+- Endpoint: `https://github.com/okriiza/Bucklane/releases/latest/download/latest.json`. Draft releases are not visible to the updater.
+- Update packages are signed (minisign) by the release workflow using the `TAURI_SIGNING_PRIVATE_KEY` secret. The application verifies the signature against `plugins.updater.pubkey` before installing; packages that fail verification are rejected.
+- Automatic check once when the application opens, which can be turned off with the `updates.check_on_startup` setting. No user data is sent. Development builds do not check automatically.
+- Download progress is sent through the `update-progress` event. On Windows the installer closes the application; on macOS/Linux the UI asks for a restart. The UI asks for confirmation if transfers are still running.
 
 # 9. Transfer Engine Design
 
 ## 9.1 Architecture
 
-TransferService mengelola:
+TransferService manages:
 
 - Transfer creation.
 - Queue state.
@@ -960,13 +969,13 @@ TransferService mengelola:
 - Retry.
 - Transfer persistence.
 
-Tokio digunakan untuk asynchronous task execution.
+Tokio is used for asynchronous task execution.
 
-Semaphore mengontrol jumlah transfer aktif.
+A semaphore controls the number of active transfers.
 
-Default concurrency: 3 transfer; di dalam satu multipart upload, maksimal 4 part diunggah paralel.
+Default concurrency: 3 transfers; within a single multipart upload, at most 4 parts are uploaded in parallel.
 
-Concurrency, threshold multipart (default 64 MiB), dan ukuran part (default 16 MiB, dinaikkan otomatis agar ≤ 10.000 part dan tidak di bawah 5 MiB) dibaca dari Settings dan dapat diubah saat aplikasi berjalan.
+Concurrency, the multipart threshold (default 64 MiB), and the part size (default 16 MiB, raised automatically to keep ≤ 10,000 parts and never below 5 MiB) are read from Settings and can be changed while the application is running.
 
 ## 9.2 Transfer Lifecycle
 
@@ -983,11 +992,11 @@ RUNNING -------> COMPLETED
 FAILED --retry--> QUEUED
 ```
 
-Cancellation dapat diminta ketika transfer queued maupun running.
+Cancellation can be requested while a transfer is queued or running.
 
-Task completion dan cancellation harus disinkronkan untuk mencegah status contradictory.
+Task completion and cancellation must be synchronized to prevent contradictory statuses.
 
-Ketika aplikasi restart, status QUEUED dan RUNNING dari sesi sebelumnya direkonsiliasi menjadi FAILED dengan `error_code = INTERRUPTED` (transfer tidak dimulai otomatis tanpa tindakan pengguna), kecuali tersedia mekanisme resume yang telah diverifikasi.
+When the application restarts, QUEUED and RUNNING statuses from the previous session are reconciled to FAILED with `error_code = INTERRUPTED` (transfers are not started automatically without user action), unless a verified resume mechanism is available.
 
 ## 9.3 Upload Strategy
 
@@ -1002,7 +1011,7 @@ Large file:
 - Multipart upload.
 - Configurable part size.
 - Bounded parallel part uploads.
-- Complete multipart setelah seluruh part selesai.
+- Complete multipart after all parts finish.
 
 Multipart sequence:
 
@@ -1013,11 +1022,11 @@ Multipart sequence:
 5. CompleteMultipartUpload.
 6. Validate final result.
 
-Jika terjadi kegagalan permanen sebelum completion, coba AbortMultipartUpload.
+If a permanent failure occurs before completion, attempt AbortMultipartUpload.
 
-Jika abort gagal, catat upload ID secara aman untuk cleanup/recovery.
+If the abort fails, record the upload ID safely for cleanup/recovery.
 
-Part size harus memenuhi batasan S3, termasuk ukuran minimum part non-final dan jumlah maksimum part.
+The part size must satisfy S3 limits, including the minimum size of non-final parts and the maximum number of parts.
 
 ## 9.4 Download Strategy
 
@@ -1029,20 +1038,20 @@ Part size harus memenuhi batasan S3, termasuk ukuran minimum part non-final dan 
 6. Validate completion.
 7. Finalize destination using safe replacement rules.
 
-Download tidak boleh langsung menimpa file penting sebelum operasi selesai.
+A download must never overwrite an important file directly before the operation completes.
 
-Temporary file yang gagal harus dibersihkan atau ditandai sebagai incomplete.
+Failed temporary files must be cleaned up or marked as incomplete.
 
 ## 9.5 Retry Policy
 
-Retry hanya dilakukan pada error yang layak dicoba ulang, misalnya:
+Retry is performed only for errors worth retrying, for example:
 
 - Temporary network errors.
 - Connection reset.
 - Selected server 5xx responses.
 - Throttling.
 
-Tidak otomatis retry pada:
+No automatic retry on:
 
 - Invalid credentials.
 - Access denied.
@@ -1050,13 +1059,13 @@ Tidak otomatis retry pada:
 - Unsupported operation.
 - Permanent validation error.
 
-Retry menggunakan exponential backoff dengan jitter dan batas percobaan.
+Retry uses exponential backoff with jitter and an attempt limit.
 
-Operasi non-idempotent atau yang mempunyai efek destruktif membutuhkan kebijakan retry khusus.
+Non-idempotent operations or operations with destructive effects require a dedicated retry policy.
 
 ## 9.6 Copy / Move / Rename Safety
 
-Rename dan move S3 menggunakan kombinasi copy dan delete.
+S3 rename and move use a combination of copy and delete.
 
 Safe move sequence:
 
@@ -1068,13 +1077,13 @@ Safe move sequence:
 6. Delete source only after successful verification.
 7. Refresh explorer.
 
-Untuk objek besar, provider mungkin membutuhkan multipart copy.
+For large objects, the provider may require multipart copy.
 
-MVP harus memblokir copy/move untuk ukuran atau provider yang belum didukung secara aman, alih-alih mencoba operasi berisiko. Batas MVP: objek di atas 5 GiB (batas CopyObject single-request) ditolak dengan `OPERATION_UNSUPPORTED`; ukuran diperiksa melalui HeadObject sebelum copy.
+The MVP must block copy/move for sizes or providers that are not yet safely supported, instead of attempting risky operations. MVP limit: objects above 5 GiB (the single-request CopyObject limit) are rejected with `OPERATION_UNSUPPORTED`; the size is checked through HeadObject before copying.
 
-Object ETag tidak boleh selalu dianggap sebagai hash MD5 konten.
+An object ETag must not always be assumed to be an MD5 hash of the content.
 
-Concurrent modification dan versioning harus dipertimbangkan agar source yang telah berubah tidak dihapus secara tidak sengaja.
+Concurrent modification and versioning must be considered so that a source that has changed is not deleted accidentally.
 
 # 10. Frontend Architecture
 
@@ -1119,8 +1128,8 @@ Pinia stores:
 - Active prefix.
 - Object listing.
 - Pagination state.
-- Server search query (dikosongkan saat pindah folder).
-- Sort order (nama, ukuran, tanggal; folder selalu di atas). Diurutkan di client atas item yang sudah dimuat, disimpan di localStorage sebagai preferensi.
+- Server search query (cleared when changing folders).
+- Sort order (name, size, date; folders always on top). Sorted on the client over the already-loaded items, stored in localStorage as a preference.
 - Selection state.
 
 **transferStore**
@@ -1130,15 +1139,15 @@ Pinia stores:
 - Queue status.
 - Error notifications.
 
-Secrets tidak disimpan di Pinia secara persisten.
+Secrets are not persisted in Pinia.
 
-Semua teks UI melalui `vue-i18n` sejak awal agar bahasa lain dapat ditambahkan tanpa refactor; MVP hanya menyediakan English.
+All UI text goes through `vue-i18n` from the start so other languages can be added without refactoring; the MVP provides English only.
 
 ## 10.3 Explorer UI Requirements
 
-Sidebar menampilkan connections dan navigasi bucket.
+The sidebar shows connections and bucket navigation.
 
-Main panel menampilkan:
+The main panel shows:
 
 - Breadcrumb.
 - Upload button.
@@ -1148,13 +1157,13 @@ Main panel menampilkan:
 - Context menu.
 - Object metadata.
 
-Transfer panel berada di bawah atau sebagai drawer.
+The transfer panel sits at the bottom or as a drawer.
 
-Setiap operasi memiliki loading, empty, success, dan error state.
+Every operation has loading, empty, success, and error states.
 
 # 11. Error Model
 
-Semua Rust errors yang diekspos ke frontend menggunakan format terstruktur.
+All Rust errors exposed to the frontend use a structured format.
 
 ```typescript
 interface AppError {
@@ -1165,7 +1174,7 @@ interface AppError {
 }
 ```
 
-Error codes utama:
+Main error codes:
 
 - CONNECTION_INVALID
 - INVALID_INPUT
@@ -1184,15 +1193,15 @@ Error codes utama:
 - DATABASE_UNAVAILABLE
 - INTERNAL_ERROR
 
-Pesan detail yang ditampilkan atau disimpan harus disanitasi agar tidak membocorkan secret maupun signed URL.
+Detail messages that are displayed or stored must be sanitized so they do not leak secrets or signed URLs.
 
 # 12. Observability
 
-MVP menggunakan local structured logging.
+The MVP uses local structured logging.
 
 Logging library: `tracing`.
 
-Data yang boleh dicatat:
+Data that may be logged:
 
 - Command name.
 - Operation type.
@@ -1203,18 +1212,18 @@ Data yang boleh dicatat:
 - Sanitized error code.
 - Result status.
 
-Data yang tidak boleh dicatat:
+Data that must not be logged:
 
 - Secret Access Key.
 - Authorization header.
 - Session token.
 - Signed URL.
-- Isi file.
+- File contents.
 - Raw credential payload.
 
-Log ditulis ke application log directory masing-masing OS menggunakan `tracing-appender` dengan rotasi harian dan retensi 7 file. Level mengikuti setting `logging.level`.
+Logs are written to each OS's application log directory using `tracing-appender` with daily rotation and retention of 7 files. The level follows the `logging.level` setting.
 
-Telemetry jarak jauh tidak diaktifkan secara default.
+Remote telemetry is not enabled by default.
 
 # 13. Testing Strategy
 
@@ -1230,16 +1239,16 @@ Telemetry jarak jauh tidak diaktifkan secara default.
 
 ## 13.2 Integration Tests
 
-Provider target dan cara eksekusi:
+Target providers and how they are run:
 
-| Provider         | Eksekusi                                                        |
+| Provider         | Execution                                                       |
 | ---------------- | --------------------------------------------------------------- |
-| S3-compatible lokal (RustFS) | Setiap PR di CI melalui `docker compose` (`BUCKLANE_S3_TEST_ENDPOINT`) |
-| MinIO            | Manual terhadap server MinIO; image Docker MinIO tidak lagi dipublikasikan |
-| AWS S3           | Nightly atau manual, credentials dari GitHub repository secrets |
-| Supabase Storage | Nightly atau manual, credentials dari GitHub repository secrets |
+| Local S3-compatible (RustFS) | Every PR in CI via `docker compose` (`BUCKLANE_S3_TEST_ENDPOINT`) |
+| MinIO            | Manually against a MinIO server; the MinIO Docker image is no longer published |
+| AWS S3           | Nightly or manual, credentials from GitHub repository secrets   |
+| Supabase Storage | Nightly or manual, credentials from GitHub repository secrets   |
 
-Integration test yang membutuhkan credentials eksternal di-skip secara eksplisit (bukan gagal) jika secrets tidak tersedia, misalnya pada PR dari fork.
+Integration tests that require external credentials are explicitly skipped (not failed) if the secrets are unavailable, for example on PRs from forks.
 
 Test cases:
 
@@ -1257,15 +1266,15 @@ Test cases:
 
 ## 13.3 Security Tests
 
-- Secret tidak tersimpan dalam SQLite.
-- Secret tidak muncul pada logs.
-- Secret tidak dikembalikan dalam connection DTO.
-- Unsafe HTTP memerlukan explicit opt-in.
-- Destructive actions memerlukan konfirmasi.
-- Destination path traversal tidak diizinkan.
-- Command transfer menolak path mentah; hanya `selectionId` yang valid dan belum kedaluwarsa diterima.
-- Prefix delete hanya menghapus key dalam snapshot plan.
-- Tauri IPC tidak membuka arbitrary filesystem access.
+- Secrets are not stored in SQLite.
+- Secrets do not appear in logs.
+- Secrets are not returned in the connection DTO.
+- Unsafe HTTP requires explicit opt-in.
+- Destructive actions require confirmation.
+- Destination path traversal is not allowed.
+- Transfer commands reject raw paths; only a valid, unexpired `selectionId` is accepted.
+- Prefix delete deletes only the keys in the plan snapshot.
+- Tauri IPC does not expose arbitrary filesystem access.
 
 ## 13.4 End-to-End Tests
 
@@ -1282,7 +1291,7 @@ Core user scenarios:
 
 # 14. CI/CD
 
-GitHub Actions bertanggung jawab untuk:
+GitHub Actions is responsible for:
 
 - TypeScript lint/type checking.
 - Vue unit tests.
@@ -1300,9 +1309,9 @@ Release targets:
 - Windows x64.
 - Linux x64.
 
-Code signing dan notarization menjadi release requirements untuk distribusi publik yang matang, sesuai sistem operasi.
+Code signing and notarization are release requirements for mature public distribution, depending on the operating system.
 
-Autoupdate tidak boleh menerima update tanpa signature verification.
+Autoupdate must never accept an update without signature verification.
 
 # 15. Implementation Milestones
 
@@ -1364,7 +1373,7 @@ Acceptance:
 
 ## M03 — Object Operations
 
-Upload/download dipindahkan ke M04 karena bergantung pada transfer engine (antrean, progress, cancel, multipart).
+Upload/download moved to M04 because it depends on the transfer engine (queue, progress, cancel, multipart).
 
 Deliverables:
 
@@ -1385,7 +1394,7 @@ Acceptance:
 
 Deliverables:
 
-- Upload/download (dengan conflict policy dan local file selection registry).
+- Upload/download (with conflict policy and local file selection registry).
 - Transfer scheduler.
 - Progress events.
 - Queue.
@@ -1464,18 +1473,18 @@ Acceptance:
 
 # 18. Definition of Done
 
-Implementasi teknis dianggap selesai apabila:
+The technical implementation is considered done when:
 
-1. Requirement PRD terpenuhi.
-2. API/IPC contract sesuai spesifikasi.
-3. Unit dan integration tests tersedia.
-4. Error handling diterapkan.
-5. Security checks terpenuhi.
-6. Tidak ada known critical data loss.
-7. Dokumentasi diperbarui.
-8. Perubahan lulus CI.
-9. Telah direview.
-10. Kompatibilitas provider relevan telah diuji.
+1. PRD requirements are met.
+2. The API/IPC contract matches the specification.
+3. Unit and integration tests are in place.
+4. Error handling is implemented.
+5. Security checks pass.
+6. There is no known critical data loss.
+7. Documentation is updated.
+8. Changes pass CI.
+9. It has been reviewed.
+10. Relevant provider compatibility has been tested.
 
 ---
 

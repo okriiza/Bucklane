@@ -4,6 +4,7 @@ import { createApp } from "vue";
 import App from "./App.vue";
 import { i18n } from "./i18n";
 import { router } from "./router";
+import { installErrorReporting } from "./utils/errorReporting";
 import "./assets/main.css";
 
 // macOS draws an overlay title bar; the layout reserves room for it.
@@ -17,5 +18,6 @@ const demo =
 demo?.install();
 
 const app = createApp(App).use(createPinia()).use(router).use(i18n);
+installErrorReporting(app);
 app.mount("#app");
 void demo?.afterMount(app);

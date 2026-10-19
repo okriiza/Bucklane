@@ -7,6 +7,14 @@ import * as __TAURI_EVENT from "@tauri-apps/api/event";
 export const commands = {
 	/**  Reports whether the backend and its local database are usable. */
 	health: () => typedError<HealthStatus, AppError>(__TAURI_INVOKE("health")),
+	diagnostics: () => typedError<DiagnosticsInfo, AppError>(__TAURI_INVOKE("diagnostics")),
+	/**  Opens the folder holding Bucklane's log files in the system file manager. */
+	openLogsFolder: () => typedError<null, AppError>(__TAURI_INVOKE("open_logs_folder")),
+	/**
+	 *  Records an unexpected frontend error in the log file so it can be
+	 *  attached to a bug report. URLs and signature parameters are redacted.
+	 */
+	logFrontendError: (message: string) => __TAURI_INVOKE<void>("log_frontend_error", { message }),
 	/**  Provider defaults and form hints, so the frontend has no hardcoded copy. */
 	listProviderProfiles: () => __TAURI_INVOKE<ProviderProfile[]>("list_provider_profiles"),
 	listConnections: () => typedError<ConnectionDto[], AppError>(__TAURI_INVOKE("list_connections")),
@@ -246,6 +254,19 @@ export type DeleteObjectsInput = {
 export type DeleteObjectsResult = {
 	deleted: string[],
 	failed: DeleteFailure[],
+};
+
+/**
+ *  Environment details for bug reports. Contains nothing about connections,
+ *  buckets, files, or credentials.
+ */
+export type DiagnosticsInfo = {
+	appVersion: string,
+	tauriVersion: string,
+	webviewVersion: string | null,
+	os: string,
+	arch: string,
+	databaseOk: boolean,
 };
 
 export type EnqueueDownloadInput = {

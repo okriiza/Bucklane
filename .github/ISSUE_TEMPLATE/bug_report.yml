@@ -1,0 +1,42 @@
+name: Bug report
+description: Something in Bucklane doesn't work as expected
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! For security problems, please use **Security → Report a vulnerability** instead.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open a connection to …
+        2. Click …
+        3. See …
+  - type: input
+    id: provider
+    attributes:
+      label: Storage provider
+      placeholder: Amazon S3, Supabase, MinIO, Cloudflare R2, …
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics
+      description: In Bucklane, open **About → Report a problem → Copy diagnostics** and paste it here. It contains no connection names, endpoints, buckets, files, or keys.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant log lines (optional)
+      description: "**About → Open logs folder.** Logs never contain secret keys, but check them for bucket or file names you'd rather not share."
+      render: text

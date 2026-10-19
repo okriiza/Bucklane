@@ -301,6 +301,19 @@ export default {
     checkForUpdatesHint:
       "Contacts GitHub once when Bucklane opens. Nothing about you or your storage is sent. You can always check manually under About.",
   },
+  diagnostics: {
+    title: "Report a problem",
+    hint: "Copy a summary of your setup to include in a bug report. It contains no connection names, endpoints, buckets, files, or keys.",
+    copy: "Copy diagnostics",
+    copied: "Diagnostics copied",
+    openLogs: "Open logs folder",
+  },
+  errorBoundary: {
+    title: "Something went wrong",
+    body: "This screen ran into an unexpected error. It has been written to the log file.",
+    home: "Go to home",
+    reload: "Reload",
+  },
   updates: {
     title: "Updates",
     hint: "Bucklane checks GitHub for new releases. Updates are signed and verified before installing.",

@@ -37,6 +37,9 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
         ])
         .commands(tauri_specta::collect_commands![
             commands::health::health,
+            commands::diagnostics::diagnostics,
+            commands::diagnostics::open_logs_folder,
+            commands::diagnostics::log_frontend_error,
             commands::connections::list_provider_profiles,
             commands::connections::list_connections,
             commands::connections::get_connection,
@@ -95,6 +98,7 @@ pub fn run() {
 
     tauri::Builder::default()
         // Used from Rust only; no dialog permission is granted to the frontend.
+        .plugin(security::navigation::guard())
         .plugin(tauri_plugin_dialog::init())
         // Same for the updater: the UI uses the commands in `commands::updates`.
         .plugin(tauri_plugin_updater::Builder::new().build())

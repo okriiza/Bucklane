@@ -40,6 +40,15 @@ function formatText(raw: string, contentType: string, key: string, truncated: bo
   }
 }
 
+/**
+ * Blob type from the preview kind, so bucket metadata can never turn a
+ * preview into an HTML document. The backend already pins these types.
+ */
+function blobType(result: ObjectPreview): string {
+  if (result.kind === "PDF") return "application/pdf";
+  return result.contentType.startsWith("image/") ? result.contentType : "application/octet-stream";
+}
+
 function release() {
   if (objectUrl.value) URL.revokeObjectURL(objectUrl.value);
   objectUrl.value = null;
@@ -62,7 +71,7 @@ async function load() {
       const raw = new TextDecoder("utf-8", { fatal: false }).decode(bytes);
       text.value = formatText(raw, result.contentType, props.objectKey, result.truncated);
     } else {
-      objectUrl.value = URL.createObjectURL(new Blob([bytes], { type: result.contentType }));
+      objectUrl.value = URL.createObjectURL(new Blob([bytes], { type: blobType(result) }));
     }
     preview.value = result;
   } catch (err) {

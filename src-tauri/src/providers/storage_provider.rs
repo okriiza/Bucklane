@@ -43,13 +43,15 @@ pub trait StorageProvider: Send + Sync {
 
     async fn delete_object(&self, bucket: &str, key: &str) -> Result<(), AppError>;
 
-    /// Object bytes, or only the first `max_bytes` when given (HTTP Range).
+    /// At most `limit` bytes from the start of the object, and whether it
+    /// continues past them. Reading stops at the cap even if the server
+    /// ignores the HTTP Range, so a large object never lands in memory.
     async fn get_bytes(
         &self,
         bucket: &str,
         key: &str,
-        max_bytes: Option<u64>,
-    ) -> Result<Vec<u8>, AppError>;
+        limit: u64,
+    ) -> Result<(Vec<u8>, bool), AppError>;
 
     /// Presigned GET URL valid for `expires_in`. Signing is local; no request
     /// is sent to the provider.

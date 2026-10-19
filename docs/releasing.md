@@ -10,7 +10,7 @@ The version must match in three files:
 - `src-tauri/Cargo.toml` → `version`
 - `src-tauri/tauri.conf.json` → `"version"` (this one names the installers)
 
-Commit the change on `main`.
+In `CHANGELOG.md`, rename **Unreleased** to the new version and date. Commit the change on `main`.
 
 ## 2. Tag and push
 

@@ -3,7 +3,7 @@
 ## Bucklane — Desktop S3 Storage Manager
 
 **Version:** 1.0  
-**Status:** Draft — Ready for Technical Design  
+**Status:** Original plan (not updated for every change; the code and README are authoritative)  
 **Platform:** macOS, Windows, Linux  
 **Product Type:** Cross-platform Desktop Application  
 **Architecture:** Local-first, without centralized backend  
@@ -14,87 +14,87 @@
 
 # 1. Executive Summary
 
-Bucklane adalah aplikasi desktop cross-platform untuk mengelola object storage berbasis Amazon S3 API dan berbagai penyedia S3-compatible storage melalui satu antarmuka modern.
+Bucklane is a cross-platform desktop application for managing object storage based on the Amazon S3 API and various S3-compatible storage providers through a single modern interface.
 
-Bucklane dirancang sebagai alternatif aplikasi seperti Cyberduck, dengan fokus pada kemudahan manajemen koneksi, eksplorasi bucket, pengelolaan file, transfer data, keamanan kredensial, serta dukungan multi-provider tanpa pembatasan jumlah koneksi.
+Bucklane is designed as an alternative to applications such as Cyberduck, focusing on easy connection management, bucket exploration, file management, data transfer, credential security, and multi-provider support with no limit on the number of connections.
 
-Aplikasi berjalan secara lokal dan mengakses object storage secara langsung tanpa memerlukan backend cloud terpusat atau pembuatan akun Bucklane.
+The application runs locally and accesses object storage directly, without requiring a centralized cloud backend or a Bucklane account.
 
 ## 1.1 Product Vision
 
 **One application to manage all your S3-compatible storage.**
 
-Menjadi aplikasi desktop yang ringan, aman, dan mudah digunakan untuk mengelola berbagai layanan object storage dari satu tempat.
+To be a lightweight, secure, and easy-to-use desktop application for managing multiple object storage services from one place.
 
 ## 1.2 Problem Statement
 
-Pengguna object storage sering menghadapi beberapa masalah:
+Object storage users often face several problems:
 
-1. Memerlukan beberapa tools untuk mengakses berbagai penyedia storage.
-2. Beberapa aplikasi memiliki batasan koneksi atau fitur berdasarkan lisensi.
-3. Manajemen file melalui CLI tidak selalu praktis untuk pekerjaan sehari-hari.
-4. Interface manajemen object storage sering kali terlalu teknis.
-5. Transfer file besar memerlukan monitoring progress dan penanganan kegagalan.
-6. Pengelolaan kredensial dari banyak provider menjadi tidak praktis.
-7. Fitur dan kompatibilitas S3 berbeda antar-provider.
+1. They need several tools to access different storage providers.
+2. Some applications limit connections or features based on licensing.
+3. Managing files through a CLI is not always practical for day-to-day work.
+4. Object storage management interfaces are often too technical.
+5. Transferring large files requires progress monitoring and failure handling.
+6. Managing credentials from many providers becomes impractical.
+7. S3 features and compatibility differ between providers.
 
-Bucklane bertujuan menyelesaikan masalah tersebut melalui antarmuka desktop yang konsisten dengan sistem manajemen koneksi dan file terintegrasi.
+Bucklane aims to solve these problems through a consistent desktop interface with an integrated connection and file management system.
 
 # 2. Product Goals
 
 ## 2.1 Primary Goals
 
-- Menyediakan aplikasi desktop untuk mengelola object storage S3-compatible.
-- Mendukung penyimpanan koneksi tanpa batasan jumlah yang ditetapkan aplikasi.
-- Menyediakan file explorer yang intuitif.
-- Mendukung upload dan download file secara langsung.
-- Menyediakan transfer manager dengan progress dan error handling.
-- Melindungi access key dan secret key pengguna.
-- Menyediakan pengalaman konsisten pada macOS, Windows, dan Linux.
+- Provide a desktop application for managing S3-compatible object storage.
+- Support saving connections without an application-imposed limit on their number.
+- Provide an intuitive file explorer.
+- Support direct file upload and download.
+- Provide a transfer manager with progress and error handling.
+- Protect the user's access key and secret key.
+- Provide a consistent experience on macOS, Windows, and Linux.
 
 ## 2.2 Secondary Goals
 
-- Menjadi aplikasi open-source yang dapat dikembangkan komunitas.
-- Mendukung provider S3 baru dengan konfigurasi minimal.
-- Memberikan pengalaman penggunaan yang ringan dan responsif.
-- Menyediakan fondasi pengembangan untuk sinkronisasi file dan transfer antar-storage.
+- Be an open-source application that the community can develop.
+- Support new S3 providers with minimal configuration.
+- Deliver a lightweight and responsive user experience.
+- Provide a development foundation for file synchronization and cross-storage transfer.
 
 ## 2.3 Non-Goals MVP
 
-MVP tidak mencakup:
+The MVP does not include:
 
-- Cloud synchronization dua arah.
-- Kolaborasi multi-user.
-- Sistem akun SaaS.
-- Penyimpanan file melalui server Bucklane.
-- Pengelolaan IAM policy tingkat lanjut.
-- Manajemen lifecycle dan versioning.
+- Two-way cloud synchronization.
+- Multi-user collaboration.
+- A SaaS account system.
+- Storing files through a Bucklane server.
+- Advanced IAM policy management.
+- Lifecycle and versioning management.
 - Object replication.
-- Transfer langsung antar-provider.
-- Koneksi SFTP, FTP, atau WebDAV.
-- Kredensial selain static access key (session token/STS, AWS profiles, SSO).
-- Copy/move folder (prefix) secara rekursif.
-- Copy/move objek berukuran di atas 5 GiB.
+- Direct transfer between providers.
+- SFTP, FTP, or WebDAV connections.
+- Credentials other than static access keys (session token/STS, AWS profiles, SSO).
+- Recursive copy/move of folders (prefixes).
+- Copy/move of objects larger than 5 GiB.
 
 # 3. Target Users
 
 ## 3.1 Software Developers
 
-Developer yang menggunakan object storage untuk menyimpan dokumen, gambar, video, backup, atau file aplikasi.
+Developers who use object storage to store documents, images, videos, backups, or application files.
 
-**Kebutuhan:** akses cepat terhadap file, upload/download, debugging object path, dan pemantauan transfer.
+**Needs:** fast access to files, upload/download, object path debugging, and transfer monitoring.
 
 ## 3.2 DevOps & System Administrators
 
-Pengguna yang mengelola beberapa object storage untuk development, staging, dan production.
+Users who manage multiple object storages for development, staging, and production.
 
-**Kebutuhan:** multi-connection, navigasi bucket, operasi massal, keamanan koneksi, dan pengelolaan file berukuran besar.
+**Needs:** multi-connection, bucket navigation, bulk operations, connection security, and handling of large files.
 
 ## 3.3 Technical Teams
 
-Tim teknis yang membutuhkan antarmuka visual tanpa harus selalu menggunakan AWS CLI, rclone, atau tools terminal lainnya.
+Technical teams that need a visual interface without always having to use the AWS CLI, rclone, or other terminal tools.
 
-**Kebutuhan:** kemudahan navigasi dan operasi file standar.
+**Needs:** easy navigation and standard file operations.
 
 # 4. Supported Storage Providers
 
@@ -108,14 +108,14 @@ Tim teknis yang membutuhkan antarmuka visual tanpa harus selalu menggunakan AWS 
 | DigitalOcean Spaces           | P1           |
 | Custom S3-compatible endpoint | P0           |
 
-**Ketentuan:**
+**Rules:**
 
-- Provider preset menggunakan konfigurasi default yang sesuai dengan penyedia masing-masing.
-- Custom endpoint dapat diatur secara manual.
-- Region dan path-style addressing dapat dikonfigurasi.
-- Tidak semua provider mendukung seluruh operasi AWS S3.
-- Fitur yang tidak didukung harus dinonaktifkan atau menampilkan informasi yang sesuai.
-- Kompatibilitas harus diuji per provider, bukan diasumsikan berdasarkan dukungan S3 API.
+- Provider presets use default configuration appropriate to each provider.
+- A custom endpoint can be configured manually.
+- Region and path-style addressing are configurable.
+- Not every provider supports all AWS S3 operations.
+- Unsupported features must be disabled or show appropriate information.
+- Compatibility must be tested per provider, not assumed from S3 API support.
 
 # 5. Core Functional Requirements
 
@@ -127,7 +127,7 @@ Tim teknis yang membutuhkan antarmuka visual tanpa harus selalu menggunakan AWS 
 
 **Priority:** P0
 
-Pengguna dapat menambahkan koneksi object storage baru.
+Users can add a new object storage connection.
 
 Input:
 
@@ -142,51 +142,51 @@ Input:
 
 **Acceptance Criteria:**
 
-- Field yang wajib harus divalidasi.
-- Pengguna dapat memilih preset provider atau custom endpoint.
-- Secret key disimpan menggunakan secure credential storage sistem operasi.
-- Sistem tidak menyimpan secret key dalam database plaintext.
-- Sistem menampilkan pesan validasi yang jelas.
+- Required fields must be validated.
+- Users can choose a provider preset or a custom endpoint.
+- The secret key is stored using the operating system's secure credential storage.
+- The system does not store the secret key in a plaintext database.
+- The system shows clear validation messages.
 
 ### CON-002 — Test Connection
 
 **Priority:** P0
 
-Pengguna dapat menguji konfigurasi sebelum atau setelah menyimpan koneksi.
+Users can test the configuration before or after saving the connection.
 
 **Acceptance Criteria:**
 
-- Sistem melakukan request autentikasi/akses ke endpoint.
-- Status sukses ditampilkan dengan jelas.
-- Error autentikasi, endpoint, permission, dan jaringan ditangani secara terpisah jika dapat diidentifikasi.
-- Koneksi yang tidak memiliki izin untuk listing semua bucket tidak otomatis dinyatakan tidak valid; pengujian dapat menggunakan bucket tertentu jika dikonfigurasi.
+- The system makes an authentication/access request to the endpoint.
+- A success status is shown clearly.
+- Authentication, endpoint, permission, and network errors are handled separately when they can be identified.
+- A connection without permission to list all buckets is not automatically deemed invalid; the test can use a specific bucket if one is configured.
 
 ### CON-003 — Saved Connections
 
 **Priority:** P0
 
-Pengguna dapat melihat seluruh koneksi yang tersimpan.
+Users can see all saved connections.
 
 **Acceptance Criteria:**
 
-- Tidak ada pembatasan jumlah koneksi secara sengaja.
-- Koneksi tetap tersedia setelah aplikasi ditutup.
-- Pengguna dapat memilih dan membuka koneksi.
-- Daftar koneksi dapat dicari berdasarkan nama.
+- There is no deliberate limit on the number of connections.
+- Connections remain available after the application is closed.
+- Users can select and open a connection.
+- The connection list can be searched by name.
 
 ### CON-004 — Edit & Delete Connection
 
 **Priority:** P0
 
-Pengguna dapat memperbarui atau menghapus konfigurasi koneksi.
+Users can update or delete a connection's configuration.
 
 **Acceptance Criteria:**
 
-- Perubahan konfigurasi dapat disimpan.
-- Penghapusan memerlukan konfirmasi.
-- Penghapusan koneksi tidak menghapus bucket maupun objek di storage provider.
-- Kredensial terkait dibersihkan dari credential store ketika koneksi dihapus. Setiap koneksi memiliki credential reference sendiri (relasi 1:1); kredensial tidak dibagi antar-koneksi.
-- Riwayat transfer koneksi yang dihapus tetap dipertahankan menggunakan snapshot nama koneksi.
+- Configuration changes can be saved.
+- Deletion requires confirmation.
+- Deleting a connection does not delete buckets or objects at the storage provider.
+- The related credentials are removed from the credential store when the connection is deleted. Each connection has its own credential reference (1:1 relation); credentials are not shared between connections.
+- Transfer history of a deleted connection is retained using a snapshot of the connection name.
 
 ## 5.2 Bucket Management
 
@@ -196,53 +196,53 @@ Pengguna dapat memperbarui atau menghapus konfigurasi koneksi.
 
 **Priority:** P0
 
-Sistem menampilkan bucket yang dapat diakses pengguna.
+The system displays the buckets the user can access.
 
 **Acceptance Criteria:**
 
-- Daftar bucket ditampilkan jika kredensial memiliki permission yang diperlukan.
-- Nama bucket dapat dipilih untuk membuka file explorer.
-- Status loading dan error tersedia.
-- Jika listing bucket tidak diizinkan, pengguna dapat membuka bucket tertentu yang telah dikonfigurasi secara manual (lihat BKT-005).
+- The bucket list is shown if the credentials have the required permissions.
+- A bucket name can be selected to open the file explorer.
+- Loading and error states are available.
+- If bucket listing is not allowed, the user can open a specific, manually configured bucket (see BKT-005).
 
 ### BKT-005 — Bucket Bookmarks
 
 **Priority:** P0
 
-Pengguna dapat menyimpan nama bucket secara manual per koneksi agar dapat dibuka langsung tanpa permission ListBuckets.
+Users can manually save bucket names per connection so they can be opened directly without the ListBuckets permission.
 
 **Acceptance Criteria:**
 
-- Pengguna dapat menambah, memberi label, dan menghapus bookmark bucket.
-- Nama bucket yang sama tidak dapat di-bookmark dua kali pada koneksi yang sama.
-- Bookmark tidak dianggap sebagai bukti bahwa bucket ada atau dapat diakses; status akses diverifikasi saat dibuka.
-- Bookmark ikut terhapus ketika koneksi dihapus.
+- Users can add, label, and delete bucket bookmarks.
+- The same bucket name cannot be bookmarked twice on the same connection.
+- A bookmark is not treated as proof that the bucket exists or is accessible; access is verified when it is opened.
+- Bookmarks are deleted along with the connection.
 
 ### BKT-002 — Bucket Navigation
 
 **Priority:** P0
 
-Pengguna dapat membuka bucket dan menavigasi daftar objek.
+Users can open a bucket and navigate the object list.
 
 **Acceptance Criteria:**
 
-- Menampilkan prefix/folder dan objek.
-- Mendukung pagination.
-- Mendukung navigasi breadcrumb.
-- Mendukung refresh.
-- Tidak mengunduh seluruh isi bucket saat pertama kali dibuka.
+- Shows prefixes/folders and objects.
+- Supports pagination.
+- Supports breadcrumb navigation.
+- Supports refresh.
+- Does not download the entire bucket contents when first opened.
 
 ### BKT-003 — Create Bucket
 
 **Priority:** P2 — Post-MVP
 
-Pembuatan bucket akan ditambahkan setelah kompatibilitas dan permission handling dasar stabil.
+Bucket creation will be added once compatibility and basic permission handling are stable.
 
 ### BKT-004 — Delete Bucket
 
 **Priority:** P2 — Post-MVP
 
-Penghapusan bucket tidak termasuk MVP karena berisiko tinggi dan memiliki ketentuan berbeda antar-provider.
+Bucket deletion is excluded from the MVP because it is high-risk and its rules differ between providers.
 
 ## 5.3 File Explorer
 
@@ -252,9 +252,9 @@ Penghapusan bucket tidak termasuk MVP karena berisiko tinggi dan memiliki ketent
 
 **Priority:** P0
 
-Pengguna dapat melihat objek dalam suatu bucket.
+Users can view the objects in a bucket.
 
-Informasi yang ditampilkan:
+Information displayed:
 
 - File name/object key
 - File type
@@ -266,45 +266,45 @@ Informasi yang ditampilkan:
 
 **Priority:** P0
 
-Pengguna dapat menavigasi struktur folder virtual berdasarkan object prefix.
+Users can navigate the virtual folder structure based on object prefixes.
 
 **Acceptance Criteria:**
 
-- Breadcrumb dapat digunakan.
-- Folder dapat dibuka.
-- Navigasi kembali tersedia.
-- Folder kosong yang direpresentasikan menggunakan marker dapat ditampilkan.
+- The breadcrumb can be used.
+- Folders can be opened.
+- Back navigation is available.
+- Empty folders represented by a marker can be displayed.
 
 ### EXP-003 — Create Folder
 
 **Priority:** P0
 
-Pengguna dapat membuat folder virtual.
+Users can create virtual folders.
 
 **Acceptance Criteria:**
 
-- Sistem membuat folder marker object.
-- Nama folder divalidasi.
-- Prefix baru dapat dinavigasi.
-- Folder marker tidak dianggap sebagai filesystem directory sesungguhnya.
+- The system creates a folder marker object.
+- The folder name is validated.
+- The new prefix can be navigated.
+- A folder marker is not treated as a real filesystem directory.
 
 ### EXP-004 — Object Search
 
 **Priority:** P1
 
-Pencarian objek berdasarkan nama atau prefix.
+Search for objects by name or prefix.
 
-**Ketentuan MVP:**
+**MVP Rules:**
 
-- Filter pada objek yang sudah dimuat.
-- Pencarian prefix server-side jika didukung.
-- Tidak menjanjikan pencarian substring menyeluruh untuk seluruh isi bucket.
+- Filtering over objects already loaded.
+- Server-side prefix search where supported.
+- No promise of full substring search across the entire bucket contents.
 
 ### EXP-005 — Object Metadata
 
 **Priority:** P1
 
-Menampilkan metadata dasar seperti key, size, last modified, content type, dan ETag jika tersedia.
+Displays basic metadata such as key, size, last modified, content type, and ETag when available.
 
 ## 5.4 File Operations
 
@@ -314,94 +314,94 @@ Menampilkan metadata dasar seperti key, size, last modified, content type, dan E
 
 **Priority:** P0
 
-Pengguna dapat mengunggah satu atau beberapa file lokal ke bucket.
+Users can upload one or more local files to a bucket.
 
 **Acceptance Criteria:**
 
-- Pengguna dapat memilih file.
-- Tujuan bucket dan prefix dapat dipilih.
-- Transfer progress ditampilkan.
-- Kegagalan upload dapat diketahui.
-- Jika key tujuan sudah ada, pengguna memilih Overwrite, Skip, atau Rename (`name (1).ext`), dengan opsi "terapkan ke semua". Default: tanya pengguna; tidak ada overwrite tanpa pilihan eksplisit.
-- UI tetap responsif selama transfer.
+- Users can select files.
+- The destination bucket and prefix can be selected.
+- Transfer progress is shown.
+- Upload failures are reported.
+- If the destination key already exists, the user chooses Overwrite, Skip, or Rename (`name (1).ext`), with an "apply to all" option. Default: ask the user; no overwrite without an explicit choice.
+- The UI stays responsive during transfer.
 
 ### FIL-002 — Download File
 
 **Priority:** P0
 
-Pengguna dapat mengunduh objek ke filesystem lokal.
+Users can download objects to the local filesystem.
 
 **Acceptance Criteria:**
 
-- Pengguna memilih lokasi penyimpanan.
-- Progress transfer ditampilkan.
-- File lokal yang sudah ada tidak ditimpa diam-diam; pengguna memilih Overwrite, Skip, atau Rename seperti pada upload.
-- Kegagalan download ditangani dengan aman.
-- File parsial tidak diperlakukan sebagai download berhasil.
+- The user chooses the save location.
+- Transfer progress is shown.
+- Existing local files are not silently overwritten; the user chooses Overwrite, Skip, or Rename as with upload.
+- Download failures are handled safely.
+- Partial files are not treated as successful downloads.
 
 ### FIL-003 — Rename Object
 
 **Priority:** P0
 
-Pengguna dapat mengganti nama objek.
+Users can rename an object.
 
-**Ketentuan Teknis:**
+**Technical Rules:**
 
-Rename dilakukan dengan copy object ke key baru, lalu menghapus key lama setelah hasil copy tervalidasi.
+Rename is done by copying the object to the new key, then deleting the old key after the copy is validated.
 
 **Acceptance Criteria:**
 
-- Sistem tidak menghapus objek asal sebelum copy sukses.
-- Kegagalan copy tidak menyebabkan penghapusan objek asal.
-- Error dapat ditampilkan dan dipulihkan secara manual jika perlu.
+- The system does not delete the source object before the copy succeeds.
+- A failed copy does not cause the source object to be deleted.
+- Errors can be shown and recovered manually if needed.
 
 ### FIL-004 — Copy Object
 
 **Priority:** P0
 
-Pengguna dapat menyalin objek dalam storage yang sama.
+Users can copy objects within the same storage.
 
-**Batasan MVP:** hanya objek tunggal; objek di atas 5 GiB ditolak dengan pesan yang jelas.
+**MVP Limitation:** single objects only; objects larger than 5 GiB are rejected with a clear message.
 
 ### FIL-005 — Move Object
 
 **Priority:** P0
 
-Pengguna dapat memindahkan objek ke prefix lain menggunakan proses copy lalu delete.
+Users can move objects to another prefix using a copy-then-delete process.
 
-**Batasan MVP:** sama dengan FIL-004.
+**MVP Limitation:** same as FIL-004.
 
 ### FIL-006 — Delete Object
 
 **Priority:** P0
 
-Pengguna dapat menghapus satu atau beberapa objek.
+Users can delete one or more objects.
 
 **Acceptance Criteria:**
 
-- Penghapusan memerlukan konfirmasi.
-- Nama bucket dan jumlah objek ditampilkan.
-- Operasi partial failure dilaporkan.
-- Sistem tidak mengklaim seluruh operasi berhasil jika sebagian gagal.
+- Deletion requires confirmation.
+- The bucket name and number of objects are shown.
+- Partial failures are reported.
+- The system does not claim the whole operation succeeded if part of it failed.
 
-**Hapus folder (prefix):**
+**Delete folder (prefix):**
 
-- Sistem terlebih dahulu menghitung seluruh objek di bawah prefix, lalu menampilkan jumlah objek dan total ukuran sebelum konfirmasi.
-- Hanya objek yang terhitung saat konfirmasi yang dihapus; objek baru yang muncul setelahnya tidak ikut terhapus.
-- Penghapusan root bucket (prefix kosong) tidak diizinkan.
-- Folder dengan lebih dari 100.000 objek tidak dapat dihapus melalui MVP.
+- The system first counts all objects under the prefix, then shows the object count and total size before confirmation.
+- Only objects counted at confirmation time are deleted; new objects that appear afterwards are not deleted.
+- Deleting the bucket root (empty prefix) is not allowed.
+- Folders with more than 100,000 objects cannot be deleted in the MVP.
 
 ### FIL-007 — Bulk Selection
 
 **Priority:** P1
 
-Mendukung pemilihan beberapa objek untuk download dan delete.
+Supports selecting multiple objects for download and delete.
 
 ### FIL-008 — Drag & Drop Upload
 
 **Priority:** P1
 
-Pengguna dapat menyeret file dari filesystem ke jendela aplikasi untuk melakukan upload.
+Users can drag files from the filesystem into the application window to upload them.
 
 # 6. Transfer Management
 
@@ -411,7 +411,7 @@ Pengguna dapat menyeret file dari filesystem ke jendela aplikasi untuk melakukan
 
 **Priority:** P0
 
-Setiap upload/download dimasukkan ke transfer queue.
+Every upload/download is added to the transfer queue.
 
 Status:
 
@@ -425,7 +425,7 @@ Status:
 
 **Priority:** P0
 
-Menampilkan:
+Displays:
 
 - File name
 - Transfer direction
@@ -433,49 +433,49 @@ Menampilkan:
 - Transferred bytes
 - Percentage
 - Current status
-- Error message jika terjadi kegagalan
+- Error message if a failure occurs
 
-Kecepatan transfer dan ETA dapat ditambahkan apabila pengukurannya tersedia dengan akurat.
+Transfer speed and ETA can be added when they can be measured accurately.
 
 ## TRF-003 — Retry Transfer
 
 **Priority:** P0
 
-Pengguna dapat menjalankan ulang transfer yang gagal.
+Users can rerun a failed transfer.
 
 ## TRF-004 — Cancel Transfer
 
 **Priority:** P0
 
-Pengguna dapat membatalkan transfer aktif.
+Users can cancel an active transfer.
 
-Cancellation harus menghentikan task yang dapat dibatalkan dan menangani file sementara atau multipart upload secara aman.
+Cancellation must stop cancelable tasks and safely handle temporary files or multipart uploads.
 
 ## TRF-005 — Multipart Upload
 
 **Priority:** P0
 
-File besar menggunakan multipart upload apabila didukung oleh provider dan batas ukuran yang ditentukan.
+Large files use multipart upload when supported by the provider and within the defined size limits.
 
 **Acceptance Criteria:**
 
-- Bagian file dapat diunggah secara bertahap.
-- Progress total dapat dihitung.
-- Multipart upload diselesaikan setelah seluruh part berhasil.
-- Multipart upload yang gagal dapat dibersihkan atau ditandai untuk pemulihan.
-- Resume setelah aplikasi restart tidak dijanjikan pada MVP.
+- File parts can be uploaded incrementally.
+- Total progress can be calculated.
+- The multipart upload is completed after all parts succeed.
+- Failed multipart uploads can be cleaned up or marked for recovery.
+- Resume after an application restart is not promised in the MVP.
 
 ## TRF-006 — Concurrent Transfer
 
 **Priority:** P0
 
-Aplikasi mendukung beberapa transfer aktif secara bersamaan dengan batas concurrency yang dapat dikonfigurasi.
+The application supports multiple simultaneous active transfers with a configurable concurrency limit.
 
 # 7. Desktop User Experience
 
 ## 7.1 Main Layout
 
-Aplikasi menggunakan tiga area utama:
+The application uses three main areas:
 
 **Left Sidebar**
 
@@ -511,87 +511,87 @@ Aplikasi menggunakan tiga area utama:
 
 ## 7.3 UI Requirements
 
-- Light mode dan dark mode.
+- Light mode and dark mode.
 - Responsive desktop layout.
 - Loading indicator.
 - Empty state.
 - Error notifications.
 - Confirmation dialogs.
-- Keyboard navigation dasar.
+- Basic keyboard navigation.
 - Native file picker.
-- Informasi progres yang jelas.
-- UI tidak terblokir oleh operasi jaringan.
+- Clear progress information.
+- UI is not blocked by network operations.
 
 # 8. Security Requirements
 
 **SEC-001 — Credential Protection**
 
-Secret Access Key wajib disimpan menggunakan secure credential storage OS.
+The Secret Access Key must be stored using the OS's secure credential storage.
 
 **SEC-002 — No Plaintext Secret Database**
 
-SQLite hanya menyimpan credential reference dan metadata non-secret.
+SQLite stores only the credential reference and non-secret metadata.
 
 **SEC-003 — Secure Communication**
 
-HTTPS menjadi default. Penggunaan HTTP custom endpoint harus memerlukan konfigurasi eksplisit dan peringatan keamanan.
+HTTPS is the default. Using HTTP for a custom endpoint must require explicit configuration and a security warning.
 
 **SEC-004 — Sensitive Logging**
 
-Aplikasi tidak boleh mencatat secret, authorization header, token, atau signed URL lengkap ke log.
+The application must not log secrets, authorization headers, tokens, or full signed URLs.
 
 **SEC-005 — Destructive Operations**
 
-Delete dan overwrite harus dilindungi oleh konfirmasi yang sesuai.
+Delete and overwrite must be protected by appropriate confirmation.
 
 **SEC-006 — Permission Handling**
 
-Aplikasi harus tetap berfungsi untuk akun read-only, sejauh operasi yang dibutuhkan mendapatkan izin.
+The application must keep working for read-only accounts, to the extent that the required operations are permitted.
 
 **SEC-007 — Local-First**
 
-Kredensial dan file tidak dikirimkan ke backend milik Bucklane.
+Credentials and files are not sent to any Bucklane-owned backend.
 
 **SEC-008 — Desktop Permissions**
 
-Akses filesystem, network, dan Tauri commands harus dibatasi mengikuti prinsip least privilege.
+Filesystem, network, and Tauri command access must be restricted following the principle of least privilege.
 
 # 9. Non-Functional Requirements
 
 ## 9.1 Performance Targets
 
-Target awal yang akan diverifikasi melalui pengujian, bukan klaim kinerja yang telah terbukti:
+Initial targets to be verified through testing, not proven performance claims:
 
-| Metric               | MVP Target                                                        |
-| -------------------- | ----------------------------------------------------------------- |
-| UI startup           | Kurang dari 3 detik pada perangkat benchmark                      |
-| Explorer navigation  | Tidak memblokir UI selama request                                 |
-| File listing         | Pagination, maksimum 1.000 objek per request jika API mengizinkan |
-| UI responsiveness    | Tetap interaktif saat transfer berjalan                           |
-| Connection storage   | Tidak ada application-level connection limit                      |
-| Transfer concurrency | Default 3, dapat dikonfigurasi                                    |
-| Memory utilization   | Diprofilkan saat idle dan transfer besar                          |
-| Large file handling  | Streaming, bukan full-file buffering                              |
+| Metric               | MVP Target                                                   |
+| -------------------- | ------------------------------------------------------------ |
+| UI startup           | Under 3 seconds on the benchmark device                      |
+| Explorer navigation  | Does not block the UI during requests                        |
+| File listing         | Pagination, maximum 1,000 objects per request if API allows  |
+| UI responsiveness    | Stays interactive while transfers run                        |
+| Connection storage   | No application-level connection limit                        |
+| Transfer concurrency | Default 3, configurable                                      |
+| Memory utilization   | Profiled at idle and during large transfers                  |
+| Large file handling  | Streaming, not full-file buffering                           |
 
 ## 9.2 Reliability
 
-- Network timeout harus ditangani.
-- Temporary errors dapat dicoba kembali dengan backoff.
-- Operasi destruktif tidak boleh dilakukan sebelum prasyarat selesai.
-- Status transfer harus mencerminkan kondisi sebenarnya.
-- Partial failure harus dilaporkan.
-- Aplikasi tidak boleh crash akibat satu transfer gagal.
+- Network timeouts must be handled.
+- Temporary errors can be retried with backoff.
+- Destructive operations must not run before their prerequisites complete.
+- Transfer status must reflect the actual state.
+- Partial failures must be reported.
+- The application must not crash because a single transfer fails.
 
 ## 9.3 Compatibility
 
-- macOS Apple Silicon dan Intel yang masih didukung runtime.
-- Windows 10/11 sesuai dukungan Tauri/WebView.
-- Distribusi Linux yang memenuhi runtime dependencies.
-- S3-compatible API menggunakan konfigurasi endpoint dan region.
+- macOS on Apple Silicon and Intel still supported by the runtime.
+- Windows 10/11 as supported by Tauri/WebView.
+- Linux distributions that meet the runtime dependencies.
+- S3-compatible APIs using endpoint and region configuration.
 
 # 10. Local Data Management
 
-Ringkasan entitas di bawah bersifat konseptual. Skema detail, constraint, dan migration menjadi tanggung jawab [Database Design](database_design.md).
+The entity summary below is conceptual. The detailed schema, constraints, and migrations are the responsibility of [Database Design](database_design.md).
 
 ## 10.1 Connection Entity
 
@@ -618,7 +618,7 @@ Ringkasan entitas di bawah bersifat konseptual. Skema detail, constraint, dan mi
 ## 10.3 Transfer Entity
 
 - id
-- connection_id (nullable setelah koneksi dihapus)
+- connection_id (nullable after the connection is deleted)
 - connection_name_snapshot
 - direction
 - bucket
@@ -649,26 +649,26 @@ Ringkasan entitas di bawah bersifat konseptual. Skema detail, constraint, dan mi
 - value
 - updated_at
 
-Database harus mempunyai versioned migration untuk perubahan skema aplikasi di masa mendatang.
+The database must have versioned migrations for future application schema changes.
 
 # 11. Technical Architecture
 
 ## 11.1 Frontend
 
-Vue 3 bertanggung jawab untuk:
+Vue 3 is responsible for:
 
-- Menampilkan UI.
-- Mengelola state tampilan.
-- Navigasi aplikasi.
-- Input pengguna.
-- Menerima transfer progress event.
-- Memanggil Tauri commands.
+- Rendering the UI.
+- Managing view state.
+- Application navigation.
+- User input.
+- Receiving transfer progress events.
+- Calling Tauri commands.
 
-Frontend tidak menangani penyimpanan atau penggunaan langsung Secret Access Key.
+The frontend does not handle storage or direct use of the Secret Access Key.
 
 ## 11.2 Rust Backend
 
-Rust bertanggung jawab untuk:
+Rust is responsible for:
 
 - Credential management.
 - Storage connection lifecycle.
@@ -681,17 +681,17 @@ Rust bertanggung jawab untuk:
 
 ## 11.3 Architecture Pattern
 
-Menggunakan pemisahan:
+Uses the following separation:
 
 **Tauri Commands → Application Services → Storage Provider Adapter → S3 SDK**
 
-Sedangkan data lokal menggunakan:
+While local data uses:
 
 **Application Services → Repository → SQLite / OS Credential Store**
 
 ## 11.4 Provider Adapter
 
-Operasi dasar provider:
+Basic provider operations:
 
 - TestConnection
 - ListBuckets
@@ -703,55 +703,55 @@ Operasi dasar provider:
 - DeleteObject
 - CreateMultipartUpload / UploadPart / CompleteMultipartUpload / AbortMultipartUpload
 
-Provider-specific capabilities tidak boleh diasumsikan identik untuk semua layanan.
+Provider-specific capabilities must not be assumed to be identical across all services.
 
 # 12. Core User Flows
 
 ## 12.1 Add New Storage Connection
 
-1. Pengguna membuka Bucklane.
-2. Memilih Add Connection.
-3. Memilih provider.
-4. Mengisi konfigurasi.
-5. Menekan Test Connection.
-6. Sistem menampilkan hasil pengujian.
-7. Pengguna menyimpan koneksi.
-8. Profil muncul pada sidebar.
+1. The user opens Bucklane.
+2. Selects Add Connection.
+3. Selects a provider.
+4. Fills in the configuration.
+5. Clicks Test Connection.
+6. The system shows the test result.
+7. The user saves the connection.
+8. The profile appears in the sidebar.
 
 ## 12.2 Browse Storage
 
-1. Pengguna memilih koneksi.
-2. Sistem mengakses provider.
-3. Bucket yang diizinkan ditampilkan.
-4. Pengguna memilih bucket.
-5. Sistem memuat objek secara bertahap.
-6. Pengguna membuka folder atau memilih file.
+1. The user selects a connection.
+2. The system accesses the provider.
+3. Permitted buckets are displayed.
+4. The user selects a bucket.
+5. The system loads objects incrementally.
+6. The user opens a folder or selects a file.
 
 ## 12.3 Upload File
 
-1. Pengguna membuka bucket tujuan.
-2. Memilih Upload.
-3. Memilih file lokal.
-4. Sistem memvalidasi tujuan dan potensi overwrite.
-5. Transfer masuk antrean.
-6. Sistem melakukan upload.
-7. Progress ditampilkan.
-8. Hasil transfer ditampilkan.
-9. Explorer diperbarui setelah upload sukses.
+1. The user opens the destination bucket.
+2. Selects Upload.
+3. Selects local files.
+4. The system validates the destination and potential overwrites.
+5. The transfer enters the queue.
+6. The system performs the upload.
+7. Progress is shown.
+8. The transfer result is shown.
+9. The explorer refreshes after a successful upload.
 
 ## 12.4 Download File
 
-1. Pengguna memilih objek.
-2. Memilih Download.
-3. Memilih lokasi lokal.
-4. Transfer dimulai.
-5. Progress ditampilkan.
-6. Sistem memvalidasi completion.
-7. File tersedia di lokasi tujuan.
+1. The user selects an object.
+2. Selects Download.
+3. Selects a local location.
+4. The transfer starts.
+5. Progress is shown.
+6. The system validates completion.
+7. The file is available at the destination.
 
 # 13. Error Handling
 
-Aplikasi harus dapat membedakan kategori error:
+The application must be able to distinguish error categories:
 
 - Invalid credentials
 - Access denied
@@ -768,23 +768,23 @@ Aplikasi harus dapat membedakan kategori error:
 - Transfer interrupted
 - Partial bulk-operation failure
 
-Pesan error harus mudah dipahami pengguna dan menyediakan detail teknis untuk troubleshooting tanpa membocorkan credentials.
+Error messages must be easy for users to understand and provide technical details for troubleshooting without leaking credentials.
 
 # 14. MVP Release Criteria
 
-MVP dinyatakan siap apabila:
+The MVP is considered ready when:
 
-- Aplikasi dapat dibuka dan digunakan pada platform target yang diuji.
-- Pengguna dapat menyimpan dan mengedit koneksi S3.
-- Koneksi Supabase, AWS S3, dan MinIO lulus integration testing.
-- Pengguna dapat mengakses bucket dengan izin yang sesuai.
-- Pengguna dapat browsing file menggunakan pagination.
-- Upload dan download berjalan dengan progress.
-- Rename, copy, move, dan delete memiliki pengamanan data.
-- Transfer dapat dibatalkan dan dicoba kembali.
-- Secret key tidak disimpan dalam plaintext.
-- Kegagalan jaringan tidak menyebabkan aplikasi crash.
-- Tidak ditemukan bug kritis atau masalah keamanan tingkat tinggi yang belum ditangani.
+- The application can be opened and used on the tested target platforms.
+- Users can save and edit S3 connections.
+- Supabase, AWS S3, and MinIO connections pass integration testing.
+- Users can access buckets with the appropriate permissions.
+- Users can browse files using pagination.
+- Upload and download work with progress.
+- Rename, copy, move, and delete have data safeguards.
+- Transfers can be canceled and retried.
+- The secret key is not stored in plaintext.
+- Network failures do not crash the application.
+- No unresolved critical bugs or high-severity security issues are found.
 
 # 15. Development Roadmap
 
@@ -798,7 +798,7 @@ MVP dinyatakan siap apabila:
 - SQLite migration setup.
 - CI pipeline.
 
-**Deliverable:** aplikasi dasar dapat dibuka.
+**Deliverable:** the basic application can be opened.
 
 ## M01 — Storage Connections
 
@@ -810,7 +810,7 @@ MVP dinyatakan siap apabila:
 - Test connection.
 - Connection sidebar.
 
-**Deliverable:** pengguna dapat menyimpan dan menguji koneksi.
+**Deliverable:** users can save and test connections.
 
 ## M02 — Bucket Explorer
 
@@ -823,7 +823,7 @@ MVP dinyatakan siap apabila:
 - Refresh.
 - Basic metadata.
 
-**Deliverable:** pengguna dapat menjelajahi object storage.
+**Deliverable:** users can explore object storage.
 
 ## M03 — Object Operations
 
@@ -836,7 +836,7 @@ MVP dinyatakan siap apabila:
 - Delete object.
 - Overwrite confirmation.
 
-**Deliverable:** file management dasar berfungsi.
+**Deliverable:** basic file management works.
 
 ## M04 — Transfer Engine
 
@@ -848,7 +848,7 @@ MVP dinyatakan siap apabila:
 - Multipart upload.
 - Transfer history.
 
-**Deliverable:** pengelolaan transfer stabil.
+**Deliverable:** stable transfer management.
 
 ## M05 — QA & Release
 
@@ -878,7 +878,7 @@ MVP dinyatakan siap apabila:
 
 - Transfer between providers.
 - Folder upload/download.
-- Copy/move folder dan multipart copy untuk objek di atas 5 GiB.
+- Copy/move folder and multipart copy for objects larger than 5 GiB.
 - Session token / temporary credentials.
 - Connection grouping.
 - Local configuration backup/export.
@@ -932,16 +932,16 @@ MVP dinyatakan siap apabila:
 
 # 19. Definition of Done
 
-Sebuah requirement dinyatakan selesai apabila:
+A requirement is considered done when:
 
-1. Implementasinya memenuhi acceptance criteria.
-2. Validasi input dan error handling tersedia.
-3. Security requirements yang relevan terpenuhi.
-4. Automated test ditambahkan untuk bagian yang kritis.
-5. Telah melewati review.
-6. Tidak menimbulkan regression pada operasi storage lainnya.
-7. Dokumentasi diperbarui jika terdapat perubahan perilaku.
-8. Telah diuji dengan provider yang sesuai.
+1. Its implementation meets the acceptance criteria.
+2. Input validation and error handling are in place.
+3. The relevant security requirements are met.
+4. Automated tests are added for critical parts.
+5. It has passed review.
+6. It causes no regression in other storage operations.
+7. Documentation is updated if behavior changes.
+8. It has been tested with the relevant providers.
 
 ---
 

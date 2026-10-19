@@ -1,0 +1,19 @@
+name: Feature request
+description: Suggest an idea for Bucklane
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+      description: Describe the problem or workflow, not only the solution.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would help?
+  - type: input
+    id: provider
+    attributes:
+      label: Storage provider (if relevant)

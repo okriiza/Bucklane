@@ -203,7 +203,41 @@ pub fn safe_local_file_name(name: &str) -> Option<String> {
     if cleaned.is_empty() || cleaned == "." || cleaned == ".." {
         return None;
     }
-    Some(cleaned)
+    Some(avoid_reserved_name(cleaned))
+}
+
+/// Windows treats `CON`, `NUL`, `COM1`… as devices whatever the extension,
+/// so `con.txt` becomes `con_.txt`. Applied everywhere for consistent names.
+fn avoid_reserved_name(name: String) -> String {
+    let stem_len = name.find('.').unwrap_or(name.len());
+    let stem = name[..stem_len].trim_end().to_ascii_uppercase();
+    let reserved = matches!(stem.as_str(), "CON" | "PRN" | "AUX" | "NUL")
+        || (stem.len() == 4
+            && (stem.starts_with("COM") || stem.starts_with("LPT"))
+            && stem.as_bytes()[3].is_ascii_digit()
+            && stem.as_bytes()[3] != b'0');
+    if reserved {
+        format!("{}_{}", &name[..stem_len], &name[stem_len..])
+    } else {
+        name
+    }
+}
+
+/// Whether `path` would land inside `dir` once its existing parent folders
+/// are resolved. Catches a symlink already present in the destination that
+/// would redirect a folder download elsewhere.
+pub fn stays_within(dir: &Path, path: &Path) -> bool {
+    let Ok(root) = dir.canonicalize() else {
+        return false;
+    };
+    let mut ancestor = path.parent();
+    while let Some(candidate) = ancestor {
+        if let Ok(resolved) = candidate.canonicalize() {
+            return resolved.starts_with(&root);
+        }
+        ancestor = candidate.parent();
+    }
+    false
 }
 
 /// `report.pdf` → `report (1).pdf`, `report (2).pdf`, …
@@ -299,6 +333,41 @@ mod tests {
         assert_eq!(safe_local_file_name("..").as_deref(), None);
         assert_eq!(safe_local_file_name("").as_deref(), None);
         assert_eq!(safe_local_file_name("name. ").as_deref(), Some("name"));
+    }
+
+    #[test]
+    fn renames_windows_device_names() {
+        assert_eq!(safe_local_file_name("CON").as_deref(), Some("CON_"));
+        assert_eq!(safe_local_file_name("con.txt").as_deref(), Some("con_.txt"));
+        assert_eq!(
+            safe_local_file_name("Lpt9.tar.gz").as_deref(),
+            Some("Lpt9_.tar.gz")
+        );
+        assert_eq!(
+            safe_local_file_name("COM0.log").as_deref(),
+            Some("COM0.log")
+        );
+        assert_eq!(
+            safe_local_file_name("console.log").as_deref(),
+            Some("console.log")
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn detects_symlinks_leading_out_of_the_destination() {
+        let base = std::env::temp_dir().join(format!("bucklane-sl-{}", uuid::Uuid::now_v7()));
+        let dest = base.join("dest");
+        let outside = base.join("outside");
+        std::fs::create_dir_all(&dest).unwrap();
+        std::fs::create_dir_all(&outside).unwrap();
+        std::os::unix::fs::symlink(&outside, dest.join("photos")).unwrap();
+
+        assert!(stays_within(&dest, &dest.join("new/deep/a.txt")));
+        assert!(stays_within(&dest, &dest.join("a.txt")));
+        assert!(!stays_within(&dest, &dest.join("photos/a.txt")));
+        assert!(!stays_within(&dest, &dest.join("photos/sub/a.txt")));
+        std::fs::remove_dir_all(&base).unwrap();
     }
 
     #[test]

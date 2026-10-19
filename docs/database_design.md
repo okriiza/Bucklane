@@ -2,7 +2,7 @@
 
 > **Document ID:** BUCK-DBD-001  
 > **Version:** 1.0  
-> **Status:** Draft for Implementation  
+> **Status:** Maintained alongside the code  
 > **Date:** 2026-10-14  
 > **Product:** Bucklane — Desktop S3 Storage Manager  
 > **Related:** [PRD v1.0](prd.md), [TSD v1.0](tsd.md)

@@ -22,8 +22,21 @@ const DELETE_BATCH: usize = 1000;
 const MAX_PREFIX_DELETE_OBJECTS: usize = 100_000;
 const SAMPLE_KEYS: usize = 10;
 /// Preview limits: images and PDFs load whole, text loads only its beginning.
-const MAX_IMAGE_PREVIEW_BYTES: i64 = 15 * 1024 * 1024;
-const MAX_PDF_PREVIEW_BYTES: i64 = 25 * 1024 * 1024;
+const MAX_IMAGE_PREVIEW_BYTES: u64 = 15 * 1024 * 1024;
+const MAX_PDF_PREVIEW_BYTES: u64 = 25 * 1024 * 1024;
+/// Image types the webview may render. Anything else is never handed to the
+/// frontend as an image, whatever the object's stored Content-Type claims.
+const PREVIEW_IMAGE_TYPES: &[&str] = &[
+    "image/png",
+    "image/jpeg",
+    "image/gif",
+    "image/webp",
+    "image/avif",
+    "image/bmp",
+    "image/svg+xml",
+    "image/x-icon",
+    "image/vnd.microsoft.icon",
+];
 const TEXT_PREVIEW_BYTES: u64 = 512 * 1024;
 
 /// Presigned URL lifetime bounds; SigV4 signatures are valid for at most 7 days.
@@ -112,36 +125,34 @@ impl<'a> ObjectService<'a> {
             ));
         };
 
-        let size = metadata.size.unwrap_or(0);
         let limit = match kind {
-            PreviewKind::Image => Some(MAX_IMAGE_PREVIEW_BYTES),
-            PreviewKind::Pdf => Some(MAX_PDF_PREVIEW_BYTES),
-            PreviewKind::Text => None,
+            PreviewKind::Image => MAX_IMAGE_PREVIEW_BYTES,
+            PreviewKind::Pdf => MAX_PDF_PREVIEW_BYTES,
+            PreviewKind::Text => TEXT_PREVIEW_BYTES,
         };
-        if let Some(limit) = limit.filter(|limit| size > *limit) {
-            return Err(AppError::new(
+        let too_large = || {
+            AppError::new(
                 ErrorCode::OperationUnsupported,
                 format!(
                     "This file is too large to preview (limit {} MB). Download it to open it.",
                     limit / (1024 * 1024)
                 ),
-            ));
+            )
+        };
+        let reported_size = metadata.size.map(|s| s.max(0) as u64);
+        if kind != PreviewKind::Text && reported_size.is_some_and(|s| s > limit) {
+            return Err(too_large());
         }
 
-        let range = (kind == PreviewKind::Text).then_some(TEXT_PREVIEW_BYTES);
-        let bytes = provider.get_bytes(bucket, key, range).await?;
-        let truncated = kind == PreviewKind::Text && size > bytes.len() as i64;
-        let content_type = metadata
-            .content_type
-            .filter(|t| {
-                !t.is_empty() && t != "application/octet-stream" && t != "binary/octet-stream"
-            })
-            .unwrap_or_else(|| {
-                mime_guess::from_path(key)
-                    .first_raw()
-                    .unwrap_or("application/octet-stream")
-                    .to_owned()
-            });
+        // The cap also holds when HEAD reports no size or the object grows
+        // between HEAD and GET.
+        let (bytes, more) = provider.get_bytes(bucket, key, limit).await?;
+        if more && kind != PreviewKind::Text {
+            return Err(too_large());
+        }
+        let truncated = kind == PreviewKind::Text
+            && (more || reported_size.is_some_and(|s| s > bytes.len() as u64));
+        let content_type = preview_content_type(kind, key, metadata.content_type.as_deref());
 
         Ok(ObjectPreview {
             kind,
@@ -532,6 +543,37 @@ const TEXT_EXTENSIONS: [&str; 27] = [
 
 /// Decides how an object can be previewed: by extension first, then by its
 /// stored content type. `None` means no preview.
+/// The type the frontend renders the preview as. It follows the preview kind,
+/// not the object's stored Content-Type, which anyone with write access to the
+/// bucket controls: a `.pdf` stored as `text/html` must never load as HTML.
+fn preview_content_type(kind: PreviewKind, key: &str, stored: Option<&str>) -> String {
+    let stored = stored
+        .map(|t| {
+            t.split(';')
+                .next()
+                .unwrap_or("")
+                .trim()
+                .to_ascii_lowercase()
+        })
+        .filter(|t| !t.is_empty());
+    match kind {
+        PreviewKind::Pdf => "application/pdf".to_owned(),
+        PreviewKind::Image => stored
+            .filter(|t| PREVIEW_IMAGE_TYPES.contains(&t.as_str()))
+            .or_else(|| {
+                mime_guess::from_path(key)
+                    .first_raw()
+                    .filter(|t| PREVIEW_IMAGE_TYPES.contains(t))
+                    .map(str::to_owned)
+            })
+            .unwrap_or_else(|| "application/octet-stream".to_owned()),
+        // Text is decoded and shown as plain text; the type is only a label.
+        PreviewKind::Text => stored
+            .filter(|t| t.starts_with("text/") || t.ends_with("json") || t.ends_with("xml"))
+            .unwrap_or_else(|| "text/plain".to_owned()),
+    }
+}
+
 fn preview_kind(key: &str, content_type: Option<&str>) -> Option<PreviewKind> {
     let name = key.rsplit('/').next().unwrap_or(key);
     let extension = name
@@ -628,6 +670,39 @@ mod tests {
             preview_kind(".env", None),
             None,
             "dotfiles have no extension"
+        );
+    }
+
+    #[test]
+    fn preview_type_never_follows_a_dangerous_stored_type() {
+        use PreviewKind::*;
+        assert_eq!(
+            preview_content_type(Pdf, "a.pdf", Some("text/html")),
+            "application/pdf"
+        );
+        assert_eq!(
+            preview_content_type(Image, "a.png", Some("text/html; charset=utf-8")),
+            "image/png"
+        );
+        assert_eq!(
+            preview_content_type(Image, "photo", Some("application/xhtml+xml")),
+            "application/octet-stream"
+        );
+        assert_eq!(
+            preview_content_type(Image, "a.jpg", Some("IMAGE/JPEG")),
+            "image/jpeg"
+        );
+        assert_eq!(
+            preview_content_type(Image, "logo.svg", None),
+            "image/svg+xml"
+        );
+        assert_eq!(
+            preview_content_type(Text, "a.txt", Some("text/html")),
+            "text/html"
+        );
+        assert_eq!(
+            preview_content_type(Text, "a.log", Some("application/x-sh")),
+            "text/plain"
         );
     }
 
