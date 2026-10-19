@@ -1127,7 +1127,7 @@ Pinia stores:
 - Selected bucket.
 - Active prefix.
 - Object listing.
-- Pagination state.
+- Pagination state. After the first page (Settings page size), the remaining pages load in the background with 1000 keys per request, up to 10,000 entries (`AUTO_LOAD_LIMIT`), because S3 interleaves folders and files by name and a subfolder can sit several pages deep. Loading stops when the user opens another folder; a failed background page is left to "Load more".
 - Server search query (cleared when changing folders).
 - Sort order (name, size, date; folders always on top). Sorted on the client over the already-loaded items, stored in localStorage as a preference.
 - Selection state.

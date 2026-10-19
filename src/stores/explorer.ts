@@ -23,6 +23,15 @@ export interface ExplorerLocation {
 }
 
 const SORT_STORAGE_KEY = "bucklane.explorer.sort";
+/**
+ * After the first page, the rest of a folder loads in the background up to
+ * this many entries. S3 returns folders and files interleaved by name, so a
+ * subfolder can sit pages deep; loading ahead puts every folder on top and
+ * lets sort and filter cover the whole folder. Beyond it, "Load more" remains.
+ */
+export const AUTO_LOAD_LIMIT = 10_000;
+/** ListObjectsV2 returns at most 1000 keys per request. */
+const BACKGROUND_PAGE_SIZE = 1000;
 const DEFAULT_SORT: SortState = { key: "name", direction: "asc" };
 
 function loadSort(): SortState {
@@ -53,6 +62,8 @@ export const useExplorerStore = defineStore("explorer", () => {
   const isTruncated = ref(false);
   const loading = ref(false);
   const loadingMore = ref(false);
+  /** Remaining pages are loading in the background. */
+  const autoLoading = ref(false);
   const error = ref<AppError | null>(null);
   /**
    * Server-side name search: lists `prefix + search` instead of the folder.
@@ -90,7 +101,11 @@ export const useExplorerStore = defineStore("explorer", () => {
     () => entries.value.find((e) => e.key === selectedKey.value && !e.isPrefix) ?? null,
   );
 
-  async function fetchPage(loc: ExplorerLocation, token: string | null) {
+  async function fetchPage(
+    loc: ExplorerLocation,
+    token: string | null,
+    pageSize = useSettingsStore().settings.explorerPageSize,
+  ) {
     return unwrap(
       commands.listObjects({
         connectionId: loc.connectionId,
@@ -98,7 +113,7 @@ export const useExplorerStore = defineStore("explorer", () => {
         prefix: loc.prefix + search.value || null,
         delimiter: "/",
         continuationToken: token,
-        pageSize: useSettingsStore().settings.explorerPageSize,
+        pageSize,
       }),
     );
   }
@@ -117,6 +132,8 @@ export const useExplorerStore = defineStore("explorer", () => {
     isTruncated.value = false;
     error.value = null;
     loading.value = true;
+    loadingMore.value = false;
+    autoLoading.value = false;
     clearSelection();
     checkedKeys.value = new Set();
 
@@ -130,6 +147,40 @@ export const useExplorerStore = defineStore("explorer", () => {
       if (seq === listSeq) error.value = toAppError(err);
     } finally {
       if (seq === listSeq) loading.value = false;
+    }
+    if (seq === listSeq && isTruncated.value) void autoLoad(seq);
+  }
+
+  /**
+   * Loads the remaining pages of the current listing until it is complete,
+   * reaches `AUTO_LOAD_LIMIT`, fails, or the user opens something else. A
+   * failure is left for "Load more" to retry rather than shown as an error.
+   */
+  async function autoLoad(seq: number) {
+    const loc = location.value;
+    if (!loc) return;
+    autoLoading.value = true;
+    loadingMore.value = true;
+    try {
+      while (
+        seq === listSeq &&
+        isTruncated.value &&
+        nextToken.value &&
+        entries.value.length < AUTO_LOAD_LIMIT
+      ) {
+        const page = await fetchPage(loc, nextToken.value, BACKGROUND_PAGE_SIZE);
+        if (seq !== listSeq) return;
+        entries.value = [...entries.value, ...page.objects];
+        nextToken.value = page.nextContinuationToken;
+        isTruncated.value = page.isTruncated;
+      }
+    } catch {
+      // Keep what loaded; the "Load more" button offers a retry.
+    } finally {
+      if (seq === listSeq) {
+        autoLoading.value = false;
+        loadingMore.value = false;
+      }
     }
   }
 
@@ -147,7 +198,7 @@ export const useExplorerStore = defineStore("explorer", () => {
     } catch (err) {
       if (seq === listSeq) error.value = toAppError(err);
     } finally {
-      loadingMore.value = false;
+      if (seq === listSeq) loadingMore.value = false;
     }
   }
 
@@ -301,6 +352,7 @@ export const useExplorerStore = defineStore("explorer", () => {
     isTruncated,
     loading,
     loadingMore,
+    autoLoading,
     error,
     selectedKey,
     selected,

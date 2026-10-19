@@ -130,6 +130,7 @@ export default {
     dropHint: "Drop files anywhere to upload here",
     noMatches: "No loaded items match the filter.",
     loadMore: "Load more",
+    loadingRest: "Loading the rest of this folder…",
     count: "{count} item | {count} items",
     details: "Details",
     closeDetails: "Close details",
@@ -288,7 +289,7 @@ export default {
       },
       explorerPageSize: {
         label: "Items per page",
-        hint: "How many items the explorer loads at a time ({min}–{max}).",
+        hint: "How many items appear first when a folder opens; the rest loads in the background ({min}–{max}).",
       },
     },
     saved: "Settings saved",
