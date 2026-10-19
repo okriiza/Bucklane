@@ -593,6 +593,8 @@ preview_object
 
 `preview_object` mengambil isi objek untuk preview di aplikasi: gambar (≤ 15 MB) dan PDF (≤ 25 MB) utuh, teks hanya 512 KB pertama melalui HTTP Range. Isi dikirim sebagai base64 dan ditampilkan melalui `blob:` URL, sehingga CSP cukup ditambah `img-src blob:` dan `frame-src blob:` tanpa mengizinkan origin remote.
 
+Tipe konten preview ditentukan dari jenis preview, bukan dari `Content-Type` objek yang bisa diatur siapa pun yang punya akses tulis ke bucket: PDF selalu `application/pdf`, gambar hanya tipe dari allowlist (raster dan `image/svg+xml`, yang aman di `<img>`), lainnya `application/octet-stream`. Frontend juga memilih tipe blob dari jenis preview. Pembacaan dihentikan di batas ukuran walaupun HEAD tidak melaporkan ukuran atau server mengabaikan Range.
+
 `create_share_link` membuat presigned GET URL untuk satu objek (60 detik sampai 7 hari, batas SigV4). Keberadaan objek dicek lebih dulu. URL tidak disimpan maupun dicatat di log karena berfungsi sebagai bearer credential (SEC-004); link hanya bisa dicabut lebih awal dengan merotasi access key.
 
 Rename adalah `move_object` dengan bucket yang sama dan key tujuan baru; tidak ada command rename terpisah.
@@ -936,6 +938,13 @@ Jika proses gagal, rollback atau recovery harus mencegah koneksi menunjuk ke sec
 - Plugin `fs` dan `shell` tidak digunakan.
 - Content Security Policy dikonfigurasi.
 - Tidak menggunakan remote scripts yang tidak dipercaya.
+
+Tambahan hardening:
+
+- Plugin `navigation-guard` menolak navigasi webview ke luar origin aplikasi (`tauri://localhost`, `http(s)://tauri.localhost`, `blob:`, `about:blank`, dan dev server hanya di build debug).
+- Unduhan folder ditolak bila folder induk yang sudah ada mengarah ke luar folder tujuan lewat symlink (`stays_within`). Nama perangkat Windows (`CON`, `NUL`, `COM1`, ...) diberi akhiran `_`.
+- `log_frontend_error` menulis error UI ke log dengan URL serta parameter `X-Amz-*`/`Signature=`/`Credential=` diredaksi, maksimal 200 entri per sesi. `diagnostics` hanya mengembalikan versi, OS, arsitektur, versi WebView, dan status database.
+- CI menjalankan `cargo audit` dan `pnpm audit --prod`.
 
 ## 8.5 In-App Updates
 

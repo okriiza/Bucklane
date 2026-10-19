@@ -12,6 +12,7 @@ import {
 import { computed } from "vue";
 
 import appIcon from "../../src-tauri/icons/128x128@2x.png";
+import DiagnosticsCard from "@/components/common/DiagnosticsCard.vue";
 import UpdateCard from "@/components/common/UpdateCard.vue";
 import ProviderMark from "@/components/connections/ProviderMark.vue";
 import { useAppStore } from "@/stores/app";
@@ -162,6 +163,7 @@ const features = [
 
       <aside class="grid content-start gap-8">
         <UpdateCard :current-version="app.health?.appVersion ?? null" />
+        <DiagnosticsCard />
         <dl
           class="bg-card grid gap-3.5 rounded-xl border p-5 text-[13px] shadow-[var(--shadow-soft)]"
         >

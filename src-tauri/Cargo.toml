@@ -4,7 +4,7 @@ version = "0.4.0"
 description = "Desktop S3 storage manager"
 edition = "2024"
 rust-version = "1.94.1"
-license = "UNLICENSED"
+license = "MIT"
 publish = false
 
 [lib]
@@ -29,7 +29,8 @@ mime_guess = "2"
 base64 = "0.22"
 tauri-plugin-dialog = "2.8"
 tauri-plugin-opener = "2.7"
-tauri-plugin-updater = "2.14"
+# No `zip` feature: v2 updater artifacts are the installers themselves, not archives.
+tauri-plugin-updater = { version = "2.14", default-features = false, features = ["rustls-tls", "system-proxy"] }
 sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "sqlite", "migrate", "macros"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }

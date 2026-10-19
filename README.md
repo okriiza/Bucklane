@@ -28,6 +28,8 @@ Available for **macOS** (Apple Silicon and Intel), **Windows**, and **Linux**.
 - [Troubleshooting](#troubleshooting)
 - [Current limitations](#current-limitations)
 - [For developers](#for-developers)
+- [Contributing](#contributing)
+- [License](#license)
 
 ---
 
@@ -337,6 +339,8 @@ Deleting a connection removes its secret from the keychain. Buckets and files on
 
 ## Troubleshooting
 
+Still stuck? Open **About → Report a problem**: **Copy diagnostics** gives a summary to paste into a bug report (no connection names, endpoints, buckets, files, or keys), and **Open logs folder** shows the log files.
+
 | Message or problem                                                            | What to do                                                                                                                                                                     |
 | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | _"This storage doesn't recognize the access key ID."_                         | The access key ID is wrong or was copied incompletely. Edit the connection and paste it again.                                                                                 |
@@ -417,3 +421,13 @@ Set `CHROME_PATH` if the browser isn't found automatically. Shots and their samp
 ### Releasing
 
 Push a version tag (for example `v0.1.0`) to build macOS, Windows, and Linux installers into a draft GitHub release. See [docs/releasing.md](docs/releasing.md).
+
+---
+
+## Contributing
+
+Bug reports and pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md). Please report security problems privately as described in [SECURITY.md](SECURITY.md). Release notes are in [CHANGELOG.md](CHANGELOG.md).
+
+## License
+
+Bucklane is released under the [MIT License](LICENSE).

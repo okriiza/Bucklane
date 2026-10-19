@@ -166,28 +166,35 @@ impl StorageProvider for S3StorageProvider {
         &self,
         bucket: &str,
         key: &str,
-        max_bytes: Option<u64>,
-    ) -> Result<Vec<u8>, AppError> {
-        let range = max_bytes
-            .filter(|n| *n > 0)
-            .map(|n| format!("bytes=0-{}", n - 1));
+        limit: u64,
+    ) -> Result<(Vec<u8>, bool), AppError> {
+        // One byte past the limit tells whether the object continues.
         let output = self
             .client
             .get_object()
             .bucket(bucket)
             .key(key)
-            .set_range(range)
+            .range(format!("bytes=0-{limit}"))
             .send()
             .await
             .map_err(|e| map_sdk_error(e, ErrorCode::ObjectNotFound))?;
-        let bytes = output.body.collect().await.map_err(|err| {
+        let mut body = output.body;
+        let mut bytes = Vec::new();
+        while let Some(chunk) = body.try_next().await.map_err(|err| {
             AppError::new(
                 ErrorCode::TransferFailed,
                 "The connection was interrupted while loading the preview.",
             )
             .with_details(err.to_string())
-        })?;
-        Ok(bytes.into_bytes().to_vec())
+        })? {
+            bytes.extend_from_slice(&chunk);
+            if bytes.len() as u64 > limit {
+                break;
+            }
+        }
+        let more = bytes.len() as u64 > limit;
+        bytes.truncate(limit as usize);
+        Ok((bytes, more))
     }
 
     async fn presign_get(

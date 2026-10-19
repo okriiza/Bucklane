@@ -5,6 +5,7 @@ import { Toaster } from "vue-sonner";
 import "vue-sonner/style.css";
 
 import AppSidebar from "@/components/common/AppSidebar.vue";
+import ErrorBoundary from "@/components/common/ErrorBoundary.vue";
 import ConnectionFormDialog from "@/components/connections/ConnectionFormDialog.vue";
 import ConflictDialog from "@/components/transfers/ConflictDialog.vue";
 import FileDropOverlay from "@/components/transfers/FileDropOverlay.vue";
@@ -51,7 +52,9 @@ onUnmounted(() => {
         class="mac:block hidden h-8 shrink-0"
       />
       <main class="min-h-0 flex-1 overflow-auto">
-        <RouterView />
+        <ErrorBoundary>
+          <RouterView />
+        </ErrorBoundary>
       </main>
       <TransferPanel class="shrink-0" />
     </div>
