@@ -416,7 +416,7 @@ pnpm dev            # in one terminal
 pnpm screenshots    # in another
 ```
 
-Set `CHROME_PATH` if the browser isn't found automatically. Shots and their sample data live in `scripts/screenshots.mjs` and `src/demo/demoIpc.ts`.
+Set `CHROME_PATH` if the browser isn't found automatically. `pnpm social` then renders the social media banners in `docs/social/` from `docs/social/banner.html`. Shots and their sample data live in `scripts/screenshots.mjs` and `src/demo/demoIpc.ts`.
 
 ### Releasing
 

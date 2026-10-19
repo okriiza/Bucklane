@@ -1,0 +1,258 @@
+<!doctype html>
+<!--
+  Social banner source, rendered to PNG by scripts/social-images.mjs.
+  ?size=wide (1280×640, GitHub social preview / X / LinkedIn) or ?size=square (1080×1080).
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Bucklane banner</title>
+    <style>
+      @font-face {
+        font-family: "Geist";
+        src: url("../../node_modules/@fontsource-variable/geist/files/geist-latin-wght-normal.woff2")
+          format("woff2");
+        font-weight: 100 900;
+      }
+      @font-face {
+        font-family: "Geist Mono";
+        src: url("../../node_modules/@fontsource-variable/geist-mono/files/geist-mono-latin-wght-normal.woff2")
+          format("woff2");
+        font-weight: 100 900;
+      }
+
+      :root {
+        --bg: #0b1222;
+        --ink: #eef2f8;
+        --muted: #93a1b8;
+        --accent: #38bdf8;
+        --accent-soft: rgba(56, 189, 248, 0.14);
+        --line: rgba(148, 163, 184, 0.18);
+      }
+
+      * {
+        box-sizing: border-box;
+        margin: 0;
+      }
+
+      html,
+      body {
+        background: var(--bg);
+      }
+
+      .banner {
+        position: relative;
+        overflow: hidden;
+        width: 1280px;
+        height: 640px;
+        font-family: "Geist", system-ui, sans-serif;
+        color: var(--ink);
+        background:
+          radial-gradient(900px 520px at 88% 30%, rgba(56, 189, 248, 0.2), transparent 60%),
+          radial-gradient(600px 420px at 0% 100%, rgba(99, 102, 241, 0.16), transparent 60%),
+          var(--bg);
+      }
+
+      /* Faint grid for depth. */
+      .banner::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background-image:
+          linear-gradient(var(--line) 1px, transparent 1px),
+          linear-gradient(90deg, var(--line) 1px, transparent 1px);
+        background-size: 48px 48px;
+        mask-image: radial-gradient(ellipse at 70% 40%, black 10%, transparent 70%);
+        opacity: 0.5;
+      }
+
+      .copy {
+        position: absolute;
+        left: 72px;
+        top: 76px;
+        width: 520px;
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        font-size: 26px;
+        font-weight: 650;
+        letter-spacing: -0.01em;
+      }
+
+      .brand img {
+        width: 52px;
+        height: 52px;
+        border-radius: 12px;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+      }
+
+      h1 {
+        margin-top: 40px;
+        font-size: 56px;
+        line-height: 1.04;
+        font-weight: 700;
+        letter-spacing: -0.035em;
+      }
+
+      h1 em {
+        font-style: normal;
+        color: var(--accent);
+      }
+
+      .lede {
+        margin-top: 22px;
+        font-size: 21px;
+        line-height: 1.45;
+        color: var(--muted);
+      }
+
+      .providers {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 30px;
+      }
+
+      .providers span {
+        padding: 6px 12px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.03);
+        font-size: 15px;
+        color: #c7d2e3;
+      }
+
+      .meta {
+        position: absolute;
+        left: 72px;
+        bottom: 56px;
+        display: flex;
+        gap: 22px;
+        font-family: "Geist Mono", ui-monospace, monospace;
+        font-size: 15px;
+        color: var(--muted);
+      }
+
+      .meta b {
+        color: var(--accent);
+        font-weight: 500;
+      }
+
+      .window {
+        position: absolute;
+        left: 640px;
+        top: 96px;
+        width: 900px;
+        border: 1px solid rgba(148, 163, 184, 0.25);
+        border-radius: 14px;
+        overflow: hidden;
+        background: #111827;
+        box-shadow:
+          0 40px 80px rgba(0, 0, 0, 0.55),
+          0 0 0 1px rgba(56, 189, 248, 0.08);
+        transform: perspective(1800px) rotateY(-8deg) rotateX(3deg);
+        transform-origin: left center;
+      }
+
+      .titlebar {
+        display: flex;
+        gap: 8px;
+        padding: 12px 14px;
+        background: #0f1626;
+        border-bottom: 1px solid rgba(148, 163, 184, 0.14);
+      }
+
+      .titlebar i {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        background: #ff5f57;
+      }
+
+      .titlebar i:nth-child(2) {
+        background: #febc2e;
+      }
+
+      .titlebar i:nth-child(3) {
+        background: #28c840;
+      }
+
+      .window img {
+        display: block;
+        width: 100%;
+      }
+
+      /* Square layout: copy on top, screenshot below. */
+      .square {
+        width: 1080px;
+        height: 1080px;
+      }
+
+      .square .copy {
+        left: 80px;
+        top: 80px;
+        width: 920px;
+      }
+
+      .square h1 {
+        font-size: 68px;
+      }
+
+      .square .lede {
+        width: 760px;
+        font-size: 24px;
+      }
+
+      .square .window {
+        left: 80px;
+        top: 590px;
+        width: 1100px;
+        transform: perspective(2000px) rotateX(10deg);
+        transform-origin: center top;
+      }
+
+      .square .meta {
+        left: auto;
+        right: 80px;
+        top: 92px;
+        bottom: auto;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="banner" id="banner">
+      <div class="copy">
+        <div class="brand">
+          <img src="../../src-tauri/icons/128x128@2x.png" alt="" />
+          Bucklane
+        </div>
+        <h1>All your S3 storage in <em>one desktop app</em></h1>
+        <p class="lede">
+          Browse buckets, upload, download, preview and share files. Free, open source, and your
+          keys never leave your computer.
+        </p>
+        <div class="providers">
+          <span>Amazon S3</span>
+          <span>Supabase</span>
+          <span>Cloudflare R2</span>
+          <span>MinIO</span>
+          <span>Wasabi</span>
+          <span>DigitalOcean</span>
+        </div>
+      </div>
+      <div class="meta"><span><b>●</b> macOS · Windows · Linux</span><span>MIT license</span></div>
+      <div class="window">
+        <div class="titlebar"><i></i><i></i><i></i></div>
+        <img src="../screenshots/explorer.png" alt="" />
+      </div>
+    </div>
+    <script>
+      if (new URLSearchParams(location.search).get("size") === "square") {
+        document.getElementById("banner").classList.add("square");
+      }
+    </script>
+  </body>
+</html>

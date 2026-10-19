@@ -281,7 +281,7 @@ const theme = params.get("theme") === "light" ? "light" : "dark";
 function respond(cmd: string, args: Record<string, unknown> = {}): unknown {
   switch (cmd) {
     case "health":
-      return { appVersion: "0.3.0", databaseOk: true, databaseError: null };
+      return { appVersion: "0.5.0", databaseOk: true, databaseError: null };
     case "list_connections":
       return connections;
     case "list_provider_profiles":
@@ -307,7 +307,7 @@ function respond(cmd: string, args: Record<string, unknown> = {}): unknown {
     }
     case "diagnostics":
       return {
-        appVersion: "0.4.0",
+        appVersion: "0.5.0",
         tauriVersion: "2.12.0",
         webviewVersion: "26.0",
         os: "macos",
@@ -318,7 +318,7 @@ function respond(cmd: string, args: Record<string, unknown> = {}): unknown {
     case "open_logs_folder":
       return null;
     case "check_for_update":
-      return { version: "0.4.0", currentVersion: "0.3.0" };
+      return { version: "0.6.0", currentVersion: "0.5.0" };
     case "install_update":
     case "open_release_page":
     case "restart_app":
