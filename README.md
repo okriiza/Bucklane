@@ -426,7 +426,7 @@ Push a version tag (for example `v0.1.0`) to build macOS, Windows, and Linux ins
 
 ## Contributing
 
-Bug reports and pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md). Please report security problems privately as described in [SECURITY.md](SECURITY.md). Release notes are in [CHANGELOG.md](CHANGELOG.md).
+Bug reports and pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md), and [docs/](docs/README.md) for the design documents. Please report security problems privately as described in [SECURITY.md](SECURITY.md). Release notes are in [CHANGELOG.md](CHANGELOG.md).
 
 ## License
 

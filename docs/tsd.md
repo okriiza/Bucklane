@@ -2,7 +2,7 @@
 
 **Document ID:** BUCK-TSD-001  
 **Version:** 1.0  
-**Status:** Draft for Implementation  
+**Status:** Maintained alongside the code  
 **Related Documents:** Bucklane PRD v1.0, [Database Design v1.0](database_design.md)  
 **Architecture:** Local-first Desktop Application  
 **Primary Stack:** Tauri 2 / Vue 3 / TypeScript / Rust

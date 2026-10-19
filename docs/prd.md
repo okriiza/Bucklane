@@ -3,7 +3,7 @@
 ## Bucklane — Desktop S3 Storage Manager
 
 **Version:** 1.0  
-**Status:** Draft — Ready for Technical Design  
+**Status:** Original plan (not updated for every change; the code and README are authoritative)  
 **Platform:** macOS, Windows, Linux  
 **Product Type:** Cross-platform Desktop Application  
 **Architecture:** Local-first, without centralized backend  
