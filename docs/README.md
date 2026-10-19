@@ -11,6 +11,5 @@ These are the documents Bucklane was planned and built from. They explain why th
 
 A few things to know:
 
-- **Language.** The PRD and TSD are partly written in Indonesian. The README, code, and code comments are in English.
 - **Status.** The PRD is the original plan and is not updated for every change. The TSD and database design are maintained, but they can lag behind.
 - **Source of truth.** If a document disagrees with the code or the [README](../README.md), the code and README win. Pull requests that fix outdated docs are welcome.
