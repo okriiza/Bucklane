@@ -1,5 +1,12 @@
 # Bucklane
 
+[![Latest release](https://img.shields.io/github/v/release/okriiza/Bucklane?label=release)](https://github.com/okriiza/Bucklane/releases/latest)
+[![CI](https://github.com/okriiza/Bucklane/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/okriiza/Bucklane/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Platforms](https://img.shields.io/badge/platforms-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey.svg)](#download-and-install)
+[![Built with Tauri](https://img.shields.io/badge/built%20with-Tauri%202-24C8DB.svg?logo=tauri&logoColor=white)](https://tauri.app)
+[![Downloads](https://img.shields.io/github/downloads/okriiza/Bucklane/total)](https://github.com/okriiza/Bucklane/releases)
+
 **A desktop app for managing Amazon S3 and any S3-compatible storage — one window for all your buckets.**
 
 Bucklane lets you browse buckets like folders, upload and download files, and move, rename, or delete objects without touching the command line. It works with Amazon S3, Supabase Storage, MinIO, Cloudflare R2, Wasabi, DigitalOcean Spaces, and any custom S3-compatible endpoint.
