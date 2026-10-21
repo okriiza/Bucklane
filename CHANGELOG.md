@@ -2,6 +2,12 @@
 
 Notable changes to Bucklane. Versions follow [Semantic Versioning](https://semver.org/).
 
+## 0.5.2 — 2026-10-22
+
+### Security
+
+- Updated `rustls-webpki` and `webpki-root-certs` so TLS connections to storage providers and the update server no longer trust distrusted certificate authorities ([RUSTSEC-2026-0382](https://rustsec.org/advisories/RUSTSEC-2026-0382), [RUSTSEC-2026-0383](https://rustsec.org/advisories/RUSTSEC-2026-0383)).
+
 ## 0.5.1 — 2026-10-19
 
 ### Changed
