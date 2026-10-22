@@ -2,12 +2,16 @@
 
 Notable changes to Bucklane. Versions follow [Semantic Versioning](https://semver.org/).
 
-## Unreleased
+## 0.6.0 — 2026-10-22
 
 ### Added
 
 - Rename, copy, and move **folders**, from the menu, with F2, or by dragging a folder onto another folder or the breadcrumb. Bucklane counts the folder first, shows existing objects at the destination (skip or replace), reports progress, and can be stopped. Originals are deleted only after their copies are verified.
 - **Support Bucklane** in the sidebar and on the About page opens the project's Trakteer page. It is a plain link: nothing pops up, and nothing is tracked.
+
+### Changed
+
+- Smoother drag and drop in the explorer: no text gets selected, a card follows the pointer, the target folder opens as you hover it, and the item flies into the folder when you drop it.
 
 ## 0.5.2 — 2026-10-22
 
