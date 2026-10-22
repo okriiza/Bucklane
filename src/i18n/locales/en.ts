@@ -168,8 +168,8 @@ export default {
     conflictDescription:
       "“{key}” already exists ({size}). Replacing it permanently overwrites its contents.",
     overwrite: "Replace",
-    dragging: "Move {count} file | Move {count} files",
-    dragMoveTo: "Move {count} file to {folder} | Move {count} files to {folder}",
+    dragFiles: "{count} files",
+    dragInto: "Move into {folder}",
     movedMany: "Moved {count} file | Moved {count} files",
     skippedExisting:
       "{count} file was skipped because it already exists there | {count} files were skipped because they already exist there",
@@ -178,8 +178,6 @@ export default {
     copyFolderTitle: "Copy folder",
     moveFolderTitle: "Move folder",
     destinationFolder: "Destination folder",
-    draggingFolder: "Move {name}",
-    dragFolderTo: "Move {name} into {folder}",
   },
   folderOps: {
     renameTitle: "Rename folder",

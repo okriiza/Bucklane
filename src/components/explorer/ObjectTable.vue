@@ -8,6 +8,7 @@ import {
   FileText,
   FileVideo,
   Folder,
+  FolderOpen,
 } from "@lucide/vue";
 import { computed } from "vue";
 
@@ -26,6 +27,8 @@ const props = defineProps<{
   selectedKey: string | null;
   checkedKeys: Set<string>;
   sort: SortState;
+  /** Rows being dragged; shown faded while they "travel". */
+  draggingKeys?: Set<string>;
 }>();
 const emit = defineEmits<{
   openFolder: [prefix: string];
@@ -130,10 +133,11 @@ function activate(entry: StorageObject) {
         v-for="entry in entries"
         :key="entry.key"
         tabindex="0"
-        class="group hover:bg-accent/70 focus-visible:bg-accent h-9 cursor-default border-b border-border/60 transition-colors outline-none last:border-b-0"
+        class="group hover:bg-accent/70 focus-visible:bg-accent h-9 cursor-default border-b border-border/60 transition-[background-color,opacity] outline-none last:border-b-0"
         :class="{
           'bg-primary/8 hover:bg-primary/12':
             entry.key === selectedKey || checkedKeys.has(entry.key),
+          'opacity-40': draggingKeys?.has(entry.key),
         }"
         :aria-selected="entry.key === selectedKey"
         :data-drag-key="entry.key"
@@ -156,11 +160,16 @@ function activate(entry: StorageObject) {
         </td>
         <td class="px-2">
           <span class="flex min-w-0 items-center gap-2.5">
-            <component
-              :is="iconFor(entry)"
-              class="size-4 shrink-0"
-              :class="entry.isPrefix ? 'text-primary fill-primary/15' : 'text-muted-foreground'"
-            />
+            <!-- A folder "opens" while something is dragged over it. -->
+            <template v-if="entry.isPrefix">
+              <Folder
+                class="text-primary fill-primary/15 size-4 shrink-0 in-[.drop-target]:hidden"
+              />
+              <FolderOpen
+                class="text-primary fill-primary/20 folder-pop hidden size-4 shrink-0 in-[.drop-target]:block"
+              />
+            </template>
+            <component :is="iconFor(entry)" v-else class="text-muted-foreground size-4 shrink-0" />
             <span class="truncate" :class="{ 'font-medium': entry.isPrefix }" :title="entry.key">
               {{ entry.name }}
             </span>
@@ -191,3 +200,21 @@ function activate(entry: StorageObject) {
     </tbody>
   </table>
 </template>
+
+<style scoped>
+.folder-pop {
+  animation: folder-pop 220ms cubic-bezier(0.2, 0, 0, 1.4);
+}
+
+@keyframes folder-pop {
+  from {
+    transform: scale(0.7);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .folder-pop {
+    animation: none;
+  }
+}
+</style>

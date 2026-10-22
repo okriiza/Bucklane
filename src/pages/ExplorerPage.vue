@@ -21,6 +21,7 @@ import { toast } from "vue-sonner";
 import ConfirmDialog from "@/components/common/ConfirmDialog.vue";
 import PromptDialog from "@/components/common/PromptDialog.vue";
 import DeleteObjectsDialog from "@/components/explorer/DeleteObjectsDialog.vue";
+import DragGhost from "@/components/explorer/DragGhost.vue";
 import ExplorerBreadcrumb from "@/components/explorer/ExplorerBreadcrumb.vue";
 import FolderRelocateDialog, {
   type FolderRelocateRequest,
@@ -343,6 +344,23 @@ const { drag, onPointerDown, shouldSuppressClick } = useObjectDrag({
   },
 });
 
+/** Keys being dragged, so their rows can be dimmed. */
+const draggingKeys = computed(() => new Set(drag.value?.keys ?? []));
+
+const dragLabel = computed(() => {
+  const keys = drag.value?.keys ?? [];
+  const [first] = keys;
+  if (!first) return "";
+  if (isFolderKey(first)) return folderName(first);
+  return keys.length === 1 ? baseName(first) : t("ops.dragFiles", { count: keys.length });
+});
+
+const dragHint = computed(() => {
+  const target = drag.value?.targetPrefix;
+  if (target === null || target === undefined) return null;
+  return t("ops.dragInto", { folder: target ? folderName(target) : props.bucket });
+});
+
 /**
  * Moves files into `prefix`. A single file follows the normal conflict
  * dialog; for several files, existing destinations are skipped and reported
@@ -588,6 +606,7 @@ function goTo(prefix: string) {
             :entries="visible"
             :selected-key="explorer.selectedKey"
             :checked-keys="explorer.checkedKeys"
+            :dragging-keys="draggingKeys"
             :sort="explorer.sort"
             @sort="(key) => explorer.setSort(nextSort(explorer.sort, key))"
             @open-folder="goTo"
@@ -688,33 +707,6 @@ function goTo(prefix: string) {
     />
 
     <!-- Drag preview following the pointer. -->
-    <div
-      v-if="drag"
-      class="bg-popover text-popover-foreground pointer-events-none fixed z-50 rounded-md border px-2.5 py-1 text-xs shadow-md"
-      :style="{ left: `${drag.x + 12}px`, top: `${drag.y + 12}px` }"
-    >
-      <template v-if="drag.keys[0] && isFolderKey(drag.keys[0])">
-        {{
-          drag.targetPrefix !== null
-            ? $t("ops.dragFolderTo", {
-                name: folderName(drag.keys[0]),
-                folder: drag.targetPrefix || bucket,
-              })
-            : $t("ops.draggingFolder", { name: folderName(drag.keys[0]) })
-        }}
-      </template>
-      <template v-else-if="drag.targetPrefix !== null">
-        {{
-          $t(
-            "ops.dragMoveTo",
-            { count: drag.keys.length, folder: drag.targetPrefix || bucket },
-            drag.keys.length,
-          )
-        }}
-      </template>
-      <template v-else>
-        {{ $t("ops.dragging", { count: drag.keys.length }, drag.keys.length) }}
-      </template>
-    </div>
+    <DragGhost v-if="drag" :drag="drag" :label="dragLabel" :hint="dragHint" />
   </div>
 </template>

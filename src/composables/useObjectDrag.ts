@@ -2,13 +2,22 @@ import { onScopeDispose, ref } from "vue";
 
 /** Pixels the pointer must travel before a press becomes a drag. */
 const DRAG_THRESHOLD = 5;
-const DROP_HIGHLIGHT = ["ring-2", "ring-primary", "ring-inset", "bg-accent"];
+const DROP_HIGHLIGHT = ["ring-2", "ring-primary", "ring-inset", "bg-primary/10", "drop-target"];
+/** Length of the "drop into folder" animation before `onDrop` runs. */
+export const LAND_MS = 260;
+/** Length of the fade when a drag ends without a target. */
+export const CANCEL_MS = 140;
 
 export interface DragState {
   keys: string[];
   x: number;
   y: number;
   targetPrefix: string | null;
+  /**
+   * `dragging` follows the pointer; `landing` flies into the drop target;
+   * `canceled` fades out where it was released.
+   */
+  phase: "dragging" | "landing" | "canceled";
 }
 
 /**
@@ -32,6 +41,7 @@ export function useObjectDrag(options: {
   let pending: { key: string; x: number; y: number } | null = null;
   let highlighted: Element | null = null;
   let suppressClick = false;
+  let finishTimer: ReturnType<typeof setTimeout> | undefined;
 
   function setHighlight(el: Element | null) {
     if (el === highlighted) return;
@@ -40,14 +50,21 @@ export function useObjectDrag(options: {
     highlighted = el;
   }
 
+  /** Text selection would otherwise follow the pointer across the table. */
+  function setSelectable(selectable: boolean) {
+    document.body.style.userSelect = selectable ? "" : "none";
+    document.body.style.webkitUserSelect = selectable ? "" : "none";
+  }
+
   function onPointerDown(event: PointerEvent) {
-    if (event.button !== 0) return;
+    if (event.button !== 0 || drag.value) return;
     const target = event.target as Element;
     // Never start a drag from controls inside a row.
     if (target.closest("input, button, a, [role='menu']")) return;
     const row = target.closest("[data-drag-key]");
     if (!row) return;
     pending = { key: row.getAttribute("data-drag-key")!, x: event.clientX, y: event.clientY };
+    setSelectable(false);
     window.addEventListener("pointermove", onPointerMove);
     window.addEventListener("pointerup", onPointerUp, { once: true });
     window.addEventListener("keydown", onKeyDown);
@@ -57,10 +74,17 @@ export function useObjectDrag(options: {
     if (pending && !drag.value) {
       const distance = Math.hypot(event.clientX - pending.x, event.clientY - pending.y);
       if (distance < DRAG_THRESHOLD) return;
-      drag.value = { keys: options.keysFor(pending.key), x: 0, y: 0, targetPrefix: null };
+      window.getSelection()?.removeAllRanges();
+      drag.value = {
+        keys: options.keysFor(pending.key),
+        x: event.clientX,
+        y: event.clientY,
+        targetPrefix: null,
+        phase: "dragging",
+      };
       document.body.style.cursor = "grabbing";
     }
-    if (!drag.value) return;
+    if (!drag.value || drag.value.phase !== "dragging") return;
 
     drag.value.x = event.clientX;
     drag.value.y = event.clientY;
@@ -75,26 +99,61 @@ export function useObjectDrag(options: {
 
   function onPointerUp() {
     const finished = drag.value;
-    cleanup();
-    if (!finished) return;
+    stopListening();
+    pending = null;
+    if (!finished) {
+      setSelectable(true);
+      return;
+    }
     // The pointerup also produces a click on the row; don't treat it as one.
     suppressClick = true;
     setTimeout(() => (suppressClick = false), 0);
-    if (finished.targetPrefix !== null) options.onDrop(finished.keys, finished.targetPrefix);
+
+    const { keys, targetPrefix } = finished;
+    if (targetPrefix !== null && highlighted) {
+      // Fly the ghost into the folder, then perform the drop.
+      const rect = highlighted.getBoundingClientRect();
+      // The first visible icon (a folder swaps its closed icon for an open one).
+      const icon = [...highlighted.querySelectorAll("svg")]
+        .map((svg) => svg.getBoundingClientRect())
+        .find((r) => r.width > 0);
+      finished.x = icon ? icon.left + icon.width / 2 : rect.left + 24;
+      finished.y = icon ? icon.top + icon.height / 2 : rect.top + rect.height / 2;
+      finished.phase = "landing";
+      finishTimer = setTimeout(() => {
+        reset();
+        options.onDrop(keys, targetPrefix);
+      }, LAND_MS);
+    } else {
+      finished.phase = "canceled";
+      setHighlight(null);
+      finishTimer = setTimeout(reset, CANCEL_MS);
+    }
   }
 
   function onKeyDown(event: KeyboardEvent) {
-    if (event.key === "Escape") cleanup();
+    if (event.key !== "Escape" || !drag.value || drag.value.phase !== "dragging") return;
+    stopListening();
+    pending = null;
+    drag.value.phase = "canceled";
+    setHighlight(null);
+    finishTimer = setTimeout(reset, CANCEL_MS);
   }
 
-  function cleanup() {
-    pending = null;
-    drag.value = null;
-    setHighlight(null);
+  function stopListening() {
     document.body.style.cursor = "";
     window.removeEventListener("pointermove", onPointerMove);
     window.removeEventListener("pointerup", onPointerUp);
     window.removeEventListener("keydown", onKeyDown);
+  }
+
+  function reset() {
+    clearTimeout(finishTimer);
+    pending = null;
+    drag.value = null;
+    setHighlight(null);
+    setSelectable(true);
+    stopListening();
   }
 
   /** Call from a capture-phase click handler to swallow the post-drag click. */
@@ -102,7 +161,7 @@ export function useObjectDrag(options: {
     return suppressClick;
   }
 
-  onScopeDispose(cleanup);
+  onScopeDispose(reset);
 
   return { drag, onPointerDown, shouldSuppressClick };
 }
