@@ -3,6 +3,7 @@ pub mod connections;
 pub mod diagnostics;
 pub mod files;
 pub mod health;
+pub mod links;
 pub mod objects;
 pub mod settings;
 pub mod transfers;

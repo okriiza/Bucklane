@@ -1,7 +1,9 @@
 <script setup lang="ts">
-import { ArrowDownCircle, Info, Settings } from "@lucide/vue";
+import { ArrowDownCircle, Heart, Info, Settings } from "@lucide/vue";
+import { toast } from "vue-sonner";
 
 import ConnectionList from "@/components/connections/ConnectionList.vue";
+import { commands, toAppError, unwrap } from "@/services/tauri";
 import { useUpdateStore } from "@/stores/updates";
 
 import BackendStatusBadge from "./BackendStatusBadge.vue";
@@ -13,6 +15,14 @@ const links = [
 ] as const;
 
 const updates = useUpdateStore();
+
+async function openSupport() {
+  try {
+    await unwrap(commands.openSupportPage());
+  } catch (err) {
+    toast.error(toAppError(err).message);
+  }
+}
 </script>
 
 <template>
@@ -56,6 +66,14 @@ const updates = useUpdateStore();
         <component :is="link.icon" class="size-4 opacity-70" />
         {{ $t(link.label) }}
       </RouterLink>
+      <button
+        type="button"
+        class="hover:bg-sidebar-accent hover:text-sidebar-accent-foreground flex items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-[13px] transition-colors"
+        @click="openSupport"
+      >
+        <Heart class="size-4 text-rose-500 opacity-80" />
+        {{ $t("nav.support") }}
+      </button>
       <BackendStatusBadge class="mt-1.5 px-2" />
     </div>
   </aside>

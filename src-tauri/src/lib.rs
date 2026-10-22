@@ -81,6 +81,7 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::updates::install_update,
             commands::updates::restart_app,
             commands::updates::open_release_page,
+            commands::links::open_support_page,
         ])
 }
 

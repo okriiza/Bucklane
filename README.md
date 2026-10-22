@@ -6,6 +6,7 @@
 [![Platforms](https://img.shields.io/badge/platforms-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey.svg)](#download-and-install)
 [![Built with Tauri](https://img.shields.io/badge/built%20with-Tauri%202-24C8DB.svg?logo=tauri&logoColor=white)](https://tauri.app)
 [![Downloads](https://img.shields.io/github/downloads/okriiza/Bucklane/total)](https://github.com/okriiza/Bucklane/releases)
+[![Support on Trakteer](https://img.shields.io/badge/support-Trakteer-be1e2d.svg)](https://trakteer.id/okriiza)
 
 **A desktop app for managing Amazon S3 and any S3-compatible storage — one window for all your buckets.**
 
@@ -36,6 +37,7 @@ Available for **macOS** (Apple Silicon and Intel), **Windows**, and **Linux**.
 - [Current limitations](#current-limitations)
 - [For developers](#for-developers)
 - [Contributing](#contributing)
+- [Support the project](#support-the-project)
 - [License](#license)
 
 ---
@@ -434,6 +436,18 @@ Push a version tag (for example `v0.1.0`) to build macOS, Windows, and Linux ins
 ## Contributing
 
 Bug reports and pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md), and [docs/](docs/README.md) for the design documents. Please report security problems privately as described in [SECURITY.md](SECURITY.md). Release notes are in [CHANGELOG.md](CHANGELOG.md).
+
+## Support the project
+
+Bucklane is free and open source, and it will stay that way. If it saves you time, you can support its development on **[Trakteer](https://trakteer.id/okriiza)** (local payment methods such as QRIS, e-wallets, and bank transfer). Support pays for new features and for code-signing certificates, so the app can open on macOS and Windows without security warnings.
+
+You can also open **Support Bucklane** in the app's sidebar or on the About page.
+
+### Supporters
+
+Thank you to everyone who supports Bucklane! Supporters who choose the _Supporter_ reward on Trakteer are listed here.
+
+_Be the first!_
 
 ## License
 

@@ -11,6 +11,7 @@ export default {
     close: "Close",
   },
   nav: {
+    support: "Support Bucklane",
     connections: "Connections",
     settings: "Settings",
     about: "About",
@@ -301,6 +302,11 @@ export default {
     checkForUpdates: "Check for updates on startup",
     checkForUpdatesHint:
       "Contacts GitHub once when Bucklane opens. Nothing about you or your storage is sent. You can always check manually under About.",
+  },
+  support: {
+    title: "Support Bucklane",
+    body: "Bucklane is free and open source. If it saves you time, you can buy the developer a coffee. It funds new features and code signing.",
+    action: "Support on Trakteer",
   },
   diagnostics: {
     title: "Report a problem",

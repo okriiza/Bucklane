@@ -316,6 +316,7 @@ function respond(cmd: string, args: Record<string, unknown> = {}): unknown {
       };
     case "log_frontend_error":
     case "open_logs_folder":
+    case "open_support_page":
       return null;
     case "check_for_update":
       return { version: "0.6.0", currentVersion: "0.5.0" };
