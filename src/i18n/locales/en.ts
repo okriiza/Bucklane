@@ -177,7 +177,9 @@ export default {
     renameFolderTitle: "Rename folder",
     copyFolderTitle: "Copy folder",
     moveFolderTitle: "Move folder",
-    destinationFolder: "Destination folder",
+    intoFolder: "Into folder",
+    intoFolderHint: '"{name}" keeps its name inside this folder. Leave empty for the bucket root.',
+    bucketRoot: "Bucket root",
   },
   folderOps: {
     renameTitle: "Rename folder",
@@ -185,6 +187,8 @@ export default {
     copyTitle: "Copy folder",
     counting: "Counting objects…",
     nameRequired: "Enter a folder name.",
+    alreadyThere: "The folder is already there. Choose a different folder.",
+    intoItself: "A folder cannot be moved or copied into itself.",
     summary:
       "{count} object ({size}) will be processed. | {count} objects ({size}) will be processed.",
     conflicts:

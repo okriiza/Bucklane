@@ -261,7 +261,7 @@ Nothing is ever overwritten without your confirmation.
 
 - Open the **⋯** menu on a file or folder and choose **Rename**, **Copy**, or **Move**. You can also press **F2** to rename.
 - To move files into a folder, **drag** them onto that folder or onto a folder in the breadcrumb. Tick several files first to move them together.
-- **Drag a folder** onto another folder (or a breadcrumb) to move it there.
+- For a folder, **Move** and **Copy** ask which folder to put it in (leave it empty for the bucket root); the folder keeps its name there. **Drag a folder** onto another folder or a breadcrumb to do the same.
 - For a folder, Bucklane first counts everything inside and shows how many objects will be processed and whether any already exist at the destination. You can skip or replace those. While it runs you see the progress and can **Stop** at any time.
 - S3 has no real folders, so a folder rename or move copies every object to the new path and then deletes the original. Each original is deleted only after its copy is verified; if anything looks wrong, the original is kept and listed.
 

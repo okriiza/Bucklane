@@ -689,8 +689,8 @@ execute_prefix_relocate(planId, existing: SKIP | OVERWRITE) → PrefixRelocateRe
 cancel_prefix_relocate(planId)
 ```
 
-- Rename is a move within the same parent folder.
-- `prepare` snapshots every object under the source (at most 10,000; the folder's own marker object is included if it exists) and the destination keys, so conflicts are reported before anything changes. It refuses empty folders, a destination equal to or inside the source, and objects larger than 5 GiB (no multipart copy yet). Plans are single-use, in memory only, and expire after 10 minutes.
+- Rename is a move within the same parent folder. In the UI, Move and Copy ask for the folder to put it *in* (empty for the bucket root) and append the folder's name, matching drag & drop.
+- `prepare` snapshots every object under the source (at most 10,000; the folder's own marker object is included if it exists) and the destination keys, so conflicts are reported before anything changes. It refuses empty folders, a destination equal to or inside the source, a destination that contains the source (that would pour the folder's contents into an ancestor), and objects larger than 5 GiB (no multipart copy yet). Plans are single-use, in memory only, and expire after 10 minutes.
 - `execute` copies 8 objects in parallel. Each object is copied with `If-Match` on the snapshotted ETag and verified by size. For a move, the original is deleted (in batches) only if a fresh HEAD shows it unchanged; otherwise it is kept and reported in `sourcesKept`. Objects that already exist at the destination are skipped or replaced according to `existing`.
 - Progress is emitted as `folder-relocate-progress { planId, done, total }`, throttled to about 150 ms. `cancel` stops new objects from starting; objects already in flight finish, and the rest are counted as `canceled`.
 - Partial results are normal: the UI never reports full success while `failed` or `sourcesKept` is non-empty.

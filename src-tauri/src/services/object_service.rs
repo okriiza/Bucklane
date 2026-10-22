@@ -816,6 +816,13 @@ fn validate_relocate_prefixes(source: &str, destination: &str) -> Result<(), App
     if destination.starts_with(source) {
         return Err(invalid("A folder cannot be copied or moved into itself."));
     }
+    // "photos/2026/" → "photos/" would pour the folder's contents into its
+    // parent (and replace the parent's own marker) instead of moving it.
+    if source.starts_with(destination) {
+        return Err(invalid(
+            "The destination is a folder that already contains this folder. Choose the folder to move it into, not its current parent path.",
+        ));
+    }
     Ok(())
 }
 
@@ -1022,6 +1029,10 @@ mod tests {
         assert!(validate_relocate_prefixes("photos/", "pictures/").is_ok());
         assert!(validate_relocate_prefixes("photos/", "photos/").is_err());
         assert!(validate_relocate_prefixes("photos/", "photos/2026/").is_err());
+        // Onto its own parent or any ancestor: would spill the contents.
+        assert!(validate_relocate_prefixes("coba/aaaa/", "coba/").is_err());
+        assert!(validate_relocate_prefixes("a/b/c/", "a/").is_err());
+        assert!(validate_relocate_prefixes("coba/aaaa/", "coba/aaaa-old/").is_ok());
         assert!(validate_relocate_prefixes("photos/", "/").is_err());
         assert!(validate_relocate_prefixes("", "a/").is_err());
         assert!(validate_relocate_prefixes("photos", "a/").is_err());

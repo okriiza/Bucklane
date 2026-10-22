@@ -147,12 +147,16 @@ const promptConfig = computed(() => {
     }
     default:
       if (entry?.isPrefix) {
+        // The field is the folder to move *into*, like drag & drop.
         return {
           title: prompt.value.kind === "copy" ? t("ops.copyFolderTitle") : t("ops.moveFolderTitle"),
-          label: t("ops.destinationFolder"),
-          initialValue: entry.key,
+          label: t("ops.intoFolder"),
+          initialValue: parentPrefix(entry.key),
           confirmLabel: prompt.value.kind === "copy" ? t("ops.copy") : t("ops.move"),
           selectRange: undefined,
+          hint: t("ops.intoFolderHint", { name: folderName(entry.key) }),
+          placeholder: t("ops.bucketRoot"),
+          allowEmpty: true,
         };
       }
       return {
@@ -183,7 +187,7 @@ async function submitPrompt(value: string) {
   }
   if (!entry) return;
   if (entry.isPrefix) {
-    openFolderRelocate(kind, entry.key, folderDestination(kind, value));
+    openFolderRelocate(kind, entry.key, folderDestination(kind, entry.key, value));
     return;
   }
   let destination = value.trim();
@@ -243,8 +247,11 @@ const singleCheckedFile = computed(() => {
 const folderRelocateOpen = ref(false);
 const folderRelocate = ref<FolderRelocateRequest | null>(null);
 
-/** The folder's new full path ("…/") from what the user typed. */
-function folderDestination(kind: Relocation, value: string): string {
+/**
+ * The folder's new full path ("…/"). Rename takes a new name; copy and move
+ * take the folder to put it in (empty for the bucket root), like drag & drop.
+ */
+function folderDestination(kind: Relocation, source: string, value: string): string {
   const typed = value.trim().replace(/^\/+/, "");
   if (kind === "rename") {
     const name = typed.replace(/\/+$/, "");
@@ -252,8 +259,10 @@ function folderDestination(kind: Relocation, value: string): string {
     if (name.includes("/")) invalidInput(t("ops.nameNoSlash"));
     return props.prefix + name + "/";
   }
-  if (!typed.replace(/\/+$/, "")) invalidInput(t("folderOps.nameRequired"));
-  return typed.endsWith("/") ? typed : `${typed}/`;
+  const parent = typed && !typed.endsWith("/") ? `${typed}/` : typed;
+  if (parent === parentPrefix(source)) invalidInput(t("folderOps.alreadyThere"));
+  if (parent.startsWith(source)) invalidInput(t("folderOps.intoItself"));
+  return `${parent}${folderName(source)}/`;
 }
 
 function openFolderRelocate(kind: Relocation, source: string, destination: string) {
@@ -674,6 +683,9 @@ function goTo(prefix: string) {
       :initial-value="promptConfig.initialValue"
       :confirm-label="promptConfig.confirmLabel"
       :select-range="promptConfig.selectRange"
+      :hint="'hint' in promptConfig ? promptConfig.hint : undefined"
+      :placeholder="'placeholder' in promptConfig ? promptConfig.placeholder : undefined"
+      :allow-empty="'allowEmpty' in promptConfig ? promptConfig.allowEmpty : false"
       :submit="submitPrompt"
     />
     <ConfirmDialog
