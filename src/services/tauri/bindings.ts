@@ -45,6 +45,15 @@ export const commands = {
 	deleteObjects: (input: DeleteObjectsInput) => typedError<DeleteObjectsResult, AppError>(__TAURI_INVOKE("delete_objects", { input })),
 	preparePrefixDelete: (connectionId: string, bucket: string, prefix: string) => typedError<PrefixDeletePlan, AppError>(__TAURI_INVOKE("prepare_prefix_delete", { connectionId, bucket, prefix })),
 	executePrefixDelete: (planId: string) => typedError<DeleteObjectsResult, AppError>(__TAURI_INVOKE("execute_prefix_delete", { planId })),
+	/**  Snapshots a folder copy/move for confirmation; changes nothing. */
+	preparePrefixRelocate: (input: PrefixRelocateInput) => typedError<PrefixRelocatePlan, AppError>(__TAURI_INVOKE("prepare_prefix_relocate", { input })),
+	/**
+	 *  Runs a confirmed folder copy/move. Progress arrives as
+	 *  `folder-relocate-progress` events.
+	 */
+	executePrefixRelocate: (planId: string, existing: ExistingObjectPolicy) => typedError<PrefixRelocateResult, AppError>(__TAURI_INVOKE("execute_prefix_relocate", { planId, existing })),
+	/**  Stops a running folder copy/move after the objects already in progress. */
+	cancelPrefixRelocate: (planId: string) => typedError<null, AppError>(__TAURI_INVOKE("cancel_prefix_relocate", { planId })),
 	/**  Presigned download URL; anyone with the link can download until it expires. */
 	createShareLink: (input: CreateShareLinkInput) => typedError<ShareLink, AppError>(__TAURI_INVOKE("create_share_link", { input })),
 	/**  Loads an image, PDF, or the beginning of a text file for preview. */
@@ -115,6 +124,7 @@ export const commands = {
 export const events = {
 	fileDragHover: makeEvent<FileDragHover>("file-drag-hover"),
 	filesDropped: makeEvent<FilesDropped>("files-dropped"),
+	folderRelocateProgress: makeEvent<FolderRelocateProgress>("folder-relocate-progress"),
 	transferUpdate: makeEvent<TransferUpdate>("transfer-update"),
 	updateProgress: makeEvent<UpdateProgress>("update-progress"),
 };
@@ -300,6 +310,12 @@ export type EnqueueUploadInput = {
 /**  Machine-readable error codes exposed to the frontend (TSD §11). */
 export type ErrorCode = "CONNECTION_INVALID" | "INVALID_INPUT" | "AUTHENTICATION_FAILED" | "ACCESS_DENIED" | "ENDPOINT_UNREACHABLE" | "TLS_ERROR" | "BUCKET_NOT_FOUND" | "OBJECT_NOT_FOUND" | "OPERATION_UNSUPPORTED" | "TRANSFER_FAILED" | "TRANSFER_CANCELED" | "INTERRUPTED" | "LOCAL_FILE_ERROR" | "STORAGE_QUOTA_ERROR" | "DATABASE_UNAVAILABLE" | "INTERNAL_ERROR";
 
+/**
+ *  What a folder copy/move does with objects that already exist at the
+ *  destination.
+ */
+export type ExistingObjectPolicy = "OVERWRITE" | "SKIP";
+
 /**  Whether OS files are currently being dragged over the window. */
 export type FileDragHover = boolean;
 
@@ -311,6 +327,13 @@ export type FilesDropped = {
 	files: LocalFileSelection[],
 	/**  Number of dropped items that were skipped (folders, unreadable). */
 	skipped: number,
+};
+
+/**  Progress of a running folder copy/move. */
+export type FolderRelocateProgress = {
+	planId: string,
+	done: number,
+	total: number,
 };
 
 export type HealthStatus = {
@@ -395,6 +418,48 @@ export type PrefixDeletePlan = {
 	expiresAt: string,
 };
 
+export type PrefixRelocateInput = {
+	connectionId: string,
+	bucket: string,
+	/**  Folder to copy or move, ending in `/`. */
+	sourcePrefix: string,
+	/**  The folder's new full path, ending in `/` (e.g. `archive/photos/`). */
+	destinationPrefix: string,
+	mode: RelocateMode,
+};
+
+/**  Snapshot of a folder copy/move for the user to confirm. */
+export type PrefixRelocatePlan = {
+	planId: string,
+	mode: RelocateMode,
+	sourcePrefix: string,
+	destinationPrefix: string,
+	objectCount: number,
+	totalBytes: number | null,
+	/**  Objects that already exist at the destination. */
+	conflictCount: number,
+	conflictSamples: string[],
+	expiresAt: string,
+};
+
+/**
+ *  Outcome of a folder copy/move. Partial results are normal and must be
+ *  reported as such.
+ */
+export type PrefixRelocateResult = {
+	completed: number,
+	/**  Existing destinations left alone under the Skip policy. */
+	skipped: number,
+	/**  Objects not started because the user canceled. */
+	canceled: number,
+	failed: DeleteFailure[],
+	/**
+	 *  Move only: copied, but the original was kept (it changed, or could
+	 *  not be deleted).
+	 */
+	sourcesKept: DeleteFailure[],
+};
+
 export type PreviewKind = "IMAGE" | "PDF" | "TEXT";
 
 /**
@@ -413,6 +478,8 @@ export type ProviderProfile = {
 };
 
 export type ProviderType = "aws" | "supabase" | "minio" | "cloudflare_r2" | "wasabi" | "digitalocean_spaces" | "custom";
+
+export type RelocateMode = "COPY" | "MOVE";
 
 /**
  *  A secret received over IPC (e.g. a secret access key).

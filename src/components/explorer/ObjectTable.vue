@@ -136,12 +136,12 @@ function activate(entry: StorageObject) {
             entry.key === selectedKey || checkedKeys.has(entry.key),
         }"
         :aria-selected="entry.key === selectedKey"
-        :data-drag-key="entry.isPrefix ? undefined : entry.key"
+        :data-drag-key="entry.key"
         :data-drop-prefix="entry.isPrefix ? entry.key : undefined"
         @click="activate(entry)"
         @keydown.enter.self.prevent="activate(entry)"
         @keydown.delete.self.prevent="emit('action', 'delete', entry)"
-        @keydown.f2.self.prevent="!entry.isPrefix && emit('action', 'rename', entry)"
+        @keydown.f2.self.prevent="emit('action', 'rename', entry)"
         @keydown.space.self.prevent="!entry.isPrefix && emit('action', 'preview', entry)"
         @dblclick="!entry.isPrefix && emit('action', 'preview', entry)"
       >

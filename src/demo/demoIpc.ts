@@ -305,6 +305,27 @@ function respond(cmd: string, args: Record<string, unknown> = {}): unknown {
       const request = args.request as { prefix?: string | null };
       return listObjects(request.prefix ?? "");
     }
+    case "prepare_prefix_relocate": {
+      const input = args.input as { sourcePrefix: string; destinationPrefix: string; mode: string };
+      return {
+        planId: "demo-relocate",
+        mode: input.mode,
+        sourcePrefix: input.sourcePrefix,
+        destinationPrefix: input.destinationPrefix,
+        objectCount: 128,
+        totalBytes: 734_003_200,
+        conflictCount: 2,
+        conflictSamples: [
+          `${input.destinationPrefix}cover.png`,
+          `${input.destinationPrefix}notes.md`,
+        ],
+        expiresAt: new Date(Date.now() + 600_000).toISOString(),
+      };
+    }
+    case "execute_prefix_relocate":
+      return { completed: 126, skipped: 2, canceled: 0, failed: [], sourcesKept: [] };
+    case "cancel_prefix_relocate":
+      return null;
     case "diagnostics":
       return {
         appVersion: "0.5.0",

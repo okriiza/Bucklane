@@ -678,6 +678,24 @@ Rules:
 - Plans with more than 100,000 objects are rejected in the MVP with `OPERATION_UNSUPPORTED`.
 - An empty prefix (bucket root) is not allowed.
 
+### 6.3.3 Folder (Prefix) Copy, Move, and Rename
+
+S3 has no folders, so a folder copy/move works object by object, in two steps like folder delete:
+
+```text
+prepare_prefix_relocate({ connectionId, bucket, sourcePrefix, destinationPrefix, mode: COPY | MOVE })
+  → PrefixRelocatePlan { planId, objectCount, totalBytes, conflictCount, conflictSamples, expiresAt }
+execute_prefix_relocate(planId, existing: SKIP | OVERWRITE) → PrefixRelocateResult
+cancel_prefix_relocate(planId)
+```
+
+- Rename is a move within the same parent folder.
+- `prepare` snapshots every object under the source (at most 10,000; the folder's own marker object is included if it exists) and the destination keys, so conflicts are reported before anything changes. It refuses empty folders, a destination equal to or inside the source, and objects larger than 5 GiB (no multipart copy yet). Plans are single-use, in memory only, and expire after 10 minutes.
+- `execute` copies 8 objects in parallel. Each object is copied with `If-Match` on the snapshotted ETag and verified by size. For a move, the original is deleted (in batches) only if a fresh HEAD shows it unchanged; otherwise it is kept and reported in `sourcesKept`. Objects that already exist at the destination are skipped or replaced according to `existing`.
+- Progress is emitted as `folder-relocate-progress { planId, done, total }`, throttled to about 150 ms. `cancel` stops new objects from starting; objects already in flight finish, and the rest are counted as `canceled`.
+- Partial results are normal: the UI never reports full success while `failed` or `sourcesKept` is non-empty.
+- Folders can be dragged onto another folder or a breadcrumb segment; a folder is always dragged on its own.
+
 ## 6.4 Local File Selection
 
 The frontend **never** sends filesystem paths to the backend for read/write operations. Local files and folders can only be used after the user selects them through a native dialog opened from the Rust side.

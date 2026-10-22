@@ -131,6 +131,67 @@ pub struct DeleteObjectsResult {
     pub failed: Vec<DeleteFailure>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum RelocateMode {
+    Copy,
+    Move,
+}
+
+/// What a folder copy/move does with objects that already exist at the
+/// destination.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Type)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum ExistingObjectPolicy {
+    Overwrite,
+    Skip,
+}
+
+#[derive(Debug, Clone, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct PrefixRelocateInput {
+    pub connection_id: String,
+    pub bucket: String,
+    /// Folder to copy or move, ending in `/`.
+    pub source_prefix: String,
+    /// The folder's new full path, ending in `/` (e.g. `archive/photos/`).
+    pub destination_prefix: String,
+    pub mode: RelocateMode,
+}
+
+/// Snapshot of a folder copy/move for the user to confirm.
+#[derive(Debug, Clone, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct PrefixRelocatePlan {
+    pub plan_id: String,
+    pub mode: RelocateMode,
+    pub source_prefix: String,
+    pub destination_prefix: String,
+    pub object_count: u32,
+    #[specta(type = f64)]
+    pub total_bytes: i64,
+    /// Objects that already exist at the destination.
+    pub conflict_count: u32,
+    pub conflict_samples: Vec<String>,
+    pub expires_at: String,
+}
+
+/// Outcome of a folder copy/move. Partial results are normal and must be
+/// reported as such.
+#[derive(Debug, Clone, Default, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct PrefixRelocateResult {
+    pub completed: u32,
+    /// Existing destinations left alone under the Skip policy.
+    pub skipped: u32,
+    /// Objects not started because the user canceled.
+    pub canceled: u32,
+    pub failed: Vec<DeleteFailure>,
+    /// Move only: copied, but the original was kept (it changed, or could
+    /// not be deleted).
+    pub sources_kept: Vec<DeleteFailure>,
+}
+
 /// Snapshot of the keys a folder delete will remove (TSD §6.3.2).
 #[derive(Debug, Clone, Serialize, Type)]
 #[serde(rename_all = "camelCase")]

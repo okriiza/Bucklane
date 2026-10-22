@@ -1,16 +1,24 @@
+use std::collections::HashSet;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::{Duration, Instant};
+
 use chrono::{SecondsFormat, Utc};
+use futures_util::StreamExt;
 
 use crate::domain::bucket::validate_bucket_name;
 use crate::domain::object::{
-    ConflictPolicy, CopyObjectInput, CreateFolderInput, CreateShareLinkInput, DeleteObjectsInput,
-    DeleteObjectsResult, ListObjectsRequest, ListObjectsResponse, ObjectMetadata,
-    ObjectOperationOutcome, ObjectPreview, PrefixDeletePlan, PreviewKind, ShareLink,
+    ConflictPolicy, CopyObjectInput, CreateFolderInput, CreateShareLinkInput, DeleteFailure,
+    DeleteObjectsInput, DeleteObjectsResult, ExistingObjectPolicy, ListObjectsRequest,
+    ListObjectsResponse, ObjectMetadata, ObjectOperationOutcome, ObjectPreview, PrefixDeletePlan,
+    PrefixRelocateInput, PrefixRelocatePlan, PrefixRelocateResult, PreviewKind, RelocateMode,
+    ShareLink,
 };
 use crate::errors::{AppError, ErrorCode};
 use crate::providers::s3_provider::S3StorageProvider;
 use crate::providers::storage_provider::{ListQuery, StorageProvider};
 use crate::services::connection_service::ConnectionService;
 use crate::services::delete_plans::{DeletePlanRegistry, PLAN_TTL};
+use crate::services::relocate_plans::{RelocateItem, RelocatePlanRegistry};
 
 const DEFAULT_DELIMITER: &str = "/";
 /// S3 keys are at most 1024 bytes.
@@ -18,6 +26,12 @@ const MAX_KEY_LEN: usize = 1024;
 /// Largest object a single CopyObject request may copy; larger objects need
 /// multipart copy, which the MVP does not perform (TSD §9.6).
 const MAX_SINGLE_COPY_BYTES: i64 = 5 * 1024 * 1024 * 1024;
+/// Largest folder Bucklane copies or moves at once. Each object costs a few
+/// requests, so this is lower than the delete limit.
+const MAX_PREFIX_RELOCATE_OBJECTS: usize = 10_000;
+/// Objects copied in parallel during a folder copy/move.
+const RELOCATE_CONCURRENCY: usize = 8;
+const RELOCATE_PROGRESS_INTERVAL: Duration = Duration::from_millis(150);
 const DELETE_BATCH: usize = 1000;
 const MAX_PREFIX_DELETE_OBJECTS: usize = 100_000;
 const SAMPLE_KEYS: usize = 10;
@@ -47,13 +61,19 @@ const MAX_SHARE_SECONDS: u32 = 7 * 24 * 60 * 60;
 pub struct ObjectService<'a> {
     connections: ConnectionService<'a>,
     delete_plans: &'a DeletePlanRegistry,
+    relocate_plans: &'a RelocatePlanRegistry,
 }
 
 impl<'a> ObjectService<'a> {
-    pub fn new(connections: ConnectionService<'a>, delete_plans: &'a DeletePlanRegistry) -> Self {
+    pub fn new(
+        connections: ConnectionService<'a>,
+        delete_plans: &'a DeletePlanRegistry,
+        relocate_plans: &'a RelocatePlanRegistry,
+    ) -> Self {
         Self {
             connections,
             delete_plans,
+            relocate_plans,
         }
     }
 
@@ -400,6 +420,205 @@ impl<'a> ObjectService<'a> {
         Ok(result)
     }
 
+    /// Snapshots a folder copy/move: every object under the source, where it
+    /// will go, and which destinations already exist. Nothing is changed.
+    pub async fn prepare_prefix_relocate(
+        &self,
+        input: PrefixRelocateInput,
+    ) -> Result<PrefixRelocatePlan, AppError> {
+        let bucket = validate_bucket_name(&input.bucket)?;
+        let (source, destination) = (&input.source_prefix, &input.destination_prefix);
+        validate_relocate_prefixes(source, destination)?;
+
+        let provider = self.provider(&input.connection_id, bucket).await?;
+        let objects = list_everything(&provider, bucket, source, MAX_PREFIX_RELOCATE_OBJECTS)
+            .await?
+            .ok_or_else(|| {
+                AppError::new(
+                    ErrorCode::OperationUnsupported,
+                    format!(
+                        "This folder contains more than {MAX_PREFIX_RELOCATE_OBJECTS} objects, which is more than Bucklane can copy or move at once."
+                    ),
+                )
+            })?;
+        if objects.is_empty() {
+            return Err(invalid(
+                "This folder is empty, so there is nothing to copy or move.",
+            ));
+        }
+        if let Some(big) = objects.iter().find(|o| o.size > MAX_SINGLE_COPY_BYTES) {
+            return Err(AppError::new(
+                ErrorCode::OperationUnsupported,
+                "This folder contains an object larger than 5 GiB, which Bucklane cannot copy or move yet.",
+            )
+            .with_details(big.key.clone()));
+        }
+
+        // Existing destination keys, to report conflicts up front.
+        let existing: HashSet<String> =
+            list_everything(&provider, bucket, destination, MAX_PREFIX_DELETE_OBJECTS)
+                .await?
+                .unwrap_or_default()
+                .into_iter()
+                .map(|o| o.key)
+                .collect();
+
+        let mut items = Vec::with_capacity(objects.len());
+        for object in objects {
+            let relative = object
+                .key
+                .strip_prefix(source.as_str())
+                .unwrap_or(&object.key);
+            let target = format!("{destination}{relative}");
+            validate_key(&target)?;
+            items.push(RelocateItem {
+                conflict: existing.contains(&target),
+                source: object.key,
+                destination: target,
+                size: object.size,
+                etag: object.etag,
+            });
+        }
+
+        let conflicts: Vec<&RelocateItem> = items.iter().filter(|i| i.conflict).collect();
+        let conflict_count = u32::try_from(conflicts.len()).unwrap_or(u32::MAX);
+        let conflict_samples = conflicts
+            .iter()
+            .take(SAMPLE_KEYS)
+            .map(|i| i.destination.clone())
+            .collect();
+        let object_count = u32::try_from(items.len()).unwrap_or(u32::MAX);
+        let total_bytes = items.iter().map(|i| i.size).sum();
+        let expires_at = Utc::now() + PLAN_TTL;
+        let plan_id = self
+            .relocate_plans
+            .insert(&input.connection_id, bucket, input.mode, items);
+
+        Ok(PrefixRelocatePlan {
+            plan_id,
+            mode: input.mode,
+            source_prefix: source.clone(),
+            destination_prefix: destination.clone(),
+            object_count,
+            total_bytes,
+            conflict_count,
+            conflict_samples,
+            expires_at: expires_at.to_rfc3339_opts(SecondsFormat::Millis, true),
+        })
+    }
+
+    /// Runs a confirmed plan. Each object is copied with `If-Match` on its
+    /// snapshotted ETag and verified by size; for a move, an original is
+    /// deleted only if it is still unchanged afterwards (same rules as a
+    /// single-object move). `on_progress(done, total)` is throttled.
+    pub async fn execute_prefix_relocate(
+        &self,
+        plan_id: &str,
+        existing: ExistingObjectPolicy,
+        on_progress: impl Fn(u32, u32),
+    ) -> Result<PrefixRelocateResult, AppError> {
+        let (plan, cancel) = self.relocate_plans.start(plan_id)?;
+        let result = self
+            .run_relocate(
+                &plan.connection_id,
+                &plan.bucket,
+                plan.mode,
+                plan.items,
+                existing,
+                &cancel,
+                on_progress,
+            )
+            .await;
+        self.relocate_plans.finish(plan_id);
+        let result = result?;
+        tracing::info!(
+            connection_id = %plan.connection_id,
+            mode = ?plan.mode,
+            completed = result.completed,
+            skipped = result.skipped,
+            canceled = result.canceled,
+            failed = result.failed.len(),
+            sources_kept = result.sources_kept.len(),
+            "folder relocated"
+        );
+        Ok(result)
+    }
+
+    pub fn cancel_prefix_relocate(&self, plan_id: &str) {
+        self.relocate_plans.cancel(plan_id);
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn run_relocate(
+        &self,
+        connection_id: &str,
+        bucket: &str,
+        mode: RelocateMode,
+        items: Vec<RelocateItem>,
+        existing: ExistingObjectPolicy,
+        cancel: &AtomicBool,
+        on_progress: impl Fn(u32, u32),
+    ) -> Result<PrefixRelocateResult, AppError> {
+        let provider = self.provider(connection_id, bucket).await?;
+        let total = u32::try_from(items.len()).unwrap_or(u32::MAX);
+        let mut result = PrefixRelocateResult::default();
+        let mut to_delete = Vec::new();
+        let mut done = 0u32;
+        let mut last_report: Option<Instant> = None;
+
+        let mut outcomes = futures_util::stream::iter(items)
+            .map(|item| {
+                let provider = &provider;
+                async move {
+                    if cancel.load(Ordering::SeqCst) {
+                        return (item, ItemOutcome::Canceled);
+                    }
+                    if item.conflict && existing == ExistingObjectPolicy::Skip {
+                        return (item, ItemOutcome::Skipped);
+                    }
+                    let outcome = relocate_item(provider, bucket, mode, &item).await;
+                    (item, outcome)
+                }
+            })
+            .buffer_unordered(RELOCATE_CONCURRENCY);
+
+        while let Some((item, outcome)) = outcomes.next().await {
+            match outcome {
+                ItemOutcome::Done => result.completed += 1,
+                ItemOutcome::DeleteSource => {
+                    result.completed += 1;
+                    to_delete.push(item.source);
+                }
+                ItemOutcome::Skipped => result.skipped += 1,
+                ItemOutcome::Canceled => result.canceled += 1,
+                ItemOutcome::Failed(error) => result.failed.push(DeleteFailure {
+                    key: item.source,
+                    error,
+                }),
+                ItemOutcome::SourceKept(error) => {
+                    result.completed += 1;
+                    result.sources_kept.push(DeleteFailure {
+                        key: item.source,
+                        error,
+                    });
+                }
+            }
+            done += 1;
+            if done == total
+                || last_report.is_none_or(|t| t.elapsed() >= RELOCATE_PROGRESS_INTERVAL)
+            {
+                last_report = Some(Instant::now());
+                on_progress(done, total);
+            }
+        }
+
+        if !to_delete.is_empty() {
+            let deleted = delete_in_batches(&provider, bucket, &to_delete).await;
+            result.sources_kept.extend(deleted.failed);
+        }
+        Ok(result)
+    }
+
     async fn prepare_copy(
         &self,
         input: &CopyObjectInput,
@@ -472,6 +691,130 @@ async fn copy_and_verify(
             ErrorCode::TransferFailed,
             "The copy could not be verified: its size differs from the original.",
         ));
+    }
+    Ok(())
+}
+
+enum ItemOutcome {
+    Done,
+    /// Move: copied and verified; the unchanged original can be deleted.
+    DeleteSource,
+    Skipped,
+    Canceled,
+    Failed(AppError),
+    SourceKept(AppError),
+}
+
+/// Copies one object of a folder copy/move and decides what happens to the
+/// original. Any doubt keeps the original.
+async fn relocate_item(
+    provider: &S3StorageProvider,
+    bucket: &str,
+    mode: RelocateMode,
+    item: &RelocateItem,
+) -> ItemOutcome {
+    if let Err(err) = provider
+        .copy_object(
+            bucket,
+            &item.source,
+            &item.destination,
+            item.etag.as_deref(),
+        )
+        .await
+    {
+        return ItemOutcome::Failed(err);
+    }
+    match provider.head_object(bucket, &item.destination).await {
+        Ok(copied) if copied.size.unwrap_or(0) == item.size => {}
+        Ok(_) => {
+            return ItemOutcome::Failed(AppError::new(
+                ErrorCode::TransferFailed,
+                "The copy could not be verified: its size differs from the original.",
+            ));
+        }
+        Err(err) => return ItemOutcome::Failed(err),
+    }
+    if mode == RelocateMode::Copy {
+        return ItemOutcome::Done;
+    }
+    match provider.head_object(bucket, &item.source).await {
+        Ok(current) if current.etag == item.etag => ItemOutcome::DeleteSource,
+        Ok(_) => ItemOutcome::SourceKept(AppError::new(
+            ErrorCode::TransferFailed,
+            "The original changed while it was being moved, so it was kept.",
+        )),
+        Err(err) => ItemOutcome::SourceKept(err),
+    }
+}
+
+struct ListedObject {
+    key: String,
+    size: i64,
+    etag: Option<String>,
+}
+
+/// Every object under `prefix`, including the folder's own marker object if
+/// it exists. `None` when there are more than `max`.
+async fn list_everything(
+    provider: &S3StorageProvider,
+    bucket: &str,
+    prefix: &str,
+    max: usize,
+) -> Result<Option<Vec<ListedObject>>, AppError> {
+    let mut objects = Vec::new();
+    let mut token: Option<String> = None;
+    loop {
+        let page = provider
+            .list_objects(ListQuery {
+                bucket,
+                prefix,
+                delimiter: None,
+                continuation_token: token.as_deref(),
+                page_size: Some(1000),
+            })
+            .await?;
+        objects.extend(page.objects.into_iter().map(|o| ListedObject {
+            key: o.key,
+            size: o.size.unwrap_or(0),
+            etag: o.etag,
+        }));
+        if objects.len() > max {
+            return Ok(None);
+        }
+        if !page.is_truncated {
+            break;
+        }
+        token = page.next_continuation_token;
+    }
+    // Listings hide the marker of the listed folder itself.
+    if !objects.iter().any(|o| o.key == prefix) {
+        match provider.head_object(bucket, prefix).await {
+            Ok(marker) => objects.push(ListedObject {
+                key: prefix.to_owned(),
+                size: marker.size.unwrap_or(0),
+                etag: marker.etag,
+            }),
+            Err(err) if err.code == ErrorCode::ObjectNotFound => {}
+            Err(err) => return Err(err),
+        }
+    }
+    Ok(Some(objects))
+}
+
+fn validate_relocate_prefixes(source: &str, destination: &str) -> Result<(), AppError> {
+    if source.is_empty() || !source.ends_with('/') || !destination.ends_with('/') {
+        return Err(invalid("Only folders can be copied or moved this way."));
+    }
+    if destination.trim_matches('/').is_empty() {
+        return Err(invalid("Enter a folder name for the destination."));
+    }
+    validate_key(source)?;
+    validate_key(destination)?;
+    if source == destination {
+        return Err(invalid("The destination is the same as the source."));
+    }
+    if destination.starts_with(source) {
+        return Err(invalid("A folder cannot be copied or moved into itself."));
     }
     Ok(())
 }
@@ -674,6 +1017,20 @@ mod tests {
     }
 
     #[test]
+    fn validates_folder_relocation_paths() {
+        assert!(validate_relocate_prefixes("photos/", "archive/photos/").is_ok());
+        assert!(validate_relocate_prefixes("photos/", "pictures/").is_ok());
+        assert!(validate_relocate_prefixes("photos/", "photos/").is_err());
+        assert!(validate_relocate_prefixes("photos/", "photos/2026/").is_err());
+        assert!(validate_relocate_prefixes("photos/", "/").is_err());
+        assert!(validate_relocate_prefixes("", "a/").is_err());
+        assert!(validate_relocate_prefixes("photos", "a/").is_err());
+        assert!(validate_relocate_prefixes("photos/", "a").is_err());
+        // "photos2/" is a sibling, not a subfolder of "photos/".
+        assert!(validate_relocate_prefixes("photos/", "photos2/").is_ok());
+    }
+
+    #[test]
     fn preview_type_never_follows_a_dangerous_stored_type() {
         use PreviewKind::*;
         assert_eq!(
@@ -741,6 +1098,7 @@ mod s3_integration_tests {
         store: MemoryCredentialStore,
         clients: ClientCache,
         plans: DeletePlanRegistry,
+        relocations: RelocatePlanRegistry,
         connection_id: String,
         bucket: String,
     }
@@ -773,6 +1131,7 @@ mod s3_integration_tests {
                 store,
                 clients,
                 plans: DeletePlanRegistry::default(),
+                relocations: RelocatePlanRegistry::default(),
                 connection_id,
                 bucket: format!("bucklane-ops-{}", uuid::Uuid::now_v7().simple()),
             };
@@ -792,7 +1151,7 @@ mod s3_integration_tests {
         }
 
         fn service(&self) -> ObjectService<'_> {
-            ObjectService::new(self.connections(), &self.plans)
+            ObjectService::new(self.connections(), &self.plans, &self.relocations)
         }
 
         async fn raw(&self) -> aws_sdk_s3::Client {
@@ -1042,5 +1401,119 @@ mod s3_integration_tests {
                 .is_err(),
             "single use"
         );
+    }
+
+    fn relocate_input(
+        f: &Fixture,
+        from: &str,
+        to: &str,
+        mode: RelocateMode,
+    ) -> PrefixRelocateInput {
+        PrefixRelocateInput {
+            connection_id: f.connection_id.clone(),
+            bucket: f.bucket.clone(),
+            source_prefix: from.into(),
+            destination_prefix: to.into(),
+            mode,
+        }
+    }
+
+    #[tokio::test]
+    async fn folder_move_relocates_everything_and_removes_originals() {
+        let Some(f) = Fixture::new().await else {
+            return;
+        };
+        for key in [
+            "photos/",
+            "photos/a.jpg",
+            "photos/2026/b.jpg",
+            "photos2/keep.jpg",
+        ] {
+            f.put(key, b"img").await;
+        }
+
+        let plan = f
+            .service()
+            .prepare_prefix_relocate(relocate_input(
+                &f,
+                "photos/",
+                "archive/photos/",
+                RelocateMode::Move,
+            ))
+            .await
+            .unwrap();
+        assert_eq!(plan.object_count, 3);
+        assert_eq!(plan.conflict_count, 0);
+
+        let progress = std::sync::Mutex::new(Vec::new());
+        let result = f
+            .service()
+            .execute_prefix_relocate(&plan.plan_id, ExistingObjectPolicy::Skip, |done, total| {
+                progress.lock().unwrap().push((done, total));
+            })
+            .await
+            .unwrap();
+        assert_eq!(result.completed, 3);
+        assert!(result.failed.is_empty() && result.sources_kept.is_empty());
+        assert_eq!(progress.lock().unwrap().last(), Some(&(3, 3)));
+
+        for key in [
+            "archive/photos/",
+            "archive/photos/a.jpg",
+            "archive/photos/2026/b.jpg",
+        ] {
+            assert!(f.exists(key).await, "{key} should exist");
+        }
+        for key in ["photos/a.jpg", "photos/2026/b.jpg"] {
+            assert!(!f.exists(key).await, "{key} should be gone");
+        }
+        assert!(
+            f.exists("photos2/keep.jpg").await,
+            "sibling folder untouched"
+        );
+    }
+
+    #[tokio::test]
+    async fn folder_copy_reports_and_skips_existing_objects() {
+        let Some(f) = Fixture::new().await else {
+            return;
+        };
+        for key in ["src/a.txt", "src/b.txt", "dst/a.txt"] {
+            f.put(key, b"x").await;
+        }
+
+        let plan = f
+            .service()
+            .prepare_prefix_relocate(relocate_input(&f, "src/", "dst/", RelocateMode::Copy))
+            .await
+            .unwrap();
+        assert_eq!(plan.conflict_count, 1);
+        assert_eq!(plan.conflict_samples, ["dst/a.txt"]);
+
+        let result = f
+            .service()
+            .execute_prefix_relocate(&plan.plan_id, ExistingObjectPolicy::Skip, |_, _| {})
+            .await
+            .unwrap();
+        assert_eq!((result.completed, result.skipped), (1, 1));
+        assert!(f.exists("dst/b.txt").await);
+        assert!(
+            f.exists("src/a.txt").await && f.exists("src/b.txt").await,
+            "copy keeps sources"
+        );
+    }
+
+    #[tokio::test]
+    async fn folder_relocate_rejects_moving_into_itself() {
+        let Some(f) = Fixture::new().await else {
+            return;
+        };
+        f.put("docs/a.txt", b"x").await;
+        let err = f
+            .service()
+            .prepare_prefix_relocate(relocate_input(&f, "docs/", "docs/old/", RelocateMode::Move))
+            .await
+            .unwrap_err();
+        assert_eq!(err.code, ErrorCode::InvalidInput);
     }
 }

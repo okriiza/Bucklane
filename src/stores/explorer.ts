@@ -8,9 +8,13 @@ import {
   type AppError,
   type ConflictPolicy,
   type DeleteObjectsResult,
+  type ExistingObjectPolicy,
   type ObjectMetadata,
   type ObjectOperationOutcome,
   type PrefixDeletePlan,
+  type PrefixRelocatePlan,
+  type PrefixRelocateResult,
+  type RelocateMode,
   type StorageObject,
 } from "@/services/tauri";
 import { useSettingsStore } from "@/stores/settings";
@@ -304,6 +308,40 @@ export const useExplorerStore = defineStore("explorer", () => {
     return unwrap(commands.preparePrefixDelete(loc.connectionId, loc.bucket, prefix));
   }
 
+  /** Snapshots a folder copy/move (source and destination end in "/"). */
+  function prepareFolderRelocate(
+    sourcePrefix: string,
+    destinationPrefix: string,
+    mode: RelocateMode,
+  ): Promise<PrefixRelocatePlan> {
+    const loc = requireLocation();
+    return unwrap(
+      commands.preparePrefixRelocate({
+        connectionId: loc.connectionId,
+        bucket: loc.bucket,
+        sourcePrefix,
+        destinationPrefix,
+        mode,
+      }),
+    );
+  }
+
+  async function executeFolderRelocate(
+    planId: string,
+    existing: ExistingObjectPolicy,
+  ): Promise<PrefixRelocateResult> {
+    try {
+      return await unwrap(commands.executePrefixRelocate(planId, existing));
+    } finally {
+      // Partial work may have happened even if the call failed.
+      await refresh();
+    }
+  }
+
+  function cancelFolderRelocate(planId: string) {
+    return unwrap(commands.cancelPrefixRelocate(planId));
+  }
+
   /** Deletes files directly and folders through their confirmed plans. */
   async function deleteEntries(
     fileKeys: string[],
@@ -342,6 +380,9 @@ export const useExplorerStore = defineStore("explorer", () => {
     relocate,
     prepareFolderDelete,
     deleteEntries,
+    prepareFolderRelocate,
+    executeFolderRelocate,
+    cancelFolderRelocate,
     entries,
     sortedEntries,
     sort,

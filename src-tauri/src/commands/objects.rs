@@ -1,12 +1,15 @@
-use tauri::State;
+use tauri::{AppHandle, State};
+use tauri_specta::Event;
 
 use crate::app_state::AppState;
 use crate::domain::object::{
     CopyObjectInput, CreateFolderInput, CreateShareLinkInput, DeleteObjectsInput,
-    DeleteObjectsResult, ListObjectsRequest, ListObjectsResponse, ObjectMetadata,
-    ObjectOperationOutcome, ObjectPreview, PrefixDeletePlan, ShareLink,
+    DeleteObjectsResult, ExistingObjectPolicy, ListObjectsRequest, ListObjectsResponse,
+    ObjectMetadata, ObjectOperationOutcome, ObjectPreview, PrefixDeletePlan, PrefixRelocateInput,
+    PrefixRelocatePlan, PrefixRelocateResult, ShareLink,
 };
 use crate::errors::AppError;
+use crate::events::FolderRelocateProgress;
 
 #[tauri::command]
 #[specta::specta]
@@ -90,6 +93,47 @@ pub async fn execute_prefix_delete(
     plan_id: String,
 ) -> Result<DeleteObjectsResult, AppError> {
     state.objects()?.execute_prefix_delete(&plan_id).await
+}
+
+/// Snapshots a folder copy/move for confirmation; changes nothing.
+#[tauri::command]
+#[specta::specta]
+pub async fn prepare_prefix_relocate(
+    state: State<'_, AppState>,
+    input: PrefixRelocateInput,
+) -> Result<PrefixRelocatePlan, AppError> {
+    state.objects()?.prepare_prefix_relocate(input).await
+}
+
+/// Runs a confirmed folder copy/move. Progress arrives as
+/// `folder-relocate-progress` events.
+#[tauri::command]
+#[specta::specta]
+pub async fn execute_prefix_relocate(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    plan_id: String,
+    existing: ExistingObjectPolicy,
+) -> Result<PrefixRelocateResult, AppError> {
+    state
+        .objects()?
+        .execute_prefix_relocate(&plan_id, existing, |done, total| {
+            let _ = FolderRelocateProgress {
+                plan_id: plan_id.clone(),
+                done,
+                total,
+            }
+            .emit(&app);
+        })
+        .await
+}
+
+/// Stops a running folder copy/move after the objects already in progress.
+#[tauri::command]
+#[specta::specta]
+pub fn cancel_prefix_relocate(state: State<'_, AppState>, plan_id: String) -> Result<(), AppError> {
+    state.objects()?.cancel_prefix_relocate(&plan_id);
+    Ok(())
 }
 
 /// Presigned download URL; anyone with the link can download until it expires.

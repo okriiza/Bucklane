@@ -12,6 +12,7 @@ use crate::security::local_selection::SelectionRegistry;
 use crate::services::connection_service::ConnectionService;
 use crate::services::delete_plans::DeletePlanRegistry;
 use crate::services::object_service::ObjectService;
+use crate::services::relocate_plans::RelocatePlanRegistry;
 use crate::services::settings_service::SettingsService;
 use crate::services::storage_service::StorageService;
 use crate::transfers::TransferManager;
@@ -24,6 +25,7 @@ pub struct AppState {
     credentials: Arc<dyn CredentialStore>,
     clients: Arc<ClientCache>,
     delete_plans: DeletePlanRegistry,
+    relocate_plans: RelocatePlanRegistry,
     pub selections: SelectionRegistry,
     transfers: Option<TransferManager>,
 }
@@ -43,6 +45,7 @@ impl AppState {
             credentials,
             clients,
             delete_plans: DeletePlanRegistry::default(),
+            relocate_plans: RelocatePlanRegistry::default(),
             selections: SelectionRegistry::default(),
             transfers,
         }
@@ -68,7 +71,11 @@ impl AppState {
     }
 
     pub fn objects(&self) -> Result<ObjectService<'_>, AppError> {
-        Ok(ObjectService::new(self.connections()?, &self.delete_plans))
+        Ok(ObjectService::new(
+            self.connections()?,
+            &self.delete_plans,
+            &self.relocate_plans,
+        ))
     }
 
     pub fn settings(&self) -> Result<SettingsService<'_>, AppError> {

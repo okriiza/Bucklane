@@ -90,16 +90,16 @@ const itemClass =
             <Download /> {{ $t("transfers.downloadFolder") }}
           </DropdownMenuItem>
           <DropdownMenuSeparator class="bg-border -mx-1 my-1 h-px" />
-          <!-- Shown disabled so users learn why folders can't be renamed yet. -->
-          <DropdownMenuItem :class="itemClass" disabled>
+          <DropdownMenuItem :class="itemClass" @select="emit('rename')">
             <Pencil /> {{ $t("ops.rename") }}
+            <span class="text-muted-foreground ml-auto pl-4 text-xs">F2</span>
           </DropdownMenuItem>
-          <DropdownMenuItem :class="itemClass" disabled>
+          <DropdownMenuItem :class="itemClass" @select="emit('copy')">
+            <Copy /> {{ $t("ops.copy") }}
+          </DropdownMenuItem>
+          <DropdownMenuItem :class="itemClass" @select="emit('move')">
             <FolderInput /> {{ $t("ops.move") }}
           </DropdownMenuItem>
-          <p class="text-muted-foreground max-w-56 px-2 pt-0.5 pb-1.5 text-xs">
-            {{ $t("ops.folderRenameUnsupported") }}
-          </p>
           <DropdownMenuSeparator class="bg-border -mx-1 my-1 h-px" />
         </template>
         <DropdownMenuItem :class="itemClass" @select="emit('copyKey')">

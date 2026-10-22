@@ -21,6 +21,15 @@ pub struct FilesDropped {
     pub skipped: u32,
 }
 
+/// Progress of a running folder copy/move.
+#[derive(Debug, Clone, Serialize, Deserialize, Type, Event)]
+#[serde(rename_all = "camelCase")]
+pub struct FolderRelocateProgress {
+    pub plan_id: String,
+    pub done: u32,
+    pub total: u32,
+}
+
 /// Whether OS files are currently being dragged over the window.
 #[derive(Debug, Clone, Serialize, Deserialize, Type, Event)]
 pub struct FileDragHover(pub bool);
