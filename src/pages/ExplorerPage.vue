@@ -21,7 +21,11 @@ import { toast } from "vue-sonner";
 import ConfirmDialog from "@/components/common/ConfirmDialog.vue";
 import PromptDialog from "@/components/common/PromptDialog.vue";
 import DeleteObjectsDialog from "@/components/explorer/DeleteObjectsDialog.vue";
+import DragGhost from "@/components/explorer/DragGhost.vue";
 import ExplorerBreadcrumb from "@/components/explorer/ExplorerBreadcrumb.vue";
+import FolderRelocateDialog, {
+  type FolderRelocateRequest,
+} from "@/components/explorer/FolderRelocateDialog.vue";
 import ObjectDetails from "@/components/explorer/ObjectDetails.vue";
 import ObjectTable, { type RowAction } from "@/components/explorer/ObjectTable.vue";
 import PreviewDialog from "@/components/explorer/PreviewDialog.vue";
@@ -120,6 +124,16 @@ const promptConfig = computed(() => {
         selectRange: undefined,
       };
     case "rename": {
+      if (entry?.isPrefix) {
+        const name = entry.name.replace(/\/$/, "");
+        return {
+          title: t("ops.renameFolderTitle"),
+          label: t("ops.newName"),
+          initialValue: name,
+          confirmLabel: t("ops.rename"),
+          selectRange: [0, name.length] as [number, number],
+        };
+      }
       const name = entry?.name ?? "";
       const ext = extensionOf(name);
       return {
@@ -132,6 +146,19 @@ const promptConfig = computed(() => {
       };
     }
     default:
+      if (entry?.isPrefix) {
+        // The field is the folder to move *into*, like drag & drop.
+        return {
+          title: prompt.value.kind === "copy" ? t("ops.copyFolderTitle") : t("ops.moveFolderTitle"),
+          label: t("ops.intoFolder"),
+          initialValue: parentPrefix(entry.key),
+          confirmLabel: prompt.value.kind === "copy" ? t("ops.copy") : t("ops.move"),
+          selectRange: undefined,
+          hint: t("ops.intoFolderHint", { name: folderName(entry.key) }),
+          placeholder: t("ops.bucketRoot"),
+          allowEmpty: true,
+        };
+      }
       return {
         title: prompt.value.kind === "copy" ? t("ops.copyTitle") : t("ops.moveTitle"),
         label: t("ops.destination"),
@@ -159,6 +186,10 @@ async function submitPrompt(value: string) {
     return;
   }
   if (!entry) return;
+  if (entry.isPrefix) {
+    openFolderRelocate(kind, entry.key, folderDestination(kind, entry.key, value));
+    return;
+  }
   let destination = value.trim();
   if (kind === "rename") {
     if (destination.includes("/")) invalidInput(t("ops.nameNoSlash"));
@@ -207,11 +238,37 @@ async function confirmOverwrite() {
   }
 }
 
-/** Rename/copy/move apply to one file at a time. */
+/** Rename/copy/move apply to one file or folder at a time. */
 const singleCheckedFile = computed(() => {
   const checked = explorer.checkedEntries;
-  return checked.length === 1 && !checked[0]!.isPrefix ? checked[0] : undefined;
+  return checked.length === 1 ? checked[0] : undefined;
 });
+
+const folderRelocateOpen = ref(false);
+const folderRelocate = ref<FolderRelocateRequest | null>(null);
+
+/**
+ * The folder's new full path ("…/"). Rename takes a new name; copy and move
+ * take the folder to put it in (empty for the bucket root), like drag & drop.
+ */
+function folderDestination(kind: Relocation, source: string, value: string): string {
+  const typed = value.trim().replace(/^\/+/, "");
+  if (kind === "rename") {
+    const name = typed.replace(/\/+$/, "");
+    if (!name) invalidInput(t("folderOps.nameRequired"));
+    if (name.includes("/")) invalidInput(t("ops.nameNoSlash"));
+    return props.prefix + name + "/";
+  }
+  const parent = typed && !typed.endsWith("/") ? `${typed}/` : typed;
+  if (parent === parentPrefix(source)) invalidInput(t("folderOps.alreadyThere"));
+  if (parent.startsWith(source)) invalidInput(t("folderOps.intoItself"));
+  return `${parent}${folderName(source)}/`;
+}
+
+function openFolderRelocate(kind: Relocation, source: string, destination: string) {
+  folderRelocate.value = { kind, source, destination };
+  folderRelocateOpen.value = true;
+}
 
 function openDelete(entries: StorageObject[]) {
   if (!entries.length) return;
@@ -267,17 +324,50 @@ function onRowAction(action: RowAction, entry: StorageObject) {
 }
 
 const baseName = (key: string) => key.slice(key.lastIndexOf("/") + 1);
+/** "photos/2026/" → "2026" */
+const folderName = (key: string) => baseName(key.slice(0, -1));
+const isFolderKey = (key: string) => key.endsWith("/");
 
 const { drag, onPointerDown, shouldSuppressClick } = useObjectDrag({
-  // Dragging a checked row moves the whole checked set (files only).
+  // A folder is dragged on its own; a checked file drags the checked files.
   keysFor: (key) =>
-    explorer.checkedKeys.has(key)
+    !isFolderKey(key) && explorer.checkedKeys.has(key)
       ? explorer.checkedEntries.filter((e) => !e.isPrefix).map((e) => e.key)
       : [key],
-  // Dropping into the current folder would be a no-op.
-  canDrop: (keys, prefix) =>
-    prefix !== props.prefix && keys.some((k) => prefix + baseName(k) !== k),
-  onDrop: (keys, prefix) => void moveInto(keys, prefix),
+  canDrop: (keys, prefix) => {
+    const [first] = keys;
+    if (first && isFolderKey(first)) {
+      // Not onto itself, into its own subfolders, or back into its parent.
+      return !prefix.startsWith(first) && prefix !== parentPrefix(first);
+    }
+    // Dropping into the current folder would be a no-op.
+    return prefix !== props.prefix && keys.some((k) => prefix + baseName(k) !== k);
+  },
+  onDrop: (keys, prefix) => {
+    const [first] = keys;
+    if (first && isFolderKey(first)) {
+      openFolderRelocate("move", first, `${prefix}${folderName(first)}/`);
+    } else {
+      void moveInto(keys, prefix);
+    }
+  },
+});
+
+/** Keys being dragged, so their rows can be dimmed. */
+const draggingKeys = computed(() => new Set(drag.value?.keys ?? []));
+
+const dragLabel = computed(() => {
+  const keys = drag.value?.keys ?? [];
+  const [first] = keys;
+  if (!first) return "";
+  if (isFolderKey(first)) return folderName(first);
+  return keys.length === 1 ? baseName(first) : t("ops.dragFiles", { count: keys.length });
+});
+
+const dragHint = computed(() => {
+  const target = drag.value?.targetPrefix;
+  if (target === null || target === undefined) return null;
+  return t("ops.dragInto", { folder: target ? folderName(target) : props.bucket });
 });
 
 /**
@@ -525,6 +615,7 @@ function goTo(prefix: string) {
             :entries="visible"
             :selected-key="explorer.selectedKey"
             :checked-keys="explorer.checkedKeys"
+            :dragging-keys="draggingKeys"
             :sort="explorer.sort"
             @sort="(key) => explorer.setSort(nextSort(explorer.sort, key))"
             @open-folder="goTo"
@@ -592,6 +683,9 @@ function goTo(prefix: string) {
       :initial-value="promptConfig.initialValue"
       :confirm-label="promptConfig.confirmLabel"
       :select-range="promptConfig.selectRange"
+      :hint="'hint' in promptConfig ? promptConfig.hint : undefined"
+      :placeholder="'placeholder' in promptConfig ? promptConfig.placeholder : undefined"
+      :allow-empty="'allowEmpty' in promptConfig ? promptConfig.allowEmpty : false"
       :submit="submitPrompt"
     />
     <ConfirmDialog
@@ -608,6 +702,7 @@ function goTo(prefix: string) {
       @confirm="confirmOverwrite"
     />
     <DeleteObjectsDialog v-model:open="deleteOpen" :entries="deleteTargets" />
+    <FolderRelocateDialog v-model:open="folderRelocateOpen" :request="folderRelocate" />
     <PreviewDialog
       v-model:open="previewOpen"
       :connection-id="id"
@@ -624,23 +719,6 @@ function goTo(prefix: string) {
     />
 
     <!-- Drag preview following the pointer. -->
-    <div
-      v-if="drag"
-      class="bg-popover text-popover-foreground pointer-events-none fixed z-50 rounded-md border px-2.5 py-1 text-xs shadow-md"
-      :style="{ left: `${drag.x + 12}px`, top: `${drag.y + 12}px` }"
-    >
-      <template v-if="drag.targetPrefix !== null">
-        {{
-          $t(
-            "ops.dragMoveTo",
-            { count: drag.keys.length, folder: drag.targetPrefix || bucket },
-            drag.keys.length,
-          )
-        }}
-      </template>
-      <template v-else>
-        {{ $t("ops.dragging", { count: drag.keys.length }, drag.keys.length) }}
-      </template>
-    </div>
+    <DragGhost v-if="drag" :drag="drag" :label="dragLabel" :hint="dragHint" />
   </div>
 </template>

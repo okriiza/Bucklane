@@ -168,14 +168,47 @@ export default {
     conflictDescription:
       "“{key}” already exists ({size}). Replacing it permanently overwrites its contents.",
     overwrite: "Replace",
-    dragging: "Move {count} file | Move {count} files",
-    dragMoveTo: "Move {count} file to {folder} | Move {count} files to {folder}",
+    dragFiles: "{count} files",
+    dragInto: "Move into {folder}",
     movedMany: "Moved {count} file | Moved {count} files",
     skippedExisting:
       "{count} file was skipped because it already exists there | {count} files were skipped because they already exist there",
     moveProblems: "{count} file could not be moved | {count} files could not be moved",
-    folderRenameUnsupported:
-      "Renaming or moving folders isn't available yet. You can rename the files inside.",
+    renameFolderTitle: "Rename folder",
+    copyFolderTitle: "Copy folder",
+    moveFolderTitle: "Move folder",
+    intoFolder: "Into folder",
+    intoFolderHint: '"{name}" keeps its name inside this folder. Leave empty for the bucket root.',
+    bucketRoot: "Bucket root",
+  },
+  folderOps: {
+    renameTitle: "Rename folder",
+    moveTitle: "Move folder",
+    copyTitle: "Copy folder",
+    counting: "Counting objects…",
+    nameRequired: "Enter a folder name.",
+    alreadyThere: "The folder is already there. Choose a different folder.",
+    intoItself: "A folder cannot be moved or copied into itself.",
+    summary:
+      "{count} object ({size}) will be processed. | {count} objects ({size}) will be processed.",
+    conflicts:
+      "{count} object already exists at the destination. | {count} objects already exist at the destination.",
+    skipExisting: "Skip existing objects",
+    replaceExisting: "Replace existing objects",
+    moveSafety:
+      "Each original is deleted only after its copy is verified. If anything looks wrong, the original is kept.",
+    progress: "{done} of {total} objects",
+    stop: "Stop",
+    stopping: "Stopping…",
+    renameDone: "Folder renamed ({count} objects)",
+    moveDone: "Folder moved ({count} objects)",
+    copyDone: "Folder copied ({count} objects)",
+    skipped: "{count} skipped",
+    canceled: "{count} not processed (stopped)",
+    failedTitle: "{count} object could not be copied | {count} objects could not be copied",
+    keptTitle: "{count} original was kept | {count} originals were kept",
+    problemsHint:
+      "Everything else finished. Nothing listed here was deleted; check these objects and try again.",
   },
   preview: {
     action: "Preview",

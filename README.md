@@ -49,7 +49,7 @@ Available for **macOS** (Apple Silicon and Intel), **Windows**, and **Linux**.
 | **Every S3-compatible provider**          | Amazon S3, Supabase Storage, MinIO, Cloudflare R2, Wasabi, DigitalOcean Spaces, or a custom endpoint. Save as many connections as you need.                                                                           |
 | **Browse buckets like folders**           | Open folders, go back with the breadcrumb, load large buckets page by page, sort and search, and view any object's size, type, ETag, and metadata.                                                                    |
 | **Upload and download in the background** | Transfer single files or entire folders. Every transfer joins a queue with live progress; cancel or retry at any time. Large files are sent in parallel parts and streamed from disk, so they never fill your memory. |
-| **Drag and drop**                         | Drop files or whole folders from your desktop into Bucklane to upload them with their structure intact, or drag files onto another folder to move them inside the bucket.                                             |
+| **Drag and drop**                         | Drop files or whole folders from your desktop into Bucklane to upload them with their structure intact, or drag files and folders onto another folder to move them inside the bucket.                                 |
 | **Safe file operations**                  | Rename, copy, and move files. A move deletes the original only after the copy is verified. Replacing an existing file always asks first.                                                                              |
 | **Folder delete you can trust**           | Before deleting a folder, Bucklane counts exactly how many objects and bytes will be removed and deletes only those.                                                                                                  |
 | **Quick preview**                         | Press Space or double-click to preview images, PDFs, and text or code files without downloading them first.                                                                                                           |
@@ -259,8 +259,11 @@ Nothing is ever overwritten without your confirmation.
 
 ### Renaming, copying, and moving
 
-- Open the **⋯** menu on a file and choose **Rename**, **Copy**, or **Move**. You can also press **F2** to rename.
+- Open the **⋯** menu on a file or folder and choose **Rename**, **Copy**, or **Move**. You can also press **F2** to rename.
 - To move files into a folder, **drag** them onto that folder or onto a folder in the breadcrumb. Tick several files first to move them together.
+- For a folder, **Move** and **Copy** ask which folder to put it in (leave it empty for the bucket root); the folder keeps its name there. **Drag a folder** onto another folder or a breadcrumb to do the same.
+- For a folder, Bucklane first counts everything inside and shows how many objects will be processed and whether any already exist at the destination. You can skip or replace those. While it runs you see the progress and can **Stop** at any time.
+- S3 has no real folders, so a folder rename or move copies every object to the new path and then deletes the original. Each original is deleted only after its copy is verified; if anything looks wrong, the original is kept and listed.
 
 ### Previewing files
 
@@ -368,7 +371,7 @@ Still stuck? Open **About → Report a problem**: **Copy diagnostics** gives a s
 
 ## Current limitations
 
-- Folders can't be renamed, copied, or moved yet — work with the files inside them instead. (Uploading, downloading, and deleting folders are supported.)
+- A single folder rename, copy, or move is limited to **10,000** objects.
 - A single folder upload or download is limited to **10,000** files. Empty folders aren't uploaded.
 - Copying, moving, or renaming objects larger than **5 GB** isn't supported yet.
 - A single folder delete is limited to **100,000** objects.

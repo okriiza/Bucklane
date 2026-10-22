@@ -33,6 +33,7 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             events::TransferUpdate,
             events::FilesDropped,
             events::FileDragHover,
+            events::FolderRelocateProgress,
             updates::UpdateProgress,
         ])
         .commands(tauri_specta::collect_commands![
@@ -61,6 +62,9 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::objects::delete_objects,
             commands::objects::prepare_prefix_delete,
             commands::objects::execute_prefix_delete,
+            commands::objects::prepare_prefix_relocate,
+            commands::objects::execute_prefix_relocate,
+            commands::objects::cancel_prefix_relocate,
             commands::objects::create_share_link,
             commands::objects::preview_object,
             commands::files::pick_upload_files,

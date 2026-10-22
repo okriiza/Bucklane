@@ -13,6 +13,8 @@ vi.mock("@/services/tauri/bindings", () => ({
     copyObject: vi.fn(),
     deleteObjects: vi.fn(),
     executePrefixDelete: vi.fn(),
+    preparePrefixRelocate: vi.fn(),
+    executePrefixRelocate: vi.fn(),
   },
 }));
 
@@ -152,6 +154,51 @@ describe("useExplorerStore", () => {
     expect(mocked.listObjects).toHaveBeenLastCalledWith(
       expect.objectContaining({ prefix: "photos/" }),
     );
+  });
+
+  it("prepares a folder move against the open bucket", async () => {
+    mocked.listObjects.mockResolvedValue(page([]));
+    mocked.preparePrefixRelocate.mockResolvedValue({
+      status: "ok",
+      data: {
+        planId: "p1",
+        mode: "MOVE",
+        sourcePrefix: "docs/a/",
+        destinationPrefix: "docs/b/",
+        objectCount: 2,
+        totalBytes: 2,
+        conflictCount: 0,
+        conflictSamples: [],
+        expiresAt: "",
+      },
+    });
+    const store = useExplorerStore();
+    await store.open(docs);
+
+    const plan = await store.prepareFolderRelocate("docs/a/", "docs/b/", "MOVE");
+
+    expect(plan.planId).toBe("p1");
+    expect(mocked.preparePrefixRelocate).toHaveBeenCalledWith({
+      connectionId: "c1",
+      bucket: "b",
+      sourcePrefix: "docs/a/",
+      destinationPrefix: "docs/b/",
+      mode: "MOVE",
+    });
+  });
+
+  it("refreshes the folder after a folder move, even if it fails", async () => {
+    mocked.listObjects.mockResolvedValue(page([]));
+    mocked.executePrefixRelocate.mockResolvedValue({
+      status: "error",
+      error: { code: "TRANSFER_FAILED", message: "boom", details: null, retryable: true },
+    });
+    const store = useExplorerStore();
+    await store.open(docs);
+    const before = mocked.listObjects.mock.calls.length;
+
+    await expect(store.executeFolderRelocate("p1", "SKIP")).rejects.toThrow("boom");
+    expect(mocked.listObjects.mock.calls.length).toBeGreaterThan(before);
   });
 
   it("remembers the chosen sort order", () => {

@@ -16,6 +16,11 @@ const props = defineProps<{
   confirmLabel: string;
   /** Selects this range of the initial value, e.g. a file name without its extension. */
   selectRange?: [number, number];
+  /** Helper text under the field. */
+  hint?: string;
+  placeholder?: string;
+  /** Lets an empty value be submitted (e.g. "bucket root"). */
+  allowEmpty?: boolean;
   /** Returns normally on success; a thrown error is shown inline. */
   submit: (value: string) => Promise<void>;
 }>();
@@ -63,7 +68,14 @@ async function onSubmit() {
       <form class="grid gap-4" @submit.prevent="onSubmit">
         <div class="grid gap-2">
           <Label :for="inputId">{{ label }}</Label>
-          <Input :id="inputId" v-model="value" autocomplete="off" spellcheck="false" />
+          <Input
+            :id="inputId"
+            v-model="value"
+            autocomplete="off"
+            spellcheck="false"
+            :placeholder="placeholder"
+          />
+          <p v-if="hint" class="text-muted-foreground text-xs">{{ hint }}</p>
         </div>
         <p
           v-if="error"
@@ -77,7 +89,9 @@ async function onSubmit() {
           <Button variant="ghost" :disabled="busy" @click="open = false">
             {{ $t("common.cancel") }}
           </Button>
-          <Button type="submit" :disabled="busy || !value.trim()">{{ confirmLabel }}</Button>
+          <Button type="submit" :disabled="busy || (!allowEmpty && !value.trim())">
+            {{ confirmLabel }}
+          </Button>
         </div>
       </form>
     </DialogContent>
