@@ -28,7 +28,13 @@ The tag must start with `v`. Pushing it starts the **Release** workflow, which b
 | Windows x64 | `Bucklane_<version>_x64-setup.exe` (NSIS), `Bucklane_<version>_x64_en-US.msi` |
 | Linux x64 | `.AppImage`, `.deb`, `.rpm` |
 
-A run takes roughly 15–25 minutes. You can also start it manually from the Actions tab (**Release → Run workflow**).
+A run takes roughly 15–25 minutes. It has three stages:
+
+1. **Create draft release** creates one draft for the tag, or reuses this tag's existing draft.
+2. **Build** (four jobs in parallel) uploads each platform's installers and `.sig` files into that draft by its ID. A build never creates its own release, so parallel builds cannot produce duplicate drafts.
+3. **Updater manifest** runs once, after every build has finished. It writes `latest.json` from the uploaded packages and signatures with `scripts/updater-manifest.py`, and fails if any platform is missing.
+
+You can also start it manually from the Actions tab (**Release → Run workflow**) for an existing tag.
 
 ## 3. Publish
 
@@ -53,7 +59,7 @@ The build fails without them, because `bundle.createUpdaterArtifacts` is on.
 
 **Keep a backup of the private key and its password.** If the key is lost, existing installs can no longer verify updates and every user has to reinstall manually with a new key. To rotate keys, generate a new pair with `pnpm tauri signer generate -w ~/.tauri/bucklane.key`, update the secrets and the public key, and ship one release signed with the old key that carries the new public key.
 
-If a build fails, fix it, delete the tag (`git push --delete origin v0.1.0` and `git tag -d v0.1.0`), delete the draft release, and tag again.
+If a build fails because of a flaky runner, re-run the failed jobs: the draft is reused and `latest.json` is rebuilt. If the code needs a fix, fix it, delete the draft release and the tag (`git push --delete origin v0.1.0` and `git tag -d v0.1.0`), and tag again.
 
 ## Code signing (not configured yet)
 
