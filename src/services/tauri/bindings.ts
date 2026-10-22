@@ -104,6 +104,11 @@ export const commands = {
 	 *  URL is built here, so the frontend cannot open arbitrary addresses.
 	 */
 	openReleasePage: (version: string) => typedError<null, AppError>(__TAURI_INVOKE("open_release_page", { version })),
+	/**
+	 *  Opens the support page in the default browser. The URL is fixed here, so
+	 *  the frontend cannot use this to open arbitrary addresses.
+	 */
+	openSupportPage: () => typedError<null, AppError>(__TAURI_INVOKE("open_support_page")),
 };
 
 /** Events */

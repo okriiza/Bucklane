@@ -2,6 +2,12 @@
 
 Notable changes to Bucklane. Versions follow [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Added
+
+- **Support Bucklane** in the sidebar and on the About page opens the project's Trakteer page. It is a plain link: nothing pops up, and nothing is tracked.
+
 ## 0.5.2 — 2026-10-22
 
 ### Security

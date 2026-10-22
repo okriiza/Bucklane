@@ -945,6 +945,7 @@ Additional hardening:
 - Folder downloads are rejected if an existing parent folder points outside the destination folder through a symlink (`stays_within`). Windows device names (`CON`, `NUL`, `COM1`, ...) get a `_` suffix.
 - `log_frontend_error` writes UI errors to the log with URLs and `X-Amz-*`/`Signature=`/`Credential=` parameters redacted, at most 200 entries per session. `diagnostics` returns only the version, OS, architecture, WebView version, and database status.
 - CI runs `cargo audit` and `pnpm audit --prod`.
+- `open_support_page` opens a support URL fixed in Rust (`commands::links::SUPPORT_URL`); like `open_release_page`, the frontend cannot pass a URL.
 
 ## 8.5 In-App Updates
 
