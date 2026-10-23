@@ -3,17 +3,66 @@ name: Release
 # Builds installers for every platform and attaches them to a draft GitHub
 # release. Triggered by pushing a version tag, e.g. `git push origin v0.1.0`.
 # Review the draft on GitHub, then publish it. See docs/releasing.md.
+#
+# One job creates the draft first and the builds upload into it by ID, so
+# parallel builds can never create duplicate drafts. The updater manifest
+# (latest.json) is written once at the end, after every build has finished.
 on:
   push:
     tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing version tag to build, e.g. v0.6.0
+        required: true
 
 permissions:
   contents: write
 
+env:
+  TAG: ${{ inputs.tag || github.ref_name }}
+
 jobs:
+  create-release:
+    name: Create draft release
+    runs-on: ubuntu-latest
+    outputs:
+      release_id: ${{ steps.create.outputs.release_id }}
+    steps:
+      - id: create
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BODY: |
+            ## Downloads
+
+            | Platform | File |
+            | --- | --- |
+            | macOS (Apple Silicon) | `Bucklane_*_aarch64.dmg` |
+            | macOS (Intel) | `Bucklane_*_x64.dmg` |
+            | Windows | `Bucklane_*_x64-setup.exe` or `.msi` |
+            | Linux | `.AppImage`, `.deb`, or `.rpm` |
+
+            ### First launch
+
+            These builds are not code-signed yet.
+
+            - **macOS:** if macOS says the app is damaged or from an unidentified developer, run `xattr -cr /Applications/Bucklane.app` once, then open it.
+            - **Windows:** if SmartScreen appears, choose **More info → Run anyway**.
+            - **Linux:** saving connections requires a Secret Service provider such as GNOME Keyring or KWallet.
+        run: |
+          # Reuse this tag's draft if a previous run already created one.
+          id=$(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+            --jq "[.[] | select(.draft and .tag_name == \"$TAG\")][0].id // empty")
+          if [ -z "$id" ]; then
+            id=$(gh api -X POST "repos/$GITHUB_REPOSITORY/releases" \
+              -f tag_name="$TAG" -f name="Bucklane $TAG" -f body="$BODY" \
+              -F draft=true -F prerelease=false --jq .id)
+          fi
+          echo "release_id=$id" >> "$GITHUB_OUTPUT"
+
   build:
     name: Build (${{ matrix.name }})
+    needs: create-release
     strategy:
       fail-fast: false
       matrix:
@@ -37,6 +86,8 @@ jobs:
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TAG }}
 
       - name: Install Linux system dependencies
         if: runner.os == 'Linux'
@@ -63,32 +114,37 @@ jobs:
       - uses: tauri-apps/tauri-action@action-v1.0.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Signs the update packages and latest.json used by the in-app
-          # updater. The public key lives in tauri.conf.json.
+          # Signs the update packages used by the in-app updater. The public
+          # key lives in tauri.conf.json.
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tauriScript: pnpm tauri
-          updaterJsonPreferNsis: true
           args: ${{ matrix.args }}
-          tagName: ${{ github.ref_name }}
-          releaseName: Bucklane ${{ github.ref_name }}
-          releaseDraft: true
-          prerelease: false
-          releaseBody: |
-            ## Downloads
+          releaseId: ${{ needs.create-release.outputs.release_id }}
+          # Written once by the updater-manifest job instead.
+          uploadUpdaterJson: false
 
-            | Platform | File |
-            | --- | --- |
-            | macOS (Apple Silicon) | `Bucklane_*_aarch64.dmg` |
-            | macOS (Intel) | `Bucklane_*_x64.dmg` |
-            | Windows | `Bucklane_*_x64-setup.exe` or `.msi` |
-            | Linux | `.AppImage`, `.deb`, or `.rpm` |
-
-            ### First launch
-
-            These builds are not code-signed yet.
-
-            - **macOS:** if macOS says the app is damaged or from an unidentified developer, run `xattr -cr /Applications/Bucklane.app` once, then open it.
-            - **Windows:** if SmartScreen appears, choose **More info → Run anyway**.
-            - **Linux:** saving connections requires a Secret Service provider such as GNOME Keyring or KWallet.
+  updater-manifest:
+    name: Updater manifest
+    needs: [create-release, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TAG }}
+      - name: Build and upload latest.json
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_ID: ${{ needs.create-release.outputs.release_id }}
+        run: |
+          python3 scripts/updater-manifest.py "$GITHUB_REPOSITORY" "$RELEASE_ID" --output latest.json
+          # Replace a manifest left by an earlier run of this release.
+          old=$(gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets" \
+            --jq '.[] | select(.name == "latest.json") | .id')
+          if [ -n "$old" ]; then
+            gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/assets/$old"
+          fi
+          gh api -X POST -H "Content-Type: application/json" \
+            "https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets?name=latest.json" \
+            --input latest.json --jq .browser_download_url
