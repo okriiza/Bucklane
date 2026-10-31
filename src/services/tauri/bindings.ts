@@ -87,6 +87,8 @@ export const commands = {
 	listTransfers: () => typedError<TransferDto[], AppError>(__TAURI_INVOKE("list_transfers")),
 	getTransfer: (id: string) => typedError<TransferDto, AppError>(__TAURI_INVOKE("get_transfer", { id })),
 	cancelTransfer: (id: string) => typedError<null, AppError>(__TAURI_INVOKE("cancel_transfer", { id })),
+	/**  Stops a download but keeps its partial file for Resume. */
+	pauseTransfer: (id: string) => typedError<null, AppError>(__TAURI_INVOKE("pause_transfer", { id })),
 	retryTransfer: (id: string) => typedError<TransferDto, AppError>(__TAURI_INVOKE("retry_transfer", { id })),
 	/**  Removes finished transfers from history; returns how many were removed. */
 	clearTransferHistory: () => typedError<number, AppError>(__TAURI_INVOKE("clear_transfer_history")),
@@ -561,6 +563,8 @@ export type TransferDto = {
 	error: AppError | null,
 	/**  A failed download that can continue from this many bytes. */
 	resumableBytes: number | null,
+	/**  Stopped by the user with Pause (status is FAILED with code PAUSED). */
+	paused: boolean,
 	createdAt: string,
 	startedAt: string | null,
 	completedAt: string | null,

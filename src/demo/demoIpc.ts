@@ -198,6 +198,7 @@ function transfer(
       : null,
     // An interrupted download keeps its partial file and can resume.
     resumableBytes: direction === "DOWNLOAD" && status === "FAILED" && done > 0 ? done : null,
+    paused: false,
     createdAt: ago(minutes),
     startedAt: ago(minutes),
     completedAt: status === "RUNNING" || status === "QUEUED" ? null : ago(minutes - 1),
@@ -245,6 +246,20 @@ const transfers = [
     "COMPLETED",
     21,
   ),
+  {
+    ...transfer(
+      "t-paused",
+      "DOWNLOAD",
+      "media-originals/archive/raw-footage-day2.zip",
+      "media-originals",
+      2_147_483_648,
+      912_261_120,
+      "FAILED",
+      12,
+      "Paused.",
+    ),
+    paused: true,
+  },
   transfer(
     "t-resume",
     "DOWNLOAD",
@@ -309,6 +324,9 @@ function respond(cmd: string, args: Record<string, unknown> = {}): unknown {
         checkForUpdates: true,
         resumeDownloadsAutomatically: false,
       };
+    case "pause_transfer":
+    case "cancel_transfer":
+      return null;
     case "list_transfers":
       return transfers;
     case "list_buckets":

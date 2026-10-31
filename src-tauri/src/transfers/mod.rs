@@ -3,7 +3,7 @@ mod download;
 mod upload;
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -67,8 +67,15 @@ struct Inner {
 
 struct ActiveTransfer {
     connection_id: Option<String>,
+    direction: TransferDirection,
     token: CancellationToken,
+    /// Set before `token` is canceled when the user paused rather than
+    /// canceled, so the run keeps the partial download.
+    pause: Arc<AtomicBool>,
 }
+
+/// Error code that marks a FAILED download as paused by the user.
+pub const PAUSED_CODE: &str = "PAUSED";
 
 /// Bytes transferred so far; uploads keep one counter per multipart part.
 #[derive(Default)]
@@ -102,6 +109,8 @@ enum Outcome {
     Completed,
     Failed(AppError),
     Canceled,
+    /// Download stopped by the user; resumable like an interrupted one.
+    Paused,
 }
 
 impl TransferManager {
@@ -194,15 +203,37 @@ impl TransferManager {
         Ok(())
     }
 
-    /// FAILED → QUEUED on the same row (TSD §6.5.2). A download continues
-    /// from its last checkpoint when possible; a multipart upload is restarted
-    /// from scratch after aborting the previous attempt.
+    /// Stops a queued or running download but keeps its partial file, so
+    /// Resume continues from the last checkpoint. Uploads cannot be paused.
+    pub fn pause(&self, id: &str) -> Result<(), AppError> {
+        let active = self.inner.active.lock().expect("active transfers poisoned");
+        let transfer = active.get(id).ok_or_else(|| {
+            AppError::new(
+                ErrorCode::InvalidInput,
+                "This transfer is no longer active.",
+            )
+        })?;
+        if transfer.direction != TransferDirection::Download {
+            return Err(AppError::new(
+                ErrorCode::OperationUnsupported,
+                "Uploads can't be paused yet. Cancel the upload instead.",
+            ));
+        }
+        transfer.pause.store(true, Ordering::SeqCst);
+        transfer.token.cancel();
+        Ok(())
+    }
+
+    /// FAILED or CANCELED → QUEUED on the same row (TSD §6.5.2). A failed
+    /// or paused download continues from its last checkpoint when possible;
+    /// a canceled one starts over. A multipart upload is restarted from
+    /// scratch after aborting the previous attempt.
     pub async fn retry(&self, id: &str) -> Result<TransferDto, AppError> {
         let mut t = self.inner.repo.get(id).await?.ok_or_else(not_found)?;
-        if t.status != TransferStatus::Failed {
+        if !matches!(t.status, TransferStatus::Failed | TransferStatus::Canceled) {
             return Err(AppError::new(
                 ErrorCode::InvalidInput,
-                "Only failed transfers can be retried.",
+                "Only failed, paused, or canceled transfers can be started again.",
             ));
         }
         if t.connection_id.is_none() {
@@ -517,6 +548,7 @@ impl TransferManager {
 
     fn spawn(&self, t: StoredTransfer) {
         let token = CancellationToken::new();
+        let pause = Arc::new(AtomicBool::new(false));
         self.inner
             .active
             .lock()
@@ -525,11 +557,13 @@ impl TransferManager {
                 t.id.clone(),
                 ActiveTransfer {
                     connection_id: t.connection_id.clone(),
+                    direction: t.direction,
                     token: token.clone(),
+                    pause: pause.clone(),
                 },
             );
         let inner = self.inner.clone();
-        tauri::async_runtime::spawn(async move { inner.run(t, token).await });
+        tauri::async_runtime::spawn(async move { inner.run(t, token, pause).await });
     }
 }
 
@@ -542,14 +576,26 @@ impl Inner {
         let _ = TransferUpdate(TransferDto::from(t)).emit(&self.app);
     }
 
-    async fn run(self: Arc<Self>, mut t: StoredTransfer, token: CancellationToken) {
+    async fn run(
+        self: Arc<Self>,
+        mut t: StoredTransfer,
+        token: CancellationToken,
+        pause: Arc<AtomicBool>,
+    ) {
+        let stopped = || {
+            if pause.load(Ordering::SeqCst) {
+                Outcome::Paused
+            } else {
+                Outcome::Canceled
+            }
+        };
         // Wait for a slot; a queued transfer can be canceled while waiting.
         let permit = tokio::select! {
             permit = self.semaphore.clone().acquire_owned() => permit.ok(),
             () = token.cancelled() => None,
         };
         let outcome = match permit {
-            None => Outcome::Canceled,
+            None => stopped(),
             Some(_permit) => {
                 t.status = TransferStatus::Running;
                 t.started_at = Some(now());
@@ -569,7 +615,7 @@ impl Inner {
                 let reporter = self.clone().report_progress(t.clone(), progress.clone());
                 let result = tokio::select! {
                     r = self.execute(&mut t, &progress) => r.map_or_else(Outcome::Failed, |()| Outcome::Completed),
-                    () = token.cancelled() => Outcome::Canceled,
+                    () = token.cancelled() => stopped(),
                 };
                 reporter.abort();
                 // Make sure no progress event can follow the final status.
@@ -586,9 +632,10 @@ impl Inner {
         }
         match outcome {
             Outcome::Completed => {}
-            // A failed download keeps its temporary file so it can resume.
-            Outcome::Failed(_) if t.direction == TransferDirection::Download => {}
-            Outcome::Failed(_) | Outcome::Canceled => self.cleanup(&mut t).await,
+            // A failed or paused download keeps its temporary file so it
+            // can resume.
+            Outcome::Failed(_) | Outcome::Paused if t.direction == TransferDirection::Download => {}
+            Outcome::Failed(_) | Outcome::Paused | Outcome::Canceled => self.cleanup(&mut t).await,
         }
 
         t.completed_at = Some(now());
@@ -608,6 +655,11 @@ impl Inner {
                 t.status = TransferStatus::Failed;
                 t.error_code = Some(err.code_str());
                 t.error_message = Some(err.message.clone());
+            }
+            Outcome::Paused => {
+                t.status = TransferStatus::Failed;
+                t.error_code = Some(PAUSED_CODE.to_owned());
+                t.error_message = Some("Paused.".to_owned());
             }
         }
         if let Err(err) = self.repo.update(&t).await {

@@ -296,7 +296,7 @@ Click **New folder** in the toolbar.
 
 ### Transfers
 
-The **Transfers** panel shows every upload and download with its progress, speed, time remaining, and status. Click the folder icon on a finished transfer to show the file in Finder or File Explorer. You can **cancel** a running or queued transfer, **retry** a failed one, and **clear finished** ones from the list.
+The **Transfers** panel shows every upload and download with its progress, speed, time remaining, and status. Click the folder icon on a finished transfer to show the file in Finder or File Explorer. You can **cancel** a running or queued transfer, **retry** a failed one, start a canceled one again (**Download again** / **Upload again**), and **clear finished** ones from the list. Downloads can also be **paused** (⏸) and resumed later; a paused download keeps its partial file and stays in the list when you clear finished transfers.
 
 Downloads **resume**. If a download is cut off (the connection drops, Bucklane is closed, or the computer shuts down), its row shows **Can resume from …** and a ▶ **Resume** button that continues from where it stopped instead of starting over. Bucklane makes its progress safe on disk every few seconds, so at most the last few seconds are downloaded again. If the file changed on the server in the meantime, it starts over so old and new data are never mixed. Turn on **Resume interrupted downloads automatically** in Settings to continue them as soon as Bucklane starts. The panel opens on its own when a transfer starts and tucks itself away when everything finishes successfully.
 

@@ -75,6 +75,7 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::transfers::list_transfers,
             commands::transfers::get_transfer,
             commands::transfers::cancel_transfer,
+            commands::transfers::pause_transfer,
             commands::transfers::retry_transfer,
             commands::transfers::clear_transfer_history,
             commands::transfers::reveal_transfer,

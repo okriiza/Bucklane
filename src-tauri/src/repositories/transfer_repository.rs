@@ -122,12 +122,14 @@ impl TransferRepository {
         Ok(())
     }
 
-    /// Failed downloads that may have kept a temporary file for resuming.
+    /// Failed (not paused) downloads that may have kept a temporary file;
+    /// clearing history removes them, paused ones stay.
     pub async fn failed_downloads(&self) -> Result<Vec<StoredTransfer>, AppError> {
         let rows = sqlx::query(concat!(
             "SELECT ",
             columns!(),
-            " FROM transfers WHERE direction = 'DOWNLOAD' AND status = 'FAILED'"
+            " FROM transfers WHERE direction = 'DOWNLOAD' AND status = 'FAILED' \
+              AND error_code IS NOT 'PAUSED'"
         ))
         .fetch_all(&self.pool)
         .await?;
@@ -203,7 +205,8 @@ impl TransferRepository {
     pub async fn clear_history(&self) -> Result<u64, AppError> {
         let result = sqlx::query(
             "DELETE FROM transfers
-             WHERE status IN ('COMPLETED', 'FAILED', 'CANCELED') AND multipart_upload_id IS NULL",
+             WHERE status IN ('COMPLETED', 'FAILED', 'CANCELED') AND multipart_upload_id IS NULL
+               AND NOT (status = 'FAILED' AND error_code = 'PAUSED')",
         )
         .execute(&self.pool)
         .await?;
