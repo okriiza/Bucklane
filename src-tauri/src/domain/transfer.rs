@@ -80,6 +80,10 @@ pub struct StoredTransfer {
     pub error_message: Option<String>,
     pub multipart_upload_id: Option<String>,
     pub overwrite: bool,
+    /// Download only: ETag of the object the temporary file belongs to.
+    pub resume_etag: Option<String>,
+    /// Download only: bytes of the temporary file known to be on disk.
+    pub resume_offset: i64,
     pub created_at: String,
     pub started_at: Option<String>,
     pub completed_at: Option<String>,
@@ -104,6 +108,11 @@ pub struct TransferDto {
     #[specta(type = u32)]
     pub retry_count: i64,
     pub error: Option<AppError>,
+    /// A failed download that can continue from this many bytes.
+    #[specta(type = Option<f64>)]
+    pub resumable_bytes: Option<i64>,
+    /// Stopped by the user with Pause (status is FAILED with code PAUSED).
+    pub paused: bool,
     pub created_at: String,
     pub started_at: Option<String>,
     pub completed_at: Option<String>,
@@ -131,6 +140,12 @@ impl From<&StoredTransfer> for TransferDto {
                 .error_message
                 .as_ref()
                 .map(|message| crate::errors::AppError::stored(t.error_code.as_deref(), message)),
+            resumable_bytes: (t.direction == TransferDirection::Download
+                && t.status == TransferStatus::Failed
+                && t.resume_offset > 0)
+                .then_some(t.resume_offset),
+            paused: t.status == TransferStatus::Failed
+                && t.error_code.as_deref() == Some(crate::transfers::PAUSED_CODE),
             created_at: t.created_at.clone(),
             started_at: t.started_at.clone(),
             completed_at: t.completed_at.clone(),
@@ -185,4 +200,60 @@ pub enum EnqueueItemResult {
         name: String,
         error: AppError,
     },
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn download(status: TransferStatus, code: Option<&str>, offset: i64) -> StoredTransfer {
+        StoredTransfer {
+            id: "t1".into(),
+            connection_id: Some("c1".into()),
+            connection_name_snapshot: "S3".into(),
+            direction: TransferDirection::Download,
+            bucket: "b".into(),
+            object_key: "video.mov".into(),
+            local_path: "/Users/me/Downloads/video.mov".into(),
+            bytes_total: Some(1000),
+            bytes_transferred: offset,
+            status,
+            retry_count: 0,
+            error_code: code.map(str::to_owned),
+            error_message: code.map(|_| "x".to_owned()),
+            multipart_upload_id: None,
+            overwrite: false,
+            resume_etag: Some("\"e\"".into()),
+            resume_offset: offset,
+            created_at: String::new(),
+            started_at: None,
+            completed_at: None,
+        }
+    }
+
+    #[test]
+    fn paused_and_resumable_downloads_are_reported() {
+        let paused = TransferDto::from(&download(TransferStatus::Failed, Some("PAUSED"), 400));
+        assert!(paused.paused);
+        assert_eq!(paused.resumable_bytes, Some(400));
+        assert_eq!(paused.local_file_name, "video.mov", "never the full path");
+
+        let interrupted =
+            TransferDto::from(&download(TransferStatus::Failed, Some("INTERRUPTED"), 400));
+        assert!(!interrupted.paused);
+        assert_eq!(interrupted.resumable_bytes, Some(400));
+
+        let canceled = TransferDto::from(&download(
+            TransferStatus::Canceled,
+            Some("TRANSFER_CANCELED"),
+            0,
+        ));
+        assert!(!canceled.paused);
+        assert_eq!(canceled.resumable_bytes, None);
+
+        // Paused before the first checkpoint: paused, but nothing to keep yet.
+        let early = TransferDto::from(&download(TransferStatus::Failed, Some("PAUSED"), 0));
+        assert!(early.paused);
+        assert_eq!(early.resumable_bytes, None);
+    }
 }

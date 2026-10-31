@@ -1059,7 +1059,14 @@ The part size must satisfy S3 limits, including the minimum size of non-final pa
 
 A download must never overwrite an important file directly before the operation completes.
 
-Failed temporary files must be cleaned up or marked as incomplete.
+**Resume.** The temporary file (`.<name>.<transferId>.bucklane-part` next to the destination) is kept when a download fails or Bucklane stops (crash, shutdown, power loss). It is deleted when the transfer is canceled, completes, or is cleared from history.
+
+- At the start, the object's ETag is stored in `transfers.resume_etag`.
+- Every 2 seconds the download flushes and `fsync`s the file, then stores the byte count in `transfers.resume_offset`. Bytes after the checkpoint may never have reached the disk, so they are not trusted.
+- On retry, the download continues from `resume_offset` only if the temp file is at least that long and a fresh HEAD returns the same ETag. The file is truncated to the checkpoint, and the request uses `Range: bytes=<offset>-` with `If-Match`. If the server ignores the range (no `Content-Range`), the download restarts from zero. If the ETag differs or is missing, the download restarts from zero so versions are never mixed.
+- After a restart, interrupted downloads are marked `FAILED` (`INTERRUPTED`). `TransferDto.resumableBytes` tells the UI to offer **Resume**. With the `transfers.resume_automatically` setting they are re-queued immediately.
+- **Pause** (`pause_transfer`, downloads only) cancels the run like Cancel, but keeps the temporary file. The row becomes `FAILED` with error code `PAUSED` (`TransferDto.paused`), so the status schema is unchanged. The UI shows it as Paused with **Resume**, it is not counted as failed, and clearing history keeps it. Cancel still deletes the temporary file. `retry_transfer` also accepts `CANCELED` rows, which start over.
+- Uploads are not resumed yet; an interrupted multipart upload is aborted and retried from the start.
 
 ## 9.5 Retry Policy
 

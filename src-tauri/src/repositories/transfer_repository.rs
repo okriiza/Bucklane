@@ -8,7 +8,8 @@ macro_rules! columns {
     () => {
         "id, connection_id, connection_name_snapshot, direction, bucket, object_key, local_path, \
          bytes_total, bytes_transferred, status, retry_count, error_code, error_message, \
-         multipart_upload_id, overwrite, created_at, started_at, completed_at"
+         multipart_upload_id, overwrite, resume_etag, resume_offset, created_at, started_at, \
+         completed_at"
     };
 }
 
@@ -29,7 +30,7 @@ impl TransferRepository {
         sqlx::query(concat!(
             "INSERT INTO transfers (",
             columns!(),
-            ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+            ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
         ))
         .bind(&t.id)
         .bind(&t.connection_id)
@@ -46,6 +47,8 @@ impl TransferRepository {
         .bind(&t.error_message)
         .bind(&t.multipart_upload_id)
         .bind(t.overwrite)
+        .bind(&t.resume_etag)
+        .bind(t.resume_offset)
         .bind(&t.created_at)
         .bind(&t.started_at)
         .bind(&t.completed_at)
@@ -85,7 +88,8 @@ impl TransferRepository {
             "UPDATE transfers SET
                 bytes_total = ?, bytes_transferred = ?, status = ?, retry_count = ?,
                 error_code = ?, error_message = ?, multipart_upload_id = ?, overwrite = ?,
-                started_at = ?, completed_at = ?, object_key = ?, local_path = ?
+                started_at = ?, completed_at = ?, object_key = ?, local_path = ?,
+                resume_etag = ?, resume_offset = ?
              WHERE id = ?",
         )
         .bind(t.bytes_total)
@@ -100,10 +104,36 @@ impl TransferRepository {
         .bind(&t.completed_at)
         .bind(&t.object_key)
         .bind(&t.local_path)
+        .bind(&t.resume_etag)
+        .bind(t.resume_offset)
         .bind(&t.id)
         .execute(&self.pool)
         .await?;
         Ok(())
+    }
+
+    /// Records a download checkpoint: `offset` bytes are fsynced to disk.
+    pub async fn update_resume_offset(&self, id: &str, offset: i64) -> Result<(), AppError> {
+        sqlx::query("UPDATE transfers SET resume_offset = ? WHERE id = ?")
+            .bind(offset)
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    /// Failed (not paused) downloads that may have kept a temporary file;
+    /// clearing history removes them, paused ones stay.
+    pub async fn failed_downloads(&self) -> Result<Vec<StoredTransfer>, AppError> {
+        let rows = sqlx::query(concat!(
+            "SELECT ",
+            columns!(),
+            " FROM transfers WHERE direction = 'DOWNLOAD' AND status = 'FAILED' \
+              AND error_code IS NOT 'PAUSED'"
+        ))
+        .fetch_all(&self.pool)
+        .await?;
+        rows.iter().map(from_row).collect()
     }
 
     pub async fn update_progress(&self, id: &str, bytes: i64) -> Result<(), AppError> {
@@ -175,7 +205,8 @@ impl TransferRepository {
     pub async fn clear_history(&self) -> Result<u64, AppError> {
         let result = sqlx::query(
             "DELETE FROM transfers
-             WHERE status IN ('COMPLETED', 'FAILED', 'CANCELED') AND multipart_upload_id IS NULL",
+             WHERE status IN ('COMPLETED', 'FAILED', 'CANCELED') AND multipart_upload_id IS NULL
+               AND NOT (status = 'FAILED' AND error_code = 'PAUSED')",
         )
         .execute(&self.pool)
         .await?;
@@ -204,6 +235,8 @@ fn from_row(row: &SqliteRow) -> Result<StoredTransfer, AppError> {
         error_message: row.try_get("error_message")?,
         multipart_upload_id: row.try_get("multipart_upload_id")?,
         overwrite: row.try_get("overwrite")?,
+        resume_etag: row.try_get("resume_etag")?,
+        resume_offset: row.try_get("resume_offset")?,
         created_at: row.try_get("created_at")?,
         started_at: row.try_get("started_at")?,
         completed_at: row.try_get("completed_at")?,

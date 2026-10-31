@@ -1,5 +1,15 @@
 <script setup lang="ts">
-import { ArrowDown, ArrowUp, ChevronDown, ChevronUp, FolderSearch, RotateCw, X } from "@lucide/vue";
+import {
+  ArrowDown,
+  ArrowUp,
+  ChevronDown,
+  ChevronUp,
+  FolderSearch,
+  Pause,
+  Play,
+  RotateCw,
+  X,
+} from "@lucide/vue";
 import { onUnmounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
@@ -19,6 +29,23 @@ const revealLabel = translate(
       ? "transfers.revealWindows"
       : "transfers.revealLinux",
 );
+
+function resumeLabel(t: TransferDto) {
+  return t.resumableBytes
+    ? translate("transfers.resume", {
+        done: formatBytes(t.resumableBytes),
+        total: formatBytes(t.bytesTotal),
+      })
+    : translate("transfers.resumeStart");
+}
+
+/** Failed and canceled transfers can be started again from the beginning. */
+function againLabel(t: TransferDto) {
+  if (t.status === "FAILED") return translate("transfers.retry");
+  return translate(
+    t.direction === "DOWNLOAD" ? "transfers.downloadAgain" : "transfers.uploadAgain",
+  );
+}
 // Collapsed while idle so it doesn't take space from the page. It opens when
 // a transfer starts, and closes again shortly after a batch finishes cleanly.
 // Failures keep it open, and a manual toggle always wins.
@@ -107,6 +134,12 @@ const STATUS_CLASS: Record<TransferDto["status"], string> = {
       >
         {{ $t("transfers.failed", { count: store.failedCount }) }}
       </span>
+      <span
+        v-if="store.pausedCount"
+        class="bg-warning/15 text-warning tabular rounded px-1.5 py-0.5 text-[11px] font-medium"
+      >
+        {{ $t("transfers.paused", { count: store.pausedCount }) }}
+      </span>
       <Button
         v-if="store.hasFinished && !collapsed"
         variant="ghost"
@@ -162,7 +195,13 @@ const STATUS_CLASS: Record<TransferDto["status"], string> = {
             >
               <div
                 class="h-full rounded-full transition-[width] duration-300"
-                :class="t.status === 'FAILED' ? 'bg-destructive' : 'bg-primary'"
+                :class="
+                  t.resumableBytes || t.paused
+                    ? 'bg-warning'
+                    : t.status === 'FAILED'
+                      ? 'bg-destructive'
+                      : 'bg-primary'
+                "
                 :style="{ width: `${percent(t) ?? 0}%` }"
               />
             </div>
@@ -172,14 +211,22 @@ const STATUS_CLASS: Record<TransferDto["status"], string> = {
             </div>
           </div>
           <div class="min-w-0">
-            <div :class="STATUS_CLASS[t.status]">
+            <div v-if="t.paused" class="text-warning">{{ $t("transfers.status.PAUSED") }}</div>
+            <div v-else :class="STATUS_CLASS[t.status]">
               {{ $t(`transfers.status.${t.status}`) }}
               <template v-if="t.status === 'RUNNING' && percent(t) != null">
                 {{ percent(t) }}%
               </template>
             </div>
             <div
-              v-if="t.status === 'RUNNING' && store.speedOf(t.id) != null"
+              v-if="t.resumableBytes"
+              class="text-muted-foreground tabular truncate text-[11px]"
+              :title="t.error?.message"
+            >
+              {{ $t("transfers.resumable", { size: formatBytes(t.resumableBytes) }) }}
+            </div>
+            <div
+              v-else-if="t.status === 'RUNNING' && store.speedOf(t.id) != null"
               class="text-muted-foreground tabular truncate font-mono text-[11px]"
             >
               {{ formatSpeed(store.speedOf(t.id)) }}
@@ -188,18 +235,30 @@ const STATUS_CLASS: Record<TransferDto["status"], string> = {
               </template>
             </div>
           </div>
-          <div class="flex justify-end">
-            <Button
-              v-if="t.status === 'QUEUED' || t.status === 'RUNNING'"
-              variant="ghost"
-              size="icon"
-              class="size-6"
-              :title="$t('transfers.cancel')"
-              :aria-label="$t('transfers.cancel')"
-              @click="run(() => store.cancel(t.id))"
-            >
-              <X />
-            </Button>
+          <div class="flex justify-end gap-0.5">
+            <template v-if="t.status === 'QUEUED' || t.status === 'RUNNING'">
+              <Button
+                v-if="t.direction === 'DOWNLOAD'"
+                variant="ghost"
+                size="icon"
+                class="size-6"
+                :title="$t('transfers.pause')"
+                :aria-label="$t('transfers.pause')"
+                @click="run(() => store.pause(t.id))"
+              >
+                <Pause class="fill-current" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                class="size-6"
+                :title="$t('transfers.cancel')"
+                :aria-label="$t('transfers.cancel')"
+                @click="run(() => store.cancel(t.id))"
+              >
+                <X />
+              </Button>
+            </template>
             <Button
               v-else-if="t.status === 'COMPLETED'"
               variant="ghost"
@@ -212,12 +271,23 @@ const STATUS_CLASS: Record<TransferDto["status"], string> = {
               <FolderSearch />
             </Button>
             <Button
-              v-else-if="t.status === 'FAILED' && t.connectionId"
+              v-else-if="t.connectionId && (t.paused || t.resumableBytes)"
+              variant="ghost"
+              size="icon"
+              class="text-primary size-6"
+              :title="resumeLabel(t)"
+              :aria-label="resumeLabel(t)"
+              @click="run(() => store.retry(t.id))"
+            >
+              <Play class="fill-current" />
+            </Button>
+            <Button
+              v-else-if="t.connectionId && (t.status === 'FAILED' || t.status === 'CANCELED')"
               variant="ghost"
               size="icon"
               class="size-6"
-              :title="$t('transfers.retry')"
-              :aria-label="$t('transfers.retry')"
+              :title="againLabel(t)"
+              :aria-label="againLabel(t)"
               @click="run(() => store.retry(t.id))"
             >
               <RotateCw />

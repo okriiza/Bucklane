@@ -223,7 +223,10 @@ function transferName(t: TransferDto) {
         <h2 class="mb-3 text-[15px] font-semibold tracking-tight">{{ $t("home.recent") }}</h2>
         <ol v-if="recent.length" class="relative grid gap-3.5">
           <li v-for="t in recent" :key="t.id" class="flex items-start gap-3">
-            <span class="mt-1.5 size-1.5 shrink-0 rounded-full" :class="STATUS_DOT[t.status]" />
+            <span
+              class="mt-1.5 size-1.5 shrink-0 rounded-full"
+              :class="t.paused ? 'bg-warning' : STATUS_DOT[t.status]"
+            />
             <div class="min-w-0 flex-1">
               <p class="flex items-center gap-1.5 text-[13px]">
                 <component
@@ -242,7 +245,7 @@ function transferName(t: TransferDto) {
                 </template>
               </p>
               <p
-                v-if="t.status === 'FAILED' && t.error"
+                v-if="t.status === 'FAILED' && t.error && !t.paused"
                 class="text-destructive mt-0.5 text-[11px]"
               >
                 {{ t.error.message }}

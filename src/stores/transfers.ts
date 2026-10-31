@@ -42,7 +42,11 @@ export const useTransferStore = defineStore("transfers", () => {
   const activeCount = computed(
     () => transfers.value.filter((t) => t.status === "QUEUED" || t.status === "RUNNING").length,
   );
-  const failedCount = computed(() => transfers.value.filter((t) => t.status === "FAILED").length);
+  /** Paused downloads are FAILED in the backend but are not failures. */
+  const failedCount = computed(
+    () => transfers.value.filter((t) => t.status === "FAILED" && !t.paused).length,
+  );
+  const pausedCount = computed(() => transfers.value.filter((t) => t.paused).length);
   const hasFinished = computed(() =>
     transfers.value.some((t) => ["COMPLETED", "FAILED", "CANCELED"].includes(t.status)),
   );
@@ -127,6 +131,11 @@ export const useTransferStore = defineStore("transfers", () => {
     await unwrap(commands.cancelTransfer(id));
   }
 
+  /** Stops a download but keeps what it has downloaded so far. */
+  async function pause(id: string) {
+    await unwrap(commands.pauseTransfer(id));
+  }
+
   async function retry(id: string) {
     upsert(await unwrap(commands.retryTransfer(id)));
   }
@@ -140,6 +149,7 @@ export const useTransferStore = defineStore("transfers", () => {
     transfers,
     activeCount,
     failedCount,
+    pausedCount,
     hasFinished,
     loadError,
     start,
@@ -150,6 +160,7 @@ export const useTransferStore = defineStore("transfers", () => {
     reveal,
     onCompleted,
     cancel,
+    pause,
     retry,
     clearFinished,
   };

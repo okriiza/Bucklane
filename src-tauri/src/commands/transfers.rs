@@ -50,6 +50,13 @@ pub fn cancel_transfer(state: State<'_, AppState>, id: String) -> Result<(), App
     state.transfers()?.cancel(&id)
 }
 
+/// Stops a download but keeps its partial file for Resume.
+#[tauri::command]
+#[specta::specta]
+pub fn pause_transfer(state: State<'_, AppState>, id: String) -> Result<(), AppError> {
+    state.transfers()?.pause(&id)
+}
+
 #[tauri::command]
 #[specta::specta]
 pub async fn retry_transfer(

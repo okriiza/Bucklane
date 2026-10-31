@@ -26,6 +26,8 @@ function transfer(overrides: Partial<TransferDto> = {}): TransferDto {
     status: "QUEUED",
     retryCount: 0,
     error: null,
+    resumableBytes: null,
+    paused: false,
     createdAt: "2026-10-15T00:00:00.000Z",
     startedAt: null,
     completedAt: null,
@@ -37,6 +39,15 @@ describe("useTransferStore", () => {
   beforeEach(() => {
     setActivePinia(createPinia());
     vi.resetAllMocks();
+  });
+
+  it("does not count paused downloads as failed", () => {
+    const store = useTransferStore();
+    store.upsert(transfer({ id: "a", direction: "DOWNLOAD", status: "FAILED", paused: true }));
+    store.upsert(transfer({ id: "b", status: "FAILED" }));
+
+    expect(store.failedCount).toBe(1);
+    expect(store.pausedCount).toBe(1);
   });
 
   it("orders transfers newest first and counts active ones", async () => {
