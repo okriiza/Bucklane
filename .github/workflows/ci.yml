@@ -31,9 +31,15 @@ jobs:
       - name: Production build
         run: pnpm build
 
-  rust:
-    name: Rust
+  # Lint and tests compile different artifacts (check vs. test builds), so
+  # they run as parallel jobs instead of one after the other. Only main saves
+  # the build cache; pull requests restore main's cache instead of storing
+  # their own (GitHub keeps 10 GB per repo and drops caches unused for 7 days).
+  rust-lint:
+    name: Rust lint
     runs-on: ubuntu-latest
+    env:
+      CARGO_PROFILE_DEV_DEBUG: "0"
     defaults:
       run:
         working-directory: src-tauri
@@ -49,6 +55,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-audit
@@ -56,6 +63,27 @@ jobs:
       - run: cargo audit
       - run: cargo fmt --check
       - run: cargo clippy --all-targets -- -D warnings
+
+  rust-test:
+    name: Rust test
+    runs-on: ubuntu-latest
+    env:
+      # No debug info: much faster to compile and link, and a smaller cache.
+      CARGO_PROFILE_DEV_DEBUG: "0"
+    defaults:
+      run:
+        working-directory: src-tauri
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install Tauri system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Start S3-compatible server for integration tests
         working-directory: .
         run: |
