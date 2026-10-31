@@ -108,6 +108,9 @@ jobs:
         with:
           workspaces: src-tauri
           key: ${{ matrix.target }}
+          # Caches saved on a tag can't be reused by other refs; saving them
+          # would only push main's CI cache out of the 10 GB limit.
+          save-if: false
 
       - run: pnpm install --frozen-lockfile
 
