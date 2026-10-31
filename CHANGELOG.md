@@ -2,7 +2,7 @@
 
 Notable changes to Bucklane. Versions follow [Semantic Versioning](https://semver.org/).
 
-## Unreleased
+## 0.7.0 — 2026-11-01
 
 ### Added
 
@@ -20,6 +20,10 @@ Notable changes to Bucklane. Versions follow [Semantic Versioning](https://semve
 ### Changed
 
 - Smoother drag and drop in the explorer: no text gets selected, a card follows the pointer, the target folder opens as you hover it, and the item flies into the folder when you drop it.
+
+### Security
+
+- Updated `ctutils` to 0.4.5 ([RUSTSEC-2026-0385](https://rustsec.org/advisories/RUSTSEC-2026-0385)): non-constant-time comparisons in a crate used by the S3 request signer and the Linux keyring store.
 
 ## 0.5.2 — 2026-10-22
 
