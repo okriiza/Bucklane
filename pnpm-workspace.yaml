@@ -1,4 +1,12 @@
 overrides:
-  # Only reached through stylus, an optional Vite peer this project never
-  # uses; pinned to a patched release so `pnpm audit` stays clean.
-  decode-uri-component: ^0.5.0
+  # Only reached through stylus, an optional Vite peer (for .styl files) that
+  # this project never uses but pnpm installs anyway. Pinned to a patched
+  # release so `pnpm audit` stays clean.
+  decode-uri-component: ^0.5.1
+
+auditConfig:
+  ignoreGhsas:
+    # minimatch DoS via glob patterns, reached only as stylus > glob@7 >
+    # minimatch@3. stylus never runs in this project, and glob@7 cannot use
+    # the fixed major (11), so pinning would break it rather than fix it.
+    - GHSA-g3hv-75wg-m249
