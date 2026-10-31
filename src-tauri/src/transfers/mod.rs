@@ -194,8 +194,9 @@ impl TransferManager {
         Ok(())
     }
 
-    /// FAILED → QUEUED on the same row (TSD §6.5.2). A multipart upload is
-    /// restarted from scratch after aborting the previous attempt.
+    /// FAILED → QUEUED on the same row (TSD §6.5.2). A download continues
+    /// from its last checkpoint when possible; a multipart upload is restarted
+    /// from scratch after aborting the previous attempt.
     pub async fn retry(&self, id: &str) -> Result<TransferDto, AppError> {
         let mut t = self.inner.repo.get(id).await?.ok_or_else(not_found)?;
         if t.status != TransferStatus::Failed {
@@ -249,7 +250,11 @@ impl TransferManager {
             })
     }
 
+    /// Also deletes the temporary files kept for resuming failed downloads.
     pub async fn clear_history(&self) -> Result<u64, AppError> {
+        for t in self.inner.repo.failed_downloads().await? {
+            download::remove_temp_file(&t).await;
+        }
         self.inner.repo.clear_history().await
     }
 
@@ -421,23 +426,41 @@ impl TransferManager {
 
     /// Reconciles transfers left unfinished by a previous session (TSD §9.2):
     /// they become FAILED/INTERRUPTED. Nothing is resumed or overwritten.
-    pub async fn reconcile_on_startup(&self) {
+    /// Marks transfers left over from the last run as interrupted. Downloads
+    /// keep their temporary file; with `auto_resume` they continue at once.
+    pub async fn reconcile_on_startup(&self, auto_resume: bool) {
+        let manager = self.clone();
         let inner = self.inner.clone();
         tauri::async_runtime::spawn(async move {
             let unfinished = match inner.repo.unfinished().await {
                 Ok(rows) => rows,
                 Err(_) => return,
             };
+            let mut to_resume = Vec::new();
             for mut t in unfinished {
-                if t.direction == TransferDirection::Download {
-                    download::remove_temp_file(&t).await;
-                }
+                let resumable = t.direction == TransferDirection::Download && t.resume_offset > 0;
                 t.status = TransferStatus::Failed;
                 t.error_code = Some("INTERRUPTED".to_owned());
-                t.error_message =
-                    Some("Bucklane was closed before this transfer finished.".to_owned());
+                t.error_message = Some(
+                    if resumable {
+                        "Bucklane was closed before this download finished. Resume to continue where it stopped."
+                    } else {
+                        "Bucklane was closed before this transfer finished."
+                    }
+                    .to_owned(),
+                );
                 t.completed_at = Some(now());
                 let _ = inner.repo.update(&t).await;
+                if resumable {
+                    to_resume.push(t.id);
+                }
+            }
+            if auto_resume {
+                for id in to_resume {
+                    if let Err(err) = manager.retry(&id).await {
+                        tracing::warn!(transfer_id = %id, error = %err, "automatic resume failed");
+                    }
+                }
             }
 
             // Best-effort cleanup of multipart uploads that could not be
@@ -479,6 +502,8 @@ impl TransferManager {
             error_message: None,
             multipart_upload_id: None,
             overwrite,
+            resume_etag: None,
+            resume_offset: 0,
             created_at: now(),
             started_at: None,
             completed_at: None,
@@ -528,7 +553,12 @@ impl Inner {
             Some(_permit) => {
                 t.status = TransferStatus::Running;
                 t.started_at = Some(now());
-                t.bytes_transferred = 0;
+                // A resuming download starts at its checkpoint, so the speed
+                // estimate doesn't see the earlier bytes as an instant jump.
+                t.bytes_transferred = match t.direction {
+                    TransferDirection::Download => t.resume_offset,
+                    TransferDirection::Upload => 0,
+                };
                 if let Err(err) = self.repo.update(&t).await {
                     tracing::error!(error = %err, "failed to mark transfer running");
                 }
@@ -554,8 +584,11 @@ impl Inner {
             t.multipart_upload_id = saved.multipart_upload_id;
             t.bytes_total = t.bytes_total.or(saved.bytes_total);
         }
-        if !matches!(outcome, Outcome::Completed) {
-            self.cleanup(&mut t).await;
+        match outcome {
+            Outcome::Completed => {}
+            // A failed download keeps its temporary file so it can resume.
+            Outcome::Failed(_) if t.direction == TransferDirection::Download => {}
+            Outcome::Failed(_) | Outcome::Canceled => self.cleanup(&mut t).await,
         }
 
         t.completed_at = Some(now());
@@ -610,7 +643,11 @@ impl Inner {
 
     async fn cleanup(&self, t: &mut StoredTransfer) {
         match t.direction {
-            TransferDirection::Download => download::remove_temp_file(t).await,
+            TransferDirection::Download => {
+                download::remove_temp_file(t).await;
+                t.resume_etag = None;
+                t.resume_offset = 0;
+            }
             TransferDirection::Upload => self.abort_multipart(t).await,
         }
     }
@@ -1026,6 +1063,8 @@ mod s3_integration_tests {
                 error_message: None,
                 multipart_upload_id: None,
                 overwrite,
+                resume_etag: None,
+                resume_offset: 0,
                 created_at: now(),
                 started_at: None,
                 completed_at: None,
@@ -1078,6 +1117,80 @@ mod s3_integration_tests {
             .unwrap();
         assert_eq!(std::fs::read(&target).unwrap(), b"hello bucklane");
         assert!(download::temp_path(&down).is_some_and(|p| !p.exists()));
+    }
+
+    /// Uploads `data` and returns the object's ETag.
+    async fn put_object(f: &Fixture, key: &str, data: Vec<u8>) -> String {
+        f.client
+            .put_object()
+            .bucket(&f.bucket)
+            .key(key)
+            .body(aws_sdk_s3::primitives::ByteStream::from(data))
+            .send()
+            .await
+            .unwrap()
+            .e_tag()
+            .unwrap()
+            .to_owned()
+    }
+
+    #[tokio::test]
+    async fn interrupted_download_resumes_from_its_checkpoint() {
+        let Some(f) = Fixture::new().await else {
+            return;
+        };
+        let data: Vec<u8> = (0..3 * 1024 * 1024u32).map(|i| (i % 251) as u8).collect();
+        let etag = put_object(&f, "video.bin", data.clone()).await;
+
+        let target = f.dir.join("video.bin");
+        let mut down = f
+            .transfer(TransferDirection::Download, "video.bin", &target, false)
+            .await;
+        // As after a power loss: valid bytes up to the checkpoint, then
+        // garbage that never made it safely to disk.
+        let checkpoint = 1024 * 1024;
+        let mut partial = data[..checkpoint].to_vec();
+        partial.extend(std::iter::repeat_n(0xEE, 4096));
+        std::fs::write(download::temp_path(&down).unwrap(), &partial).unwrap();
+        down.resume_etag = Some(etag);
+        down.resume_offset = checkpoint as i64;
+
+        let progress = Progress::default();
+        download::run(&f.client, &f.repo, &mut down, &progress)
+            .await
+            .unwrap();
+
+        assert!(
+            std::fs::read(&target).unwrap() == data,
+            "resumed bytes differ"
+        );
+        assert_eq!(progress.total(), data.len() as i64);
+        assert_eq!((down.resume_etag.as_deref(), down.resume_offset), (None, 0));
+        assert!(download::temp_path(&down).is_some_and(|p| !p.exists()));
+    }
+
+    #[tokio::test]
+    async fn changed_object_restarts_instead_of_resuming() {
+        let Some(f) = Fixture::new().await else {
+            return;
+        };
+        let data = b"the new version of this file".to_vec();
+        put_object(&f, "notes.txt", data.clone()).await;
+
+        let target = f.dir.join("notes.txt");
+        let mut down = f
+            .transfer(TransferDirection::Download, "notes.txt", &target, false)
+            .await;
+        // Partial data from an older version of the object.
+        std::fs::write(download::temp_path(&down).unwrap(), b"OLD VERSION").unwrap();
+        down.resume_etag = Some("\"stale-etag\"".to_owned());
+        down.resume_offset = 11;
+
+        download::run(&f.client, &f.repo, &mut down, &Progress::default())
+            .await
+            .unwrap();
+
+        assert_eq!(std::fs::read(&target).unwrap(), data);
     }
 
     #[tokio::test]

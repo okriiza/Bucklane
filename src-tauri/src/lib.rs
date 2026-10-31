@@ -124,13 +124,17 @@ pub fn run() {
             }
             let state = AppState::new(db, Arc::new(KeyringCredentialStore), app.handle().clone());
             if let Ok(transfers) = state.transfers() {
+                let mut auto_resume = false;
                 if let Ok(settings) = state.settings() {
                     match tauri::async_runtime::block_on(settings.get()) {
-                        Ok(saved) => transfers.apply_settings(&saved),
+                        Ok(saved) => {
+                            transfers.apply_settings(&saved);
+                            auto_resume = saved.resume_downloads_automatically;
+                        }
                         Err(err) => tracing::warn!(error = %err, "using default settings"),
                     }
                 }
-                tauri::async_runtime::block_on(transfers.reconcile_on_startup());
+                tauri::async_runtime::block_on(transfers.reconcile_on_startup(auto_resume));
             }
             app.manage(state);
 

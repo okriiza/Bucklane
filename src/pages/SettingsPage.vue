@@ -64,6 +64,16 @@ async function reset() {
   }
 }
 
+async function setAutoResume(value: boolean) {
+  form.resumeDownloadsAutomatically = value;
+  try {
+    await store.save({ ...store.settings, resumeDownloadsAutomatically: value });
+  } catch (err) {
+    error.value = toAppError(err);
+    form.resumeDownloadsAutomatically = store.settings.resumeDownloadsAutomatically;
+  }
+}
+
 async function setCheckForUpdates(value: boolean) {
   form.checkForUpdates = value;
   try {
@@ -134,6 +144,22 @@ async function setTheme(value: Theme) {
           />
           <p class="text-muted-foreground col-span-2 text-xs">
             {{ $t(`settings.fields.${field.key}.hint`, { min: field.min, max: field.max }) }}
+          </p>
+        </div>
+        <div
+          v-if="section === 'transfers'"
+          class="grid grid-cols-[auto_1fr] items-start gap-x-3 gap-y-1"
+        >
+          <input
+            id="s-auto-resume"
+            type="checkbox"
+            class="accent-primary mt-0.5 size-4"
+            :checked="form.resumeDownloadsAutomatically"
+            @change="setAutoResume(($event.target as HTMLInputElement).checked)"
+          />
+          <Label for="s-auto-resume">{{ $t("settings.autoResume") }}</Label>
+          <p class="text-muted-foreground col-start-2 text-xs">
+            {{ $t("settings.autoResumeHint") }}
           </p>
         </div>
       </section>

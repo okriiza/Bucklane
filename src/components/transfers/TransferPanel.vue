@@ -1,5 +1,14 @@
 <script setup lang="ts">
-import { ArrowDown, ArrowUp, ChevronDown, ChevronUp, FolderSearch, RotateCw, X } from "@lucide/vue";
+import {
+  ArrowDown,
+  ArrowUp,
+  ChevronDown,
+  ChevronUp,
+  FolderSearch,
+  Play,
+  RotateCw,
+  X,
+} from "@lucide/vue";
 import { onUnmounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
@@ -162,7 +171,13 @@ const STATUS_CLASS: Record<TransferDto["status"], string> = {
             >
               <div
                 class="h-full rounded-full transition-[width] duration-300"
-                :class="t.status === 'FAILED' ? 'bg-destructive' : 'bg-primary'"
+                :class="
+                  t.resumableBytes
+                    ? 'bg-warning'
+                    : t.status === 'FAILED'
+                      ? 'bg-destructive'
+                      : 'bg-primary'
+                "
                 :style="{ width: `${percent(t) ?? 0}%` }"
               />
             </div>
@@ -179,7 +194,14 @@ const STATUS_CLASS: Record<TransferDto["status"], string> = {
               </template>
             </div>
             <div
-              v-if="t.status === 'RUNNING' && store.speedOf(t.id) != null"
+              v-if="t.resumableBytes"
+              class="text-muted-foreground tabular truncate text-[11px]"
+              :title="t.error?.message"
+            >
+              {{ $t("transfers.resumable", { size: formatBytes(t.resumableBytes) }) }}
+            </div>
+            <div
+              v-else-if="t.status === 'RUNNING' && store.speedOf(t.id) != null"
               class="text-muted-foreground tabular truncate font-mono text-[11px]"
             >
               {{ formatSpeed(store.speedOf(t.id)) }}
@@ -210,6 +232,27 @@ const STATUS_CLASS: Record<TransferDto["status"], string> = {
               @click="run(() => store.reveal(t.id))"
             >
               <FolderSearch />
+            </Button>
+            <Button
+              v-else-if="t.status === 'FAILED' && t.connectionId && t.resumableBytes"
+              variant="ghost"
+              size="icon"
+              class="text-primary size-6"
+              :title="
+                $t('transfers.resume', {
+                  done: formatBytes(t.resumableBytes),
+                  total: formatBytes(t.bytesTotal),
+                })
+              "
+              :aria-label="
+                $t('transfers.resume', {
+                  done: formatBytes(t.resumableBytes),
+                  total: formatBytes(t.bytesTotal),
+                })
+              "
+              @click="run(() => store.retry(t.id))"
+            >
+              <Play class="fill-current" />
             </Button>
             <Button
               v-else-if="t.status === 'FAILED' && t.connectionId"

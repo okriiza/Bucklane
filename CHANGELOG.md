@@ -2,6 +2,12 @@
 
 Notable changes to Bucklane. Versions follow [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Added
+
+- **Resumable downloads.** A download cut off by a dropped connection, closing Bucklane, or a shutdown keeps its partial file. **Resume** continues from the last safe point (saved every few seconds) instead of starting over, and starts over only if the file changed on the server. Optionally resume automatically when Bucklane starts (Settings → Transfers).
+
 ## 0.6.0 — 2026-10-22
 
 ### Added

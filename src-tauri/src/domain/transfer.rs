@@ -80,6 +80,10 @@ pub struct StoredTransfer {
     pub error_message: Option<String>,
     pub multipart_upload_id: Option<String>,
     pub overwrite: bool,
+    /// Download only: ETag of the object the temporary file belongs to.
+    pub resume_etag: Option<String>,
+    /// Download only: bytes of the temporary file known to be on disk.
+    pub resume_offset: i64,
     pub created_at: String,
     pub started_at: Option<String>,
     pub completed_at: Option<String>,
@@ -104,6 +108,9 @@ pub struct TransferDto {
     #[specta(type = u32)]
     pub retry_count: i64,
     pub error: Option<AppError>,
+    /// A failed download that can continue from this many bytes.
+    #[specta(type = Option<f64>)]
+    pub resumable_bytes: Option<i64>,
     pub created_at: String,
     pub started_at: Option<String>,
     pub completed_at: Option<String>,
@@ -131,6 +138,10 @@ impl From<&StoredTransfer> for TransferDto {
                 .error_message
                 .as_ref()
                 .map(|message| crate::errors::AppError::stored(t.error_code.as_deref(), message)),
+            resumable_bytes: (t.direction == TransferDirection::Download
+                && t.status == TransferStatus::Failed
+                && t.resume_offset > 0)
+                .then_some(t.resume_offset),
             created_at: t.created_at.clone(),
             started_at: t.started_at.clone(),
             completed_at: t.completed_at.clone(),

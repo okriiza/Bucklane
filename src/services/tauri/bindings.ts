@@ -162,6 +162,11 @@ export type AppSettings = {
 	explorerPageSize: number,
 	/**  Look for a new release on startup. Manual checks always work. */
 	checkForUpdates: boolean,
+	/**
+	 *  Continue interrupted downloads when Bucklane starts, instead of
+	 *  waiting for the user to click Resume.
+	 */
+	resumeDownloadsAutomatically: boolean,
 };
 
 /**
@@ -554,6 +559,8 @@ export type TransferDto = {
 	status: TransferStatus,
 	retryCount: number,
 	error: AppError | null,
+	/**  A failed download that can continue from this many bytes. */
+	resumableBytes: number | null,
 	createdAt: string,
 	startedAt: string | null,
 	completedAt: string | null,

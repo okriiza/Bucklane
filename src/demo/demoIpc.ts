@@ -196,6 +196,8 @@ function transfer(
     error: error
       ? { code: "ENDPOINT_UNREACHABLE", message: error, details: null, retryable: true }
       : null,
+    // An interrupted download keeps its partial file and can resume.
+    resumableBytes: direction === "DOWNLOAD" && status === "FAILED" && done > 0 ? done : null,
     createdAt: ago(minutes),
     startedAt: ago(minutes),
     completedAt: status === "RUNNING" || status === "QUEUED" ? null : ago(minutes - 1),
@@ -242,6 +244,17 @@ const transfers = [
     4_823_114,
     "COMPLETED",
     21,
+  ),
+  transfer(
+    "t-resume",
+    "DOWNLOAD",
+    "media-originals/marketing/launch-video-final-4k.mov",
+    "media-originals",
+    4_831_838_208,
+    3_221_225_472,
+    "FAILED",
+    30,
+    "Bucklane was closed before this download finished. Resume to continue where it stopped.",
   ),
   transfer(
     "t5",
@@ -294,6 +307,7 @@ function respond(cmd: string, args: Record<string, unknown> = {}): unknown {
         multipartPartSizeMb: 16,
         explorerPageSize: 100,
         checkForUpdates: true,
+        resumeDownloadsAutomatically: false,
       };
     case "list_transfers":
       return transfers;

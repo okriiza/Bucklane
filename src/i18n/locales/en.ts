@@ -266,6 +266,8 @@ export default {
     downloadAction: "Download",
     cancel: "Cancel transfer",
     retry: "Retry transfer",
+    resume: "Resume download ({done} of {total} already downloaded)",
+    resumable: "Can resume from {size}",
     eta: "{time} left",
     revealMac: "Show in Finder",
     revealWindows: "Show in File Explorer",
@@ -332,6 +334,9 @@ export default {
     resetDescription: "Every setting returns to its default value. Connections are not affected.",
     resetDone: "Settings reset to defaults",
     updates: "Updates",
+    autoResume: "Resume interrupted downloads automatically",
+    autoResumeHint:
+      "When Bucklane starts, downloads that were cut off (for example by a shutdown) continue on their own. Otherwise click Resume in the transfer list.",
     checkForUpdates: "Check for updates on startup",
     checkForUpdatesHint:
       "Contacts GitHub once when Bucklane opens. Nothing about you or your storage is sent. You can always check manually under About.",

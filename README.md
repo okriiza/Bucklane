@@ -296,7 +296,9 @@ Click **New folder** in the toolbar.
 
 ### Transfers
 
-The **Transfers** panel shows every upload and download with its progress, speed, time remaining, and status. Click the folder icon on a finished transfer to show the file in Finder or File Explorer. You can **cancel** a running or queued transfer, **retry** a failed one, and **clear finished** ones from the list. The panel opens on its own when a transfer starts and tucks itself away when everything finishes successfully.
+The **Transfers** panel shows every upload and download with its progress, speed, time remaining, and status. Click the folder icon on a finished transfer to show the file in Finder or File Explorer. You can **cancel** a running or queued transfer, **retry** a failed one, and **clear finished** ones from the list.
+
+Downloads **resume**. If a download is cut off (the connection drops, Bucklane is closed, or the computer shuts down), its row shows **Can resume from …** and a ▶ **Resume** button that continues from where it stopped instead of starting over. Bucklane makes its progress safe on disk every few seconds, so at most the last few seconds are downloaded again. If the file changed on the server in the meantime, it starts over so old and new data are never mixed. Turn on **Resume interrupted downloads automatically** in Settings to continue them as soon as Bucklane starts. The panel opens on its own when a transfer starts and tucks itself away when everything finishes successfully.
 
 ### Keyboard shortcuts
 
@@ -314,14 +316,15 @@ The **Transfers** panel shows every upload and download with its progress, speed
 
 Open **Settings** in the sidebar.
 
-| Setting                      | Default      | What it does                                                              |
-| ---------------------------- | ------------ | ------------------------------------------------------------------------- |
-| Theme                        | Match system | Light, dark, or follow your system.                                       |
-| Concurrent transfers         | 3            | How many uploads and downloads run at the same time (1–10).               |
-| Multipart threshold          | 64 MB        | Files this size or larger are uploaded in parts (5–5120 MB).              |
-| Part size                    | 16 MB        | Size of each part; raised automatically for very large files (5–5120 MB). |
-| Items per page               | 100          | How many items appear first when a folder opens (50–1000).                |
-| Check for updates on startup | On           | Asks GitHub once per launch whether a newer release exists.               |
+| Setting                                    | Default      | What it does                                                                   |
+| ------------------------------------------ | ------------ | ------------------------------------------------------------------------------ |
+| Theme                                      | Match system | Light, dark, or follow your system.                                            |
+| Concurrent transfers                       | 3            | How many uploads and downloads run at the same time (1–10).                    |
+| Multipart threshold                        | 64 MB        | Files this size or larger are uploaded in parts (5–5120 MB).                   |
+| Part size                                  | 16 MB        | Size of each part; raised automatically for very large files (5–5120 MB).      |
+| Items per page                             | 100          | How many items appear first when a folder opens (50–1000).                     |
+| Resume interrupted downloads automatically | Off          | Continue cut-off downloads when Bucklane starts instead of waiting for Resume. |
+| Check for updates on startup               | On           | Asks GitHub once per launch whether a newer release exists.                    |
 
 **Reset to defaults** restores all settings without affecting your connections.
 
@@ -375,7 +378,7 @@ Still stuck? Open **About → Report a problem**: **Copy diagnostics** gives a s
 - A single folder upload or download is limited to **10,000** files. Empty folders aren't uploaded.
 - Copying, moving, or renaming objects larger than **5 GB** isn't supported yet.
 - A single folder delete is limited to **100,000** objects.
-- Transfers don't resume after the app is closed; they're marked as failed and can be retried from the start.
+- Interrupted **uploads** don't resume; they're marked as failed and can be retried from the start. (Downloads resume.)
 - Installers aren't code-signed yet (see [Download and install](#download-and-install)).
 - PDF preview isn't available on Linux (the system web view has no PDF viewer); download the file instead.
 - The interface is in English.

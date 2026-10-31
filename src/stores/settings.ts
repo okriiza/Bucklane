@@ -11,6 +11,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   multipartPartSizeMb: 16,
   explorerPageSize: 100,
   checkForUpdates: true,
+  resumeDownloadsAutomatically: false,
 };
 
 export const useSettingsStore = defineStore("settings", () => {
