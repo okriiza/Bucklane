@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted } from "vue";
+import { onMounted, onUnmounted, watch } from "vue";
 import { useRoute } from "vue-router";
 import { Toaster } from "vue-sonner";
 import "vue-sonner/style.css";
@@ -10,22 +10,38 @@ import ConnectionFormDialog from "@/components/connections/ConnectionFormDialog.
 import ConflictDialog from "@/components/transfers/ConflictDialog.vue";
 import FileDropOverlay from "@/components/transfers/FileDropOverlay.vue";
 import TransferPanel from "@/components/transfers/TransferPanel.vue";
+import WhatsNewDialog from "@/components/common/WhatsNewDialog.vue";
+import { useAppStore } from "@/stores/app";
+import { useConnectionStore } from "@/stores/connections";
 import { useExplorerStore } from "@/stores/explorer";
 import { useSettingsStore } from "@/stores/settings";
 import { useTransferStore } from "@/stores/transfers";
+import { useWhatsNewStore } from "@/stores/whatsNew";
 import { uploadChangesListing } from "@/utils/prefix";
 
 const transfers = useTransferStore();
 const explorer = useExplorerStore();
 const settings = useSettingsStore();
 const route = useRoute();
+const app = useAppStore();
+const whatsNew = useWhatsNewStore();
+const connections = useConnectionStore();
 
-// Refresh the open folder once uploads into it complete. Bursts of
+// Saved connections tell an update apart from a fresh install.
+watch(
+  () => [app.health?.appVersion, connections.loaded] as const,
+  ([version, loaded]) => {
+    if (version && loaded) whatsNew.checkAfterUpdate(version, connections.connections.length > 0);
+  },
+  { immediate: true },
+);
+
+// Refresh the open folder once uploads or copies into it complete. Bursts of
 // completions (many small files) are coalesced into one listing request.
 let refreshTimer: ReturnType<typeof setTimeout> | undefined;
 const stopListening = transfers.onCompleted((t) => {
   const loc = explorer.location;
-  if (t.direction !== "UPLOAD" || !loc || t.connectionId !== loc.connectionId) return;
+  if (t.direction === "DOWNLOAD" || !loc || t.connectionId !== loc.connectionId) return;
   if (t.bucket !== loc.bucket) return;
   const listed = new Set(explorer.entries.map((e) => e.key));
   if (!uploadChangesListing(loc.prefix, t.objectKey, listed)) return;
@@ -61,6 +77,7 @@ onUnmounted(() => {
   </div>
   <ConnectionFormDialog />
   <ConflictDialog />
+  <WhatsNewDialog />
   <FileDropOverlay />
   <Toaster
     position="bottom-right"

@@ -179,7 +179,7 @@ chmod +x Bucklane_<version>_amd64.AppImage
 
 ### Updating
 
-From **v0.4.0**, Bucklane updates itself. It checks for a new release when it starts (you can turn this off in Settings), shows **Update to …** in the sidebar when one is available, and installs it from **About → Updates**. Updates are signed, and Bucklane refuses any package that fails verification. On Windows the installer closes the app and reopens it; on macOS and Linux, click **Restart now** when the download finishes.
+From **v0.4.0**, Bucklane updates itself. It checks for a new release when it starts (you can turn this off in Settings), shows **Update to …** in the sidebar when one is available, and installs it from **About → Updates**, where you can read what's in the new version first. After updating, **What's new** shows the changes once; open it again any time from **About**. Updates are signed, and Bucklane refuses any package that fails verification. On Windows the installer closes the app and reopens it; on macOS and Linux, click **Restart now** when the download finishes.
 
 To update manually, or from v0.3.0 and earlier, download the newer installer from the Releases page and install it over the existing app. Your connections, bookmarks, settings, and transfer history are kept either way.
 

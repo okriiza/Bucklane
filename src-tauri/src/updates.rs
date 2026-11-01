@@ -24,6 +24,8 @@ const PROGRESS_INTERVAL: Duration = Duration::from_millis(150);
 pub struct UpdateInfo {
     pub version: String,
     pub current_version: String,
+    /// Release notes from the update manifest (CHANGELOG Markdown).
+    pub notes: Option<String>,
 }
 
 /// Download progress of the update package.
@@ -55,6 +57,7 @@ impl UpdateState {
         let info = update.as_ref().map(|u| UpdateInfo {
             version: u.version.clone(),
             current_version: u.current_version.clone(),
+            notes: u.body.clone(),
         });
         tracing::info!(available = ?info.as_ref().map(|i| &i.version), "update check finished");
         *self.pending.lock().expect("update lock") = update;

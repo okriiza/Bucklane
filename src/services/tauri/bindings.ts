@@ -113,6 +113,8 @@ export const commands = {
 	checkForUpdate: () => typedError<{
 	version: string,
 	currentVersion: string,
+	/**  Release notes from the update manifest (CHANGELOG Markdown). */
+	notes: string | null,
 } | null, AppError>(__TAURI_INVOKE("check_for_update")),
 	/**
 	 *  Installs the update found by the last check. Progress arrives as
@@ -670,6 +672,8 @@ export type UpdateConnectionInput = {
 export type UpdateInfo = {
 	version: string,
 	currentVersion: string,
+	/**  Release notes from the update manifest (CHANGELOG Markdown). */
+	notes: string | null,
 };
 
 export type UpdateObjectMetadataInput = {

@@ -393,7 +393,11 @@ function respond(cmd: string, args: Record<string, unknown> = {}): unknown {
     case "open_support_page":
       return null;
     case "check_for_update":
-      return { version: "0.6.0", currentVersion: "0.5.0" };
+      return {
+        version: "0.6.0",
+        currentVersion: "0.5.0",
+        notes: "### Added\n\n- **Copy to another bucket or provider.**\n- Public URLs.",
+      };
     case "install_update":
     case "open_release_page":
     case "restart_app":

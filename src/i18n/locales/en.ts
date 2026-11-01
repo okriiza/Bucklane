@@ -410,6 +410,13 @@ export default {
     home: "Go to home",
     reload: "Reload",
   },
+  whatsNew: {
+    action: "What's new",
+    title: "What's new in Bucklane {version}",
+    missing: "There are no notes for this version in the app. See all releases on GitHub.",
+    allReleases: "All releases",
+    close: "Got it",
+  },
   updates: {
     title: "Updates",
     hint: "Bucklane checks GitHub for new releases. Updates are signed and verified before installing.",

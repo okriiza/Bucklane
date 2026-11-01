@@ -10,7 +10,9 @@ The version must match in three files:
 - `src-tauri/Cargo.toml` → `version`
 - `src-tauri/tauri.conf.json` → `"version"` (this one names the installers)
 
-In `CHANGELOG.md`, rename **Unreleased** to the new version and date. Commit the change on `main`.
+In `CHANGELOG.md`, rename **Unreleased** to the new version and date (`## 0.9.0 — 2026-11-02`). Commit the change on `main`.
+
+That entry is what users see: the app bundles `CHANGELOG.md` and shows the new version's entry in **What's new** after updating, and the updater manifest carries the same entry so **About → Updates** can show it before installing. Write it for users, with `### Added` / `### Changed` / `### Fixed` / `### Security` headings and one bullet per change.
 
 ## 2. Tag and push
 
@@ -32,7 +34,7 @@ A run takes roughly 15–25 minutes. It has three stages:
 
 1. **Create draft release** creates one draft for the tag, or reuses this tag's existing draft.
 2. **Build** (four jobs in parallel) uploads each platform's installers and `.sig` files into that draft by its ID. A build never creates its own release, so parallel builds cannot produce duplicate drafts.
-3. **Updater manifest** runs once, after every build has finished. It writes `latest.json` from the uploaded packages and signatures with `scripts/updater-manifest.py`, and fails if any platform is missing.
+3. **Updater manifest** runs once, after every build has finished. It writes `latest.json` from the uploaded packages and signatures with `scripts/updater-manifest.py`, and fails if any platform is missing. Its `notes` are the version's `CHANGELOG.md` entry (from the tagged commit), or a link to the release if there is none.
 
 You can also start it manually from the Actions tab (**Release → Run workflow**) for an existing tag.
 
