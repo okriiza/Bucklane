@@ -14,6 +14,7 @@ is caught before it is published.
 import argparse
 import json
 import os
+import re
 import sys
 import urllib.request
 from datetime import datetime, timezone
@@ -42,7 +43,15 @@ def request(url, accept="application/vnd.github+json"):
         return response.read()
 
 
-def build_manifest(repo, release, read_asset):
+def changelog_notes(changelog, version):
+    """The body of `## <version>` in CHANGELOG.md, or None if it isn't there."""
+    match = re.search(
+        rf"^## {re.escape(version)}\b[^\n]*\n(.*?)(?=^## |\Z)", changelog, re.M | re.S
+    )
+    return match.group(1).strip() if match else None
+
+
+def build_manifest(repo, release, read_asset, changelog=""):
     assets = {a["name"]: a for a in release["assets"]}
     platforms, missing = {}, []
     for suffix, keys in PLATFORMS:
@@ -60,9 +69,12 @@ def build_manifest(repo, release, read_asset):
             platforms[key] = entry
     if missing:
         raise SystemExit(f"Missing packages or signatures for: {', '.join(missing)}")
+    version = release["tag_name"].removeprefix("v")
+    link = f"See https://github.com/{repo}/releases/tag/{release['tag_name']}"
     return {
-        "version": release["tag_name"].removeprefix("v"),
-        "notes": f"See https://github.com/{repo}/releases/tag/{release['tag_name']}",
+        "version": version,
+        # Shown by the in-app updater before installing.
+        "notes": changelog_notes(changelog, version) or link,
         "pub_date": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z"),
         "platforms": platforms,
     }
@@ -73,13 +85,17 @@ def main():
     parser.add_argument("repo")
     parser.add_argument("release_id")
     parser.add_argument("--output", default="latest.json")
+    parser.add_argument("--changelog", default="CHANGELOG.md")
     args = parser.parse_args()
 
     release = json.loads(request(f"{API}/repos/{args.repo}/releases/{args.release_id}"))
+    with open(args.changelog, encoding="utf-8") as f:
+        changelog = f.read()
     manifest = build_manifest(
         args.repo,
         release,
         lambda asset: request(asset["url"], accept="application/octet-stream"),
+        changelog,
     )
     with open(args.output, "w") as f:
         json.dump(manifest, f, indent=2)

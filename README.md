@@ -44,20 +44,21 @@ Available for **macOS** (Apple Silicon and Intel), **Windows**, and **Linux**.
 
 ## Features
 
-|                                           |                                                                                                                                                                                                                       |
-| ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Every S3-compatible provider**          | Amazon S3, Supabase Storage, MinIO, Cloudflare R2, Wasabi, DigitalOcean Spaces, or a custom endpoint. Save as many connections as you need.                                                                           |
-| **Browse buckets like folders**           | Open folders, go back with the breadcrumb, load large buckets page by page, sort and search, and view any object's size, type, ETag, and metadata.                                                                    |
-| **Upload and download in the background** | Transfer single files or entire folders. Every transfer joins a queue with live progress; cancel or retry at any time. Large files are sent in parallel parts and streamed from disk, so they never fill your memory. |
-| **Drag and drop**                         | Drop files or whole folders from your desktop into Bucklane to upload them with their structure intact, or drag files and folders onto another folder to move them inside the bucket.                                 |
-| **Safe file operations**                  | Rename, copy, and move files. A move deletes the original only after the copy is verified. Replacing an existing file always asks first.                                                                              |
-| **Folder delete you can trust**           | Before deleting a folder, Bucklane counts exactly how many objects and bytes will be removed and deletes only those.                                                                                                  |
-| **Quick preview**                         | Press Space or double-click to preview images, PDFs, and text or code files without downloading them first.                                                                                                           |
-| **Share links and public URLs**           | Create a time-limited download link for any file (15 minutes to 7 days), or copy its public URL, using your own domain or CDN if you set one. Copy an object's key or `s3://` URI just as quickly.                    |
-| **Edit metadata**                         | Change Content-Type, Cache-Control, Content-Disposition, and custom metadata without uploading the file again.                                                                                                        |
-| **Bookmarks and pinned buckets**          | Open a bucket by name even when your keys can't list buckets, and star the ones you use most so they appear on the Overview.                                                                                          |
-| **Overview dashboard**                    | See active transfers, what you uploaded and downloaded today, your connections, pinned buckets, and recent activity at a glance.                                                                                      |
-| **Light and dark mode**                   | Follows your system, or pick one in Settings.                                                                                                                                                                         |
+|                                                |                                                                                                                                                                                                                         |
+| ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Every S3-compatible provider**               | Amazon S3, Supabase Storage, MinIO, Cloudflare R2, Wasabi, DigitalOcean Spaces, or a custom endpoint. Save as many connections as you need.                                                                             |
+| **Browse buckets like folders**                | Open folders, go back with the breadcrumb, load large buckets page by page, sort and search, and view any object's size, type, ETag, and metadata.                                                                      |
+| **Upload and download in the background**      | Transfer single files or entire folders. Every transfer joins a queue with live progress; cancel or retry at any time. Large files are sent in parallel parts and streamed from disk, so they never fill your memory.   |
+| **Drag and drop**                              | Drop files or whole folders from your desktop into Bucklane to upload them with their structure intact, or drag files and folders onto another folder to move them inside the bucket.                                   |
+| **Copy or move between buckets and providers** | Copy or move files or whole folders to another bucket, on the same or another connection, for example from Amazon S3 to Cloudflare R2. They run in the transfer queue with progress and keep content type and metadata. |
+| **Safe file operations**                       | Rename, copy, and move files. A move deletes the original only after the copy is verified. Replacing an existing file always asks first.                                                                                |
+| **Folder delete you can trust**                | Before deleting a folder, Bucklane counts exactly how many objects and bytes will be removed and deletes only those.                                                                                                    |
+| **Quick preview**                              | Press Space or double-click to preview images, PDFs, and text or code files without downloading them first.                                                                                                             |
+| **Share links and public URLs**                | Create a time-limited download link for any file (15 minutes to 7 days), or copy its public URL, using your own domain or CDN if you set one. Copy an object's key or `s3://` URI just as quickly.                      |
+| **Edit metadata**                              | Change Content-Type, Cache-Control, Content-Disposition, and custom metadata without uploading the file again.                                                                                                          |
+| **Bookmarks and pinned buckets**               | Open a bucket by name even when your keys can't list buckets, and star the ones you use most so they appear on the Overview.                                                                                            |
+| **Overview dashboard**                         | See active transfers, what you uploaded and downloaded today, your connections, pinned buckets, and recent activity at a glance.                                                                                        |
+| **Light and dark mode**                        | Follows your system, or pick one in Settings.                                                                                                                                                                           |
 
 ---
 
@@ -178,7 +179,7 @@ chmod +x Bucklane_<version>_amd64.AppImage
 
 ### Updating
 
-From **v0.4.0**, Bucklane updates itself. It checks for a new release when it starts (you can turn this off in Settings), shows **Update to …** in the sidebar when one is available, and installs it from **About → Updates**. Updates are signed, and Bucklane refuses any package that fails verification. On Windows the installer closes the app and reopens it; on macOS and Linux, click **Restart now** when the download finishes.
+From **v0.4.0**, Bucklane updates itself. It checks for a new release when it starts (you can turn this off in Settings), shows **Update to …** in the sidebar when one is available, and installs it from **About → Updates**, where you can read what's in the new version first. After updating, **What's new** shows the changes once; open it again any time from **About**. Updates are signed, and Bucklane refuses any package that fails verification. On Windows the installer closes the app and reopens it; on macOS and Linux, click **Restart now** when the download finishes.
 
 To update manually, or from v0.3.0 and earlier, download the newer installer from the Releases page and install it over the existing app. Your connections, bookmarks, settings, and transfer history are kept either way.
 
@@ -266,6 +267,15 @@ Nothing is ever overwritten without your confirmation.
 - For a folder, **Move** and **Copy** ask which folder to put it in (leave it empty for the bucket root); the folder keeps its name there. **Drag a folder** onto another folder or a breadcrumb to do the same.
 - For a folder, Bucklane first counts everything inside and shows how many objects will be processed and whether any already exist at the destination. You can skip or replace those. While it runs you see the progress and can **Stop** at any time.
 - S3 has no real folders, so a folder rename or move copies every object to the new path and then deletes the original. Each original is deleted only after its copy is verified; if anything looks wrong, the original is kept and listed.
+
+### Copying or moving to another bucket or provider
+
+- Open the **⋯** menu on a file or folder and choose **Copy to another bucket…** or **Move to another bucket…**, or tick several items and click **Copy or move to…**. You can switch between copy and move in the dialog.
+- Pick the destination **connection** and **bucket** (or type a bucket name your keys can't list), and optionally a **folder**. A copied folder keeps its name and structure inside that folder.
+- If objects already exist at the destination, you choose to skip, keep both, or replace them.
+- Each file is streamed through your computer, from the source straight to the destination, and shows up in **Transfers** with its progress; cancel or retry it there. Nothing is saved to disk.
+- **Copy** never changes the originals. **Move** deletes each original only after its copy is verified, and only if the original didn't change in the meantime. Otherwise the original is kept and the transfer shows why, in amber.
+- Content type, caching and download headers, and custom metadata are copied. Storage class, permissions (ACLs), and encryption settings are not; the destination's defaults apply.
 
 ### Previewing files
 

@@ -1,4 +1,5 @@
 mod body;
+mod copy;
 mod download;
 mod upload;
 
@@ -15,11 +16,11 @@ use tokio::sync::Semaphore;
 use tokio_util::sync::CancellationToken;
 
 use crate::domain::bucket::validate_bucket_name;
-use crate::domain::object::ObjectMetadata;
+use crate::domain::object::{ObjectMetadata, RelocateMode};
 use crate::domain::settings::AppSettings;
 use crate::domain::transfer::{
-    EnqueueDownloadInput, EnqueueItemResult, EnqueueUploadInput, StoredTransfer,
-    TransferConflictPolicy, TransferDirection, TransferDto, TransferStatus,
+    EnqueueCopyInput, EnqueueDownloadInput, EnqueueItemResult, EnqueueUploadInput, StoredTransfer,
+    TransferConflictPolicy, TransferDirection, TransferDto, TransferSource, TransferStatus,
 };
 use crate::errors::{AppError, ErrorCode};
 use crate::events::TransferUpdate;
@@ -39,6 +40,8 @@ use crate::services::connection_service::ConnectionService;
 const PROGRESS_INTERVAL: Duration = Duration::from_millis(300);
 /// Progress is persisted less often than it is emitted.
 const PERSIST_EVERY_TICKS: u32 = 7;
+/// S3's maximum key length in bytes.
+const MAX_KEY_LEN: usize = 1024;
 /// `name (1).ext` … `name (999).ext` are tried before giving up.
 const MAX_RENAME_ATTEMPTS: u32 = 999;
 
@@ -67,6 +70,8 @@ struct Inner {
 
 struct ActiveTransfer {
     connection_id: Option<String>,
+    /// Copy only: the connection it reads from.
+    source_connection_id: Option<String>,
     direction: TransferDirection,
     token: CancellationToken,
     /// Set before `token` is canceled when the user paused rather than
@@ -76,6 +81,8 @@ struct ActiveTransfer {
 
 /// Error code that marks a FAILED download as paused by the user.
 pub const PAUSED_CODE: &str = "PAUSED";
+/// Error code on a COMPLETED move whose original was deliberately kept.
+pub const SOURCE_KEPT_CODE: &str = "SOURCE_KEPT";
 
 /// Bytes transferred so far; uploads keep one counter per multipart part.
 #[derive(Default)]
@@ -186,7 +193,10 @@ impl TransferManager {
             .lock()
             .expect("active transfers poisoned")
             .values()
-            .any(|a| a.connection_id.as_deref() == Some(connection_id))
+            .any(|a| {
+                a.connection_id.as_deref() == Some(connection_id)
+                    || a.source_connection_id.as_deref() == Some(connection_id)
+            })
     }
 
     /// Requests cancellation; the transfer task performs cleanup and records
@@ -216,7 +226,7 @@ impl TransferManager {
         if transfer.direction != TransferDirection::Download {
             return Err(AppError::new(
                 ErrorCode::OperationUnsupported,
-                "Uploads can't be paused yet. Cancel the upload instead.",
+                "Only downloads can be paused. Cancel this transfer instead.",
             ));
         }
         transfer.pause.store(true, Ordering::SeqCst);
@@ -242,6 +252,9 @@ impl TransferManager {
                 "The connection for this transfer was deleted.",
             ));
         }
+        if t.source.as_ref().is_some_and(|s| s.connection_id.is_none()) {
+            return Err(source_deleted());
+        }
         self.inner.abort_multipart(&mut t).await;
 
         t.status = TransferStatus::Queued;
@@ -262,6 +275,12 @@ impl TransferManager {
     /// never leaves the backend; the frontend only names the transfer.
     pub async fn reveal(&self, id: &str) -> Result<(), AppError> {
         let t = self.inner.repo.get(id).await?.ok_or_else(not_found)?;
+        if t.direction == TransferDirection::Copy {
+            return Err(AppError::new(
+                ErrorCode::OperationUnsupported,
+                "A copy has no local file to show.",
+            ));
+        }
         let path = std::path::PathBuf::from(&t.local_path);
         if !tokio::fs::try_exists(&path).await.unwrap_or(false) {
             return Err(AppError::new(
@@ -319,45 +338,35 @@ impl TransferManager {
         }
 
         for plan in planned {
-            let mut key = plan.key;
-            let mut overwrite = false;
-            let exists = match plan.exists {
-                Some(known) => Ok(known),
-                None => remote_exists(&provider, &bucket, &key).await,
-            };
-            match exists {
+            let placement = place_remote(
+                &provider,
+                &bucket,
+                plan.key,
+                plan.exists,
+                input.conflict_policy,
+            )
+            .await;
+            let (key, overwrite) = match placement {
+                Ok(Placement::At { key, overwrite }) => (key, overwrite),
+                Ok(Placement::Conflict) => {
+                    results.push(EnqueueItemResult::Conflict {
+                        item: plan.item,
+                        name: plan.name,
+                    });
+                    continue;
+                }
+                Ok(Placement::Skip) => {
+                    results.push(EnqueueItemResult::Skipped {
+                        item: plan.item,
+                        name: plan.name,
+                    });
+                    continue;
+                }
                 Err(error) => {
                     results.push(rejected(&plan.item, &plan.name, error));
                     continue;
                 }
-                Ok(false) => {}
-                Ok(true) => match input.conflict_policy {
-                    TransferConflictPolicy::Ask => {
-                        results.push(EnqueueItemResult::Conflict {
-                            item: plan.item,
-                            name: plan.name,
-                        });
-                        continue;
-                    }
-                    TransferConflictPolicy::Skip => {
-                        results.push(EnqueueItemResult::Skipped {
-                            item: plan.item,
-                            name: plan.name,
-                        });
-                        continue;
-                    }
-                    TransferConflictPolicy::Overwrite => overwrite = true,
-                    TransferConflictPolicy::Rename => {
-                        match free_remote_key(&provider, &bucket, &key).await {
-                            Ok(free) => key = free,
-                            Err(error) => {
-                                results.push(rejected(&plan.item, &plan.name, error));
-                                continue;
-                            }
-                        }
-                    }
-                },
-            }
+            };
 
             let transfer = self
                 .create(
@@ -369,6 +378,7 @@ impl TransferManager {
                     &plan.path.to_string_lossy(),
                     plan.size,
                     overwrite,
+                    None,
                 )
                 .await?;
             results.push(EnqueueItemResult::Queued {
@@ -445,11 +455,140 @@ impl TransferManager {
                     &path.to_string_lossy(),
                     plan.size,
                     overwrite,
+                    None,
                 )
                 .await?;
             results.push(EnqueueItemResult::Queued {
                 transfer_id: transfer,
                 key: plan.key,
+            });
+        }
+        Ok(results)
+    }
+
+    /// Queues copies of objects or folders to another bucket, on the same or
+    /// another connection. Folders are snapshotted now; objects added to
+    /// them later are not copied.
+    pub async fn enqueue_copy(
+        &self,
+        input: EnqueueCopyInput,
+    ) -> Result<Vec<EnqueueItemResult>, AppError> {
+        let source_bucket = validate_bucket_name(&input.source_bucket)?.to_owned();
+        let bucket = validate_bucket_name(&input.destination_bucket)?.to_owned();
+        let prefix = &input.destination_prefix;
+        if (!prefix.is_empty() && !prefix.ends_with('/')) || prefix.starts_with('/') {
+            return Err(AppError::new(
+                ErrorCode::InvalidInput,
+                "The destination folder is not valid.",
+            ));
+        }
+        let connections = self.inner.connections();
+        let source_name = connections.get(&input.source_connection_id).await?.name;
+        let connection_name = connections
+            .get(&input.destination_connection_id)
+            .await?
+            .name;
+        let source = S3StorageProvider::new(
+            connections
+                .client_for_bucket(&input.source_connection_id, &source_bucket)
+                .await?,
+        );
+        let provider = S3StorageProvider::new(
+            connections
+                .client_for_bucket(&input.destination_connection_id, &bucket)
+                .await?,
+        );
+        let same_bucket = input.source_connection_id == input.destination_connection_id
+            && source_bucket == bucket;
+        let moving = input.mode == RelocateMode::Move;
+
+        let mut results = Vec::new();
+        let mut planned = Vec::new();
+        for item in &input.keys {
+            let folder = item.split(ITEM_SEPARATOR).next().unwrap_or(item);
+            if moving && same_bucket && folder.ends_with('/') && prefix.starts_with(folder) {
+                let error = AppError::new(
+                    ErrorCode::InvalidInput,
+                    "A folder can't be moved into itself.",
+                );
+                results.push(rejected(item, item, error));
+                continue;
+            }
+            match plan_copy(&source, &source_bucket, &provider, &bucket, prefix, item).await {
+                Ok(items) => planned.extend(items),
+                Err(error) => results.push(rejected(item, item, error)),
+            }
+        }
+
+        for plan in planned {
+            if same_bucket && plan.source_key == plan.key {
+                let error = AppError::new(
+                    ErrorCode::InvalidInput,
+                    "The destination is the same as the original.",
+                );
+                results.push(rejected(&plan.item, &plan.name, error));
+                continue;
+            }
+            if plan.key.len() > MAX_KEY_LEN {
+                let error = AppError::new(
+                    ErrorCode::InvalidInput,
+                    format!("The destination key would be longer than {MAX_KEY_LEN} bytes."),
+                );
+                results.push(rejected(&plan.item, &plan.name, error));
+                continue;
+            }
+            let placement = place_remote(
+                &provider,
+                &bucket,
+                plan.key,
+                plan.exists,
+                input.conflict_policy,
+            )
+            .await;
+            let (key, overwrite) = match placement {
+                Ok(Placement::At { key, overwrite }) => (key, overwrite),
+                Ok(Placement::Conflict) => {
+                    results.push(EnqueueItemResult::Conflict {
+                        item: plan.item,
+                        name: plan.name,
+                    });
+                    continue;
+                }
+                Ok(Placement::Skip) => {
+                    results.push(EnqueueItemResult::Skipped {
+                        item: plan.item,
+                        name: plan.name,
+                    });
+                    continue;
+                }
+                Err(error) => {
+                    results.push(rejected(&plan.item, &plan.name, error));
+                    continue;
+                }
+            };
+
+            let transfer = self
+                .create(
+                    &input.destination_connection_id,
+                    &connection_name,
+                    TransferDirection::Copy,
+                    &bucket,
+                    &key,
+                    "",
+                    plan.size,
+                    overwrite,
+                    Some(TransferSource {
+                        connection_id: Some(input.source_connection_id.clone()),
+                        connection_name_snapshot: source_name.clone(),
+                        bucket: source_bucket.clone(),
+                        key: plan.source_key,
+                        delete_after_copy: moving,
+                    }),
+                )
+                .await?;
+            results.push(EnqueueItemResult::Queued {
+                transfer_id: transfer,
+                key,
             });
         }
         Ok(results)
@@ -516,6 +655,7 @@ impl TransferManager {
         local_path: &str,
         bytes_total: Option<i64>,
         overwrite: bool,
+        source: Option<TransferSource>,
     ) -> Result<String, AppError> {
         let t = StoredTransfer {
             id: uuid::Uuid::now_v7().to_string(),
@@ -535,6 +675,7 @@ impl TransferManager {
             overwrite,
             resume_etag: None,
             resume_offset: 0,
+            source,
             created_at: now(),
             started_at: None,
             completed_at: None,
@@ -557,6 +698,7 @@ impl TransferManager {
                 t.id.clone(),
                 ActiveTransfer {
                     connection_id: t.connection_id.clone(),
+                    source_connection_id: t.source.as_ref().and_then(|s| s.connection_id.clone()),
                     direction: t.direction,
                     token: token.clone(),
                     pause: pause.clone(),
@@ -603,7 +745,7 @@ impl Inner {
                 // estimate doesn't see the earlier bytes as an instant jump.
                 t.bytes_transferred = match t.direction {
                     TransferDirection::Download => t.resume_offset,
-                    TransferDirection::Upload => 0,
+                    TransferDirection::Upload | TransferDirection::Copy => 0,
                 };
                 if let Err(err) = self.repo.update(&t).await {
                     tracing::error!(error = %err, "failed to mark transfer running");
@@ -684,12 +826,23 @@ impl Inner {
             .connections()
             .client_for_bucket(&connection_id, &t.bucket)
             .await?;
+        let tuning = *self.tuning.lock().expect("tuning poisoned");
         match t.direction {
             TransferDirection::Upload => {
-                let tuning = *self.tuning.lock().expect("tuning poisoned");
                 upload::run(&client, &self.repo, t, progress, tuning).await
             }
             TransferDirection::Download => download::run(&client, &self.repo, t, progress).await,
+            TransferDirection::Copy => {
+                let from = t.source.clone().ok_or_else(source_deleted)?;
+                let source_client = self
+                    .connections()
+                    .client_for_bucket(
+                        from.connection_id.as_deref().ok_or_else(source_deleted)?,
+                        &from.bucket,
+                    )
+                    .await?;
+                copy::run(&source_client, &client, &self.repo, t, progress, tuning).await
+            }
         }
     }
 
@@ -700,7 +853,7 @@ impl Inner {
                 t.resume_etag = None;
                 t.resume_offset = 0;
             }
-            TransferDirection::Upload => self.abort_multipart(t).await,
+            TransferDirection::Upload | TransferDirection::Copy => self.abort_multipart(t).await,
         }
     }
 
@@ -772,6 +925,49 @@ async fn remote_exists(
     }
 }
 
+enum Placement {
+    At {
+        key: String,
+        overwrite: bool,
+    },
+    /// The destination exists and the policy is `ASK`.
+    Conflict,
+    Skip,
+}
+
+/// Applies the conflict policy to a destination key. `exists` is `None`
+/// when unknown, and then checked with HEAD.
+async fn place_remote(
+    provider: &S3StorageProvider,
+    bucket: &str,
+    key: String,
+    exists: Option<bool>,
+    policy: TransferConflictPolicy,
+) -> Result<Placement, AppError> {
+    let exists = match exists {
+        Some(known) => known,
+        None => remote_exists(provider, bucket, &key).await?,
+    };
+    if !exists {
+        return Ok(Placement::At {
+            key,
+            overwrite: false,
+        });
+    }
+    Ok(match policy {
+        TransferConflictPolicy::Ask => Placement::Conflict,
+        TransferConflictPolicy::Skip => Placement::Skip,
+        TransferConflictPolicy::Overwrite => Placement::At {
+            key,
+            overwrite: true,
+        },
+        TransferConflictPolicy::Rename => Placement::At {
+            key: free_remote_key(provider, bucket, &key).await?,
+            overwrite: false,
+        },
+    })
+}
+
 /// `folder/name.ext` → `folder/name (1).ext`, `folder/name (2).ext`, …
 async fn free_remote_key(
     provider: &S3StorageProvider,
@@ -812,6 +1008,15 @@ struct UploadPlan {
     key: String,
     size: Option<i64>,
     /// `None` when unknown; checked with HEAD before queueing.
+    exists: Option<bool>,
+}
+
+struct CopyPlan {
+    item: String,
+    name: String,
+    source_key: String,
+    key: String,
+    size: Option<i64>,
     exists: Option<bool>,
 }
 
@@ -949,6 +1154,72 @@ async fn plan_download(
         .collect()
 }
 
+/// Expands one copy item like [`plan_download`]: an object key, a folder key
+/// ending in `/`, or `<folder key><SEP><object key>`. A folder is recreated
+/// inside the destination folder, including its folder markers, so empty
+/// folders survive and a move leaves nothing behind.
+async fn plan_copy(
+    source: &S3StorageProvider,
+    source_bucket: &str,
+    destination: &S3StorageProvider,
+    bucket: &str,
+    prefix: &str,
+    item: &str,
+) -> Result<Vec<CopyPlan>, AppError> {
+    let (folder, only) = match item.split_once(ITEM_SEPARATOR) {
+        Some((folder, key)) => (Some(folder), Some(key)),
+        None if item.ends_with('/') => (Some(item), None),
+        None => (None, None),
+    };
+
+    let Some(folder) = folder else {
+        let name = item.rsplit('/').next().unwrap_or(item).to_owned();
+        return Ok(vec![CopyPlan {
+            item: item.to_owned(),
+            key: format!("{prefix}{name}"),
+            name,
+            source_key: item.to_owned(),
+            size: None,
+            exists: None,
+        }]);
+    };
+
+    let trimmed = folder.trim_end_matches('/');
+    let parent = trimmed.rfind('/').map_or("", |i| &trimmed[..=i]);
+    let objects = match only {
+        Some(key) => vec![(key.to_owned(), None)],
+        None => {
+            let mut objects = list_folder(source, source_bucket, folder).await?;
+            // Listings leave out the folder's own marker; add it if present.
+            if remote_exists(source, source_bucket, folder).await? {
+                objects.insert(0, (folder.to_owned(), Some(0)));
+            }
+            objects
+        }
+    };
+    let base = format!("{prefix}{}", folder.strip_prefix(parent).unwrap_or(folder));
+    let existing = match only {
+        Some(_) => None,
+        None => existing_keys(destination, bucket, &base).await?,
+    };
+
+    Ok(objects
+        .into_iter()
+        .map(|(source_key, size)| {
+            let relative = source_key.strip_prefix(parent).unwrap_or(&source_key);
+            let key = format!("{prefix}{relative}");
+            CopyPlan {
+                item: format!("{folder}{ITEM_SEPARATOR}{source_key}"),
+                name: relative.to_owned(),
+                exists: existing.as_ref().map(|set| set.contains(&key)),
+                key,
+                source_key,
+                size,
+            }
+        })
+        .collect())
+}
+
 /// Every object under `prefix`, refusing folders larger than the limit.
 async fn list_folder(
     provider: &S3StorageProvider,
@@ -972,7 +1243,7 @@ async fn list_folder(
             return Err(AppError::new(
                 ErrorCode::OperationUnsupported,
                 format!(
-                    "This folder contains more than {MAX_FOLDER_FILES} objects, which is more than Bucklane can download at once."
+                    "This folder contains more than {MAX_FOLDER_FILES} objects, which is more than Bucklane can transfer at once."
                 ),
             ));
         }
@@ -1032,6 +1303,13 @@ fn no_free_name() -> AppError {
     AppError::new(
         ErrorCode::InvalidInput,
         "Could not find a free name for the renamed copy.",
+    )
+}
+
+fn source_deleted() -> AppError {
+    AppError::new(
+        ErrorCode::ConnectionInvalid,
+        "The connection this copy reads from was deleted.",
     )
 }
 
@@ -1117,6 +1395,13 @@ mod s3_integration_tests {
                 overwrite,
                 resume_etag: None,
                 resume_offset: 0,
+                source: (direction == TransferDirection::Copy).then(|| TransferSource {
+                    connection_id: None,
+                    connection_name_snapshot: "MinIO".into(),
+                    bucket: self.bucket.clone(),
+                    key: key.into(),
+                    delete_after_copy: false,
+                }),
                 created_at: now(),
                 started_at: None,
                 completed_at: None,
@@ -1184,6 +1469,187 @@ mod s3_integration_tests {
             .e_tag()
             .unwrap()
             .to_owned()
+    }
+
+    #[tokio::test]
+    async fn copy_streams_parts_and_keeps_headers() {
+        let Some(f) = Fixture::new().await else {
+            return;
+        };
+        let data: Vec<u8> = (0..12 * 1024 * 1024u32).map(|i| (i % 251) as u8).collect();
+        f.client
+            .put_object()
+            .bucket(&f.bucket)
+            .key("media/clip.bin")
+            .body(aws_sdk_s3::primitives::ByteStream::from(data.clone()))
+            .content_type("video/mp4")
+            .cache_control("public, max-age=60")
+            .metadata("owner", "web")
+            .send()
+            .await
+            .unwrap();
+        let destination = format!("{}-copy", f.bucket);
+        f.client
+            .create_bucket()
+            .bucket(&destination)
+            .send()
+            .await
+            .unwrap();
+
+        let mut copy = f
+            .transfer(TransferDirection::Copy, "clips/clip.bin", &f.dir, false)
+            .await;
+        copy.bucket = destination.clone();
+        copy.local_path = String::new();
+        copy.source = Some(TransferSource {
+            connection_id: None,
+            connection_name_snapshot: "MinIO".into(),
+            bucket: f.bucket.clone(),
+            key: "media/clip.bin".into(),
+            delete_after_copy: false,
+        });
+        let progress = Progress::default();
+        // 5 MiB parts: three ranged GETs feed three multipart parts.
+        let tuning = upload::UploadTuning {
+            threshold: 5 * 1024 * 1024,
+            part_size: 5 * 1024 * 1024,
+        };
+        copy::run(&f.client, &f.client, &f.repo, &mut copy, &progress, tuning)
+            .await
+            .unwrap();
+
+        assert_eq!(progress.total(), data.len() as i64);
+        let stored = f
+            .client
+            .get_object()
+            .bucket(&destination)
+            .key("clips/clip.bin")
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(stored.content_type(), Some("video/mp4"));
+        assert_eq!(stored.cache_control(), Some("public, max-age=60"));
+        assert_eq!(
+            stored
+                .metadata()
+                .and_then(|m| m.get("owner"))
+                .map(String::as_str),
+            Some("web")
+        );
+        let bytes = stored.body.collect().await.unwrap().into_bytes();
+        assert!(bytes[..] == data[..], "copied bytes differ");
+        assert_eq!(copy.multipart_upload_id, None);
+    }
+
+    async fn move_transfer(f: &Fixture, destination: &str, key: &str) -> StoredTransfer {
+        f.client
+            .create_bucket()
+            .bucket(destination)
+            .send()
+            .await
+            .unwrap();
+        let mut t = f
+            .transfer(TransferDirection::Copy, key, &f.dir, false)
+            .await;
+        t.bucket = destination.to_owned();
+        t.local_path = String::new();
+        t.source = Some(TransferSource {
+            connection_id: None,
+            connection_name_snapshot: "MinIO".into(),
+            bucket: f.bucket.clone(),
+            key: key.into(),
+            delete_after_copy: true,
+        });
+        t
+    }
+
+    #[tokio::test]
+    async fn move_deletes_the_original_after_a_verified_copy() {
+        let Some(f) = Fixture::new().await else {
+            return;
+        };
+        put_object(&f, "report.pdf", b"quarterly numbers".to_vec()).await;
+        let destination = format!("{}-moved", f.bucket);
+        let mut t = move_transfer(&f, &destination, "report.pdf").await;
+
+        copy::run(
+            &f.client,
+            &f.client,
+            &f.repo,
+            &mut t,
+            &Progress::default(),
+            upload::UploadTuning::default(),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(t.error_code, None);
+        let provider = S3StorageProvider::new(f.client.clone());
+        assert!(
+            !remote_exists(&provider, &f.bucket, "report.pdf")
+                .await
+                .unwrap()
+        );
+        assert!(
+            remote_exists(&provider, &destination, "report.pdf")
+                .await
+                .unwrap()
+        );
+    }
+
+    #[tokio::test]
+    async fn move_keeps_an_original_that_changed() {
+        let Some(f) = Fixture::new().await else {
+            return;
+        };
+        put_object(&f, "notes.txt", b"new version".to_vec()).await;
+        let from = TransferSource {
+            connection_id: None,
+            connection_name_snapshot: "MinIO".into(),
+            bucket: f.bucket.clone(),
+            key: "notes.txt".into(),
+            delete_after_copy: true,
+        };
+
+        let kept =
+            copy::delete_source(&f.client, &from, Some("\"etag-of-the-copied-version\"")).await;
+
+        assert!(kept.is_some(), "a changed original must be kept");
+        let provider = S3StorageProvider::new(f.client.clone());
+        assert!(
+            remote_exists(&provider, &f.bucket, "notes.txt")
+                .await
+                .unwrap()
+        );
+    }
+
+    #[tokio::test]
+    async fn copy_ranges_are_pinned_to_the_measured_version() {
+        let Some(f) = Fixture::new().await else {
+            return;
+        };
+        put_object(&f, "doc.txt", b"version two".to_vec()).await;
+        let failure = Arc::new(Mutex::new(None));
+        let body = body::counting_object_body(
+            body::ObjectRange {
+                client: f.client.clone(),
+                bucket: f.bucket.clone(),
+                key: "doc.txt".into(),
+                etag: Some("\"etag-of-version-one\"".into()),
+                offset: 0,
+                len: 11,
+                size: 11,
+            },
+            Arc::new(AtomicU64::new(0)),
+            failure.clone(),
+        );
+
+        let read = aws_sdk_s3::primitives::ByteStream::new(body)
+            .collect()
+            .await;
+
+        assert!(read.is_err(), "a changed source must not be read");
+        assert!(failure.lock().unwrap().is_some(), "the cause is recorded");
     }
 
     #[tokio::test]
@@ -1377,6 +1843,52 @@ mod s3_integration_tests {
             "marker skipped, sibling excluded"
         );
         assert!(plans.iter().all(|p| p.path.starts_with(&f.dir)));
+    }
+
+    #[tokio::test]
+    async fn folder_copy_plan_keeps_structure_and_detects_existing() {
+        let Some(f) = Fixture::new().await else {
+            return;
+        };
+        for key in [
+            "media/brand/",
+            "media/brand/logo.svg",
+            "media/brand/print/card.pdf",
+            "media/other.txt",
+            "archive/brand/logo.svg",
+        ] {
+            put_object(&f, key, b"x".to_vec()).await;
+        }
+        let provider = S3StorageProvider::new(f.client.clone());
+        let plans = plan_copy(
+            &provider,
+            &f.bucket,
+            &provider,
+            &f.bucket,
+            "archive/",
+            "media/brand/",
+        )
+        .await
+        .unwrap();
+
+        let mut planned: Vec<_> = plans
+            .iter()
+            .map(|p| (p.source_key.as_str(), p.key.as_str(), p.exists))
+            .collect();
+        planned.sort();
+        assert_eq!(
+            planned,
+            [
+                ("media/brand/", "archive/brand/", Some(false)),
+                ("media/brand/logo.svg", "archive/brand/logo.svg", Some(true)),
+                (
+                    "media/brand/print/card.pdf",
+                    "archive/brand/print/card.pdf",
+                    Some(false)
+                ),
+            ],
+            "marker kept, sibling excluded, existing copy detected"
+        );
     }
 
     #[tokio::test]

@@ -8,6 +8,8 @@ use crate::errors::AppError;
 pub enum TransferDirection {
     Upload,
     Download,
+    /// From one bucket or connection to another, streamed through Bucklane.
+    Copy,
 }
 
 impl TransferDirection {
@@ -15,6 +17,7 @@ impl TransferDirection {
         match self {
             Self::Upload => "UPLOAD",
             Self::Download => "DOWNLOAD",
+            Self::Copy => "COPY",
         }
     }
 
@@ -22,6 +25,7 @@ impl TransferDirection {
         match value {
             "UPLOAD" => Some(Self::Upload),
             "DOWNLOAD" => Some(Self::Download),
+            "COPY" => Some(Self::Copy),
             _ => None,
         }
     }
@@ -61,6 +65,21 @@ impl TransferStatus {
     }
 }
 
+/// Where a copy reads from. The destination is the transfer's own
+/// connection, bucket, and key.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct TransferSource {
+    /// `None` once the source connection is deleted.
+    pub connection_id: Option<String>,
+    pub connection_name_snapshot: String,
+    pub bucket: String,
+    pub key: String,
+    /// A move: the source is deleted once the copy is verified, if it is
+    /// unchanged.
+    pub delete_after_copy: bool,
+}
+
 /// A persisted transfer. `local_path` is privacy-sensitive and never sent to
 /// the frontend; only its file name is (DB design §9).
 #[derive(Debug, Clone)]
@@ -84,6 +103,8 @@ pub struct StoredTransfer {
     pub resume_etag: Option<String>,
     /// Download only: bytes of the temporary file known to be on disk.
     pub resume_offset: i64,
+    /// Copy only; empty `local_path`.
+    pub source: Option<TransferSource>,
     pub created_at: String,
     pub started_at: Option<String>,
     pub completed_at: Option<String>,
@@ -98,8 +119,10 @@ pub struct TransferDto {
     pub direction: TransferDirection,
     pub bucket: String,
     pub object_key: String,
-    /// Base name of the local file only.
+    /// Base name of the local file only; empty for copies.
     pub local_file_name: String,
+    /// Copy only.
+    pub source: Option<TransferSource>,
     #[specta(type = Option<f64>)]
     pub bytes_total: Option<i64>,
     #[specta(type = f64)]
@@ -113,6 +136,8 @@ pub struct TransferDto {
     pub resumable_bytes: Option<i64>,
     /// Stopped by the user with Pause (status is FAILED with code PAUSED).
     pub paused: bool,
+    /// A completed move that kept its original; `error` says why.
+    pub source_kept: bool,
     pub created_at: String,
     pub started_at: Option<String>,
     pub completed_at: Option<String>,
@@ -132,6 +157,7 @@ impl From<&StoredTransfer> for TransferDto {
             bucket: t.bucket.clone(),
             object_key: t.object_key.clone(),
             local_file_name,
+            source: t.source.clone(),
             bytes_total: t.bytes_total,
             bytes_transferred: t.bytes_transferred,
             status: t.status,
@@ -146,6 +172,8 @@ impl From<&StoredTransfer> for TransferDto {
                 .then_some(t.resume_offset),
             paused: t.status == TransferStatus::Failed
                 && t.error_code.as_deref() == Some(crate::transfers::PAUSED_CODE),
+            source_kept: t.status == TransferStatus::Completed
+                && t.error_code.as_deref() == Some(crate::transfers::SOURCE_KEPT_CODE),
             created_at: t.created_at.clone(),
             started_at: t.started_at.clone(),
             completed_at: t.completed_at.clone(),
@@ -181,6 +209,24 @@ pub struct EnqueueDownloadInput {
     pub keys: Vec<String>,
     pub directory_selection_id: String,
     pub conflict_policy: TransferConflictPolicy,
+}
+
+/// Copies objects or whole folders to another bucket, on the same or another
+/// connection.
+#[derive(Debug, Clone, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct EnqueueCopyInput {
+    pub source_connection_id: String,
+    pub source_bucket: String,
+    /// Object keys, folder keys ending in `/`, or conflict items to resend.
+    pub keys: Vec<String>,
+    pub destination_connection_id: String,
+    pub destination_bucket: String,
+    /// Folder to copy into, ending in `/`; empty for the bucket root.
+    pub destination_prefix: String,
+    pub conflict_policy: TransferConflictPolicy,
+    /// `MOVE` deletes each original after its copy is verified.
+    pub mode: crate::domain::object::RelocateMode,
 }
 
 #[derive(Debug, Clone, Serialize, Type)]
@@ -225,6 +271,7 @@ mod tests {
             overwrite: false,
             resume_etag: Some("\"e\"".into()),
             resume_offset: offset,
+            source: None,
             created_at: String::new(),
             started_at: None,
             completed_at: None,

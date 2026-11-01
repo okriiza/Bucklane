@@ -23,11 +23,7 @@ const open = computed({
         {{ $t("conflict.title", { count: prompt.names.length }, prompt.names.length) }}
       </DialogTitle>
       <DialogDescription class="text-muted-foreground text-sm">
-        {{
-          prompt.direction === "UPLOAD"
-            ? $t("conflict.uploadDescription")
-            : $t("conflict.downloadDescription")
-        }}
+        {{ $t(`conflict.description.${prompt.direction}`) }}
       </DialogDescription>
       <ul class="max-h-40 overflow-auto rounded-md border text-xs">
         <li

@@ -7,7 +7,9 @@ import {
   unwrap,
   type EnqueueItemResult,
   type LocalFileSelection,
+  type RelocateMode,
   type TransferConflictPolicy,
+  type TransferDirection,
 } from "@/services/tauri";
 import { useConflictPromptStore } from "@/stores/conflictPrompt";
 
@@ -44,7 +46,7 @@ export function useTransferActions() {
 
   /** Runs `enqueue` with ASK, then once more for conflicts with the user's choice. */
   async function withConflicts(
-    direction: "UPLOAD" | "DOWNLOAD",
+    direction: TransferDirection,
     enqueue: (
       items: string[] | null,
       policy: TransferConflictPolicy,
@@ -125,5 +127,31 @@ export function useTransferActions() {
     }
   }
 
-  return { uploadSelections, pickAndUpload, pickAndUploadFolder, pickAndDownload };
+  /**
+   * Copies or moves objects or folders (keys ending in `/`) to another
+   * bucket or connection.
+   */
+  function copyTo(
+    source: { connectionId: string; bucket: string },
+    keys: string[],
+    to: UploadTarget & { mode: RelocateMode },
+  ) {
+    if (!keys.length) return Promise.resolve();
+    return withConflicts("COPY", (items, policy) =>
+      unwrap(
+        commands.enqueueCopy({
+          sourceConnectionId: source.connectionId,
+          sourceBucket: source.bucket,
+          keys: items ?? keys,
+          destinationConnectionId: to.connectionId,
+          destinationBucket: to.bucket,
+          destinationPrefix: to.prefix,
+          conflictPolicy: policy,
+          mode: to.mode,
+        }),
+      ),
+    );
+  }
+
+  return { uploadSelections, pickAndUpload, pickAndUploadFolder, pickAndDownload, copyTo };
 }

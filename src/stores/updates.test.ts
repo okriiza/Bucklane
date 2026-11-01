@@ -11,7 +11,7 @@ vi.mock("@/services/tauri/bindings", () => ({
 }));
 
 const mocked = vi.mocked(commands);
-const update = { version: "0.4.0", currentVersion: "0.3.0" };
+const update = { version: "0.4.0", currentVersion: "0.3.0", notes: null };
 
 describe("useUpdateStore", () => {
   beforeEach(() => {

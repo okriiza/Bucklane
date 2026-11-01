@@ -21,6 +21,8 @@ export const useConnectionStore = defineStore("connections", () => {
   const connections = ref<ConnectionDto[]>([]);
   const profiles = ref<ProviderProfile[]>([]);
   const loading = ref(false);
+  /** The list has been loaded at least once. */
+  const loaded = ref(false);
   const loadError = ref<AppError | null>(null);
 
   /** Drives the shared add/edit dialog: `null` = closed, `"new"` = create. */
@@ -48,6 +50,7 @@ export const useConnectionStore = defineStore("connections", () => {
       connections.value = list;
       profiles.value = providerProfiles;
       loadError.value = null;
+      loaded.value = true;
     } catch (err) {
       loadError.value = toAppError(err);
     } finally {
@@ -81,6 +84,7 @@ export const useConnectionStore = defineStore("connections", () => {
     connections,
     profiles,
     loading,
+    loaded,
     loadError,
     formTarget,
     profileFor,

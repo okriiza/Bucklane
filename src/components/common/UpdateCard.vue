@@ -4,10 +4,12 @@ import { computed, ref } from "vue";
 import { toast } from "vue-sonner";
 
 import ConfirmDialog from "@/components/common/ConfirmDialog.vue";
+import ReleaseNotes from "@/components/common/ReleaseNotes.vue";
 import { Button } from "@/components/ui/button";
 import { toAppError } from "@/services/tauri";
 import { useTransferStore } from "@/stores/transfers";
 import { useUpdateStore } from "@/stores/updates";
+import { parseNotes } from "@/utils/changelog";
 import { formatBytes } from "@/utils/format";
 
 defineProps<{ currentVersion: string | null }>();
@@ -17,6 +19,12 @@ const transfers = useTransferStore();
 
 const confirmOpen = ref(false);
 const pending = ref<"install" | "restart">("install");
+
+/** Notes of the new version; older manifests only carry a link. */
+const notes = computed(() => {
+  const sections = parseNotes(updates.update?.notes ?? "");
+  return sections.some((s) => s.title) ? sections : [];
+});
 
 const percent = computed(() =>
   updates.total ? Math.min(100, Math.round((updates.downloaded / updates.total) * 100)) : null,
@@ -53,6 +61,9 @@ async function openNotes(version: string) {
       <p class="font-medium">
         {{ $t("updates.available", { version: updates.update.version }) }}
       </p>
+      <div v-if="notes.length" class="bg-muted/40 max-h-56 overflow-auto rounded-lg border p-3">
+        <ReleaseNotes :sections="notes" />
+      </div>
       <div class="flex flex-wrap gap-2">
         <Button size="sm" @click="guard('install')">
           <Download /> {{ $t("updates.install") }}

@@ -6,6 +6,7 @@ import {
   Layers,
   MousePointerClick,
   ShieldCheck,
+  Sparkles,
   Star,
   X,
 } from "@lucide/vue";
@@ -18,8 +19,10 @@ import UpdateCard from "@/components/common/UpdateCard.vue";
 import ProviderMark from "@/components/connections/ProviderMark.vue";
 import { useAppStore } from "@/stores/app";
 import { useConnectionStore } from "@/stores/connections";
+import { useWhatsNewStore } from "@/stores/whatsNew";
 
 const app = useAppStore();
+const whatsNew = useWhatsNewStore();
 const connections = useConnectionStore();
 
 type Platform = "mac" | "windows" | "linux";
@@ -80,6 +83,14 @@ const features = [
             v{{ app.health?.appVersion ?? "—" }}
           </span>
           <span class="text-muted-foreground">{{ $t(`about.platforms.${platform}`) }}</span>
+          <button
+            v-if="app.health"
+            type="button"
+            class="text-primary inline-flex items-center gap-1 font-medium hover:underline [&_svg]:size-3.5"
+            @click="whatsNew.show(app.health.appVersion)"
+          >
+            <Sparkles /> {{ $t("whatsNew.action") }}
+          </button>
         </p>
       </div>
     </header>

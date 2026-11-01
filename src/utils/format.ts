@@ -27,6 +27,14 @@ export function formatDateTime(iso: string | null | undefined): string {
   return Number.isNaN(date.getTime()) ? "—" : dateTimeFormat.format(date);
 }
 
+const dateFormat = new Intl.DateTimeFormat(undefined, { dateStyle: "long" });
+
+/** A calendar date like `2026-11-01`, localized; independent of time zone. */
+export function formatDate(day: string): string {
+  const date = new Date(`${day}T12:00:00`);
+  return Number.isNaN(date.getTime()) ? day : dateFormat.format(date);
+}
+
 const relativeFormat = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
 const RELATIVE_STEPS: [Intl.RelativeTimeFormatUnit, number][] = [
   ["second", 60],

@@ -1,16 +1,20 @@
 use std::io::{Seek, SeekFrom};
 use std::path::PathBuf;
 use std::pin::Pin;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll, ready};
 
+use aws_sdk_s3::Client;
 use aws_sdk_s3::primitives::SdkBody;
 use bytes::Bytes;
-use futures_util::Stream;
+use futures_util::{Stream, TryStreamExt, stream};
 use http_body::{Body, Frame, SizeHint};
 use tokio::io::AsyncReadExt;
 use tokio_util::io::ReaderStream;
+
+use crate::errors::{AppError, ErrorCode};
+use crate::providers::s3_provider::map_sdk_error;
 
 const CHUNK_SIZE: usize = 64 * 1024;
 
@@ -30,13 +34,11 @@ pub fn counting_file_body(
 ) -> SdkBody {
     SdkBody::retryable(move || {
         let body = match open_range(&path, offset) {
-            Ok(file) => CountingBody {
-                stream: Some(ReaderStream::with_capacity(file.take(len), CHUNK_SIZE)),
-                error: None,
-                started: false,
-                counter: counter.clone(),
+            Ok(file) => CountingBody::new(
+                ReaderStream::with_capacity(file.take(len), CHUNK_SIZE),
+                counter.clone(),
                 len,
-            },
+            ),
             Err(err) => CountingBody {
                 stream: None,
                 error: Some(err),
@@ -49,19 +51,134 @@ pub fn counting_file_body(
     })
 }
 
+/// A byte range of a stored object, pinned to the version with `etag`.
+#[derive(Clone)]
+pub struct ObjectRange {
+    pub client: Client,
+    pub bucket: String,
+    pub key: String,
+    pub etag: Option<String>,
+    pub offset: u64,
+    pub len: u64,
+    /// Whole object size; a range covering all of it needs no Range support.
+    pub size: u64,
+}
+
+/// A request body that streams an object range from another bucket or
+/// connection and counts what has been sent in `counter`.
+///
+/// Like [`counting_file_body`] it is rebuildable: each attempt sends a new
+/// ranged GET. Source failures are recorded in `failure`, because the SDK
+/// reports a failing request body only as a generic send error.
+pub fn counting_object_body(
+    range: ObjectRange,
+    counter: Arc<AtomicU64>,
+    failure: Arc<Mutex<Option<AppError>>>,
+) -> SdkBody {
+    SdkBody::retryable(move || {
+        let (range, failure) = (range.clone(), failure.clone());
+        let len = range.len;
+        let fetch = async move {
+            let result = fetch_range(&range).await;
+            if let Err(err) = &result {
+                *failure.lock().expect("copy failure poisoned") = Some(err.clone());
+            }
+            result.map_err(std::io::Error::other)
+        };
+        SdkBody::from_body_1_x(CountingBody::new(
+            stream::once(fetch).try_flatten(),
+            counter.clone(),
+            len,
+        ))
+    })
+}
+
+/// Opens a ranged GET and yields exactly `range.len` bytes of it.
+async fn fetch_range(
+    range: &ObjectRange,
+) -> Result<impl Stream<Item = std::io::Result<Bytes>> + Send + use<>, AppError> {
+    let body = if range.len == 0 {
+        None
+    } else {
+        let output = range
+            .client
+            .get_object()
+            .bucket(&range.bucket)
+            .key(&range.key)
+            .set_if_match(range.etag.clone())
+            .range(format!(
+                "bytes={}-{}",
+                range.offset,
+                range.offset + range.len - 1
+            ))
+            .send()
+            .await
+            .map_err(|e| map_sdk_error(e, ErrorCode::ObjectNotFound))?;
+        // Without Range support the server sends the object from its start,
+        // which would put the wrong bytes into this part.
+        if output.content_range().is_none() && range.len != range.size {
+            return Err(AppError::new(
+                ErrorCode::OperationUnsupported,
+                "The source storage ignored a byte-range request, so this large file can't be copied.",
+            ));
+        }
+        Some(output.body)
+    };
+
+    Ok(stream::try_unfold(
+        (body, range.len),
+        |(body, remaining)| async move {
+            let Some(mut body) = body.filter(|_| remaining > 0) else {
+                return Ok(None);
+            };
+            match body.try_next().await.map_err(std::io::Error::other)? {
+                Some(mut chunk) => {
+                    chunk.truncate(usize::try_from(remaining).unwrap_or(usize::MAX));
+                    let left = remaining - chunk.len() as u64;
+                    Ok(Some((chunk, (Some(body), left))))
+                }
+                None => Err(std::io::Error::new(
+                    std::io::ErrorKind::UnexpectedEof,
+                    "The source ended before the expected size.",
+                )),
+            }
+        },
+    ))
+}
+
 fn open_range(path: &std::path::Path, offset: u64) -> std::io::Result<tokio::fs::File> {
     let mut file = std::fs::File::open(path)?;
     file.seek(SeekFrom::Start(offset))?;
     Ok(tokio::fs::File::from_std(file))
 }
 
+type ByteChunks = Pin<Box<dyn Stream<Item = std::io::Result<Bytes>> + Send>>;
+
 struct CountingBody {
-    stream: Option<ReaderStream<tokio::io::Take<tokio::fs::File>>>,
+    /// The mutex only makes the body `Sync`, as the SDK requires; polling
+    /// has exclusive access and never locks.
+    stream: Option<Mutex<ByteChunks>>,
     error: Option<std::io::Error>,
     /// Whether this attempt has begun; the first poll resets the counter.
     started: bool,
     counter: Arc<AtomicU64>,
     len: u64,
+}
+
+impl CountingBody {
+    fn new(
+        stream: impl Stream<Item = std::io::Result<Bytes>> + Send + 'static,
+        counter: Arc<AtomicU64>,
+        len: u64,
+    ) -> Self {
+        Self {
+            stream: Some(Mutex::new(Box::pin(stream))),
+            error: None,
+            started: false,
+            counter,
+            len,
+        }
+    }
 }
 
 impl Body for CountingBody {
@@ -83,7 +200,8 @@ impl Body for CountingBody {
         let Some(stream) = this.stream.as_mut() else {
             return Poll::Ready(None);
         };
-        match ready!(Pin::new(stream).poll_next(cx)) {
+        let stream = stream.get_mut().expect("body stream poisoned");
+        match ready!(stream.as_mut().poll_next(cx)) {
             Some(Ok(chunk)) => {
                 this.counter
                     .fetch_add(chunk.len() as u64, Ordering::Relaxed);

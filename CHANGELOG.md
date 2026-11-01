@@ -2,6 +2,13 @@
 
 Notable changes to Bucklane. Versions follow [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Added
+
+- **What's new.** After an update, Bucklane shows what changed in the new version once; open it again from **About → What's new**. **About → Updates** also shows the new version's changes before you install it.
+- **Copy or move to another bucket or provider.** Copy or move files or whole folders to any bucket on the same or another connection, for example from Amazon S3 to Cloudflare R2, from the **⋯** menu (**Copy to another bucket…**, **Move to another bucket…**) or for several selected items (**Copy or move to…**). They run in the transfer queue with progress, cancel, and retry; they are streamed from source to destination without touching your disk, keep their folder structure (empty folders included), content type, and metadata, and ask before replacing anything. A move deletes each original only after its copy is verified and only if the original didn't change; otherwise it's kept and flagged.
+
 ## 0.8.0 — 2026-11-01
 
 ### Added

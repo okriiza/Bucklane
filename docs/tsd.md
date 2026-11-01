@@ -1075,26 +1075,22 @@ A download must never overwrite an important file directly before the operation 
 - **Pause** (`pause_transfer`, downloads only) cancels the run like Cancel, but keeps the temporary file. The row becomes `FAILED` with error code `PAUSED` (`TransferDto.paused`), so the status schema is unchanged. The UI shows it as Paused with **Resume**, it is not counted as failed, and clearing history keeps it. Cancel still deletes the temporary file. `retry_transfer` also accepts `CANCELED` rows, which start over.
 - Uploads are not resumed yet; an interrupted multipart upload is aborted and retried from the start.
 
-## 9.5 Retry Policy
+## 9.5 Copy Between Buckets and Connections
 
-Retry is performed only for errors worth retrying, for example:
+`enqueue_copy` copies or moves (`mode: COPY | MOVE`) objects or whole folders to another bucket, on the same or another connection. Each object becomes a `COPY` transfer in the normal queue (progress, cancel, retry, concurrency limit). The destination is the transfer's `connection_id` / `bucket` / `object_key`; the source is stored in `source_connection_id`, `source_connection_name_snapshot`, `source_bucket`, and `source_key`. `local_path` is empty.
 
-- Temporary network errors.
-- Connection reset.
-- Selected server 5xx responses.
-- Throttling.
+Planning mirrors downloads: a folder key is listed recursively (at most `MAX_FOLDER_FILES` objects) and recreated inside the destination folder, so `media/brand/logo.svg` copied into `archive/` becomes `archive/brand/logo.svg`. Folder markers are copied too, including the folder's own marker (which listings leave out), so empty folders survive and a move leaves nothing behind. Existing destinations follow the transfer conflict policy (`ASK`, `SKIP`, `OVERWRITE`, `RENAME`); folder plans gather the destination's keys once instead of one HEAD per object. Copying an object onto itself, moving a folder into itself, and destination keys longer than 1,024 bytes are rejected per item.
 
-No automatic retry on:
+The bytes are streamed through Bucklane; there is no server-side copy between connections, because the two connections have different credentials and may be different providers:
 
-- Invalid credentials.
-- Access denied.
-- Invalid object key.
-- Unsupported operation.
-- Permanent validation error.
+1. HEAD the source for its size, ETag, and headers.
+2. Re-check that the destination is still free unless the user chose to overwrite.
+3. Below the multipart threshold, one PUT; otherwise a multipart upload with the configured part size and 4 parts in flight. Each part's body is a ranged GET of the source, with `If-Match` on the ETag from step 1, so every byte comes from the same version. Bodies are rebuildable: an SDK retry sends a new GET. Nothing is written to disk.
+4. A server that ignores `Range` would return the object from its start; this is detected (no `Content-Range`) and the copy fails rather than storing wrong bytes.
+5. Verify the destination size.
+6. Move only (`source_delete_after_copy = 1`): HEAD the source again and delete it only if its ETag still equals the one from step 1. If it changed, has no ETag, or cannot be deleted, the original is kept: the transfer still completes (the copy is valid) with `error_code = 'SOURCE_KEPT'` and the reason, shown as a warning (`sourceKept` in the DTO). A source that is already gone counts as moved.
 
-Retry uses exponential backoff with jitter and an attempt limit.
-
-Non-idempotent operations or operations with destructive effects require a dedicated retry policy.
+Content-Type, Cache-Control, Content-Disposition, Content-Encoding, Content-Language, and user metadata are copied. Storage class, ACLs, encryption settings, and tags belong to the source provider and are not. A failing source surfaces in the SDK only as a generic send error, so the body records the source's own error and the transfer reports that instead. Cancel and failure abort the multipart upload like an upload does; copies cannot be paused. Deleting either connection sets its column to NULL; a copy whose source connection is gone cannot be retried, and deleting a connection is blocked while a copy reads from or writes to it.
 
 ## 9.6 Copy / Move / Rename Safety
 
@@ -1117,6 +1113,27 @@ The MVP must block copy/move for sizes or providers that are not yet safely supp
 An object ETag must not always be assumed to be an MD5 hash of the content.
 
 Concurrent modification and versioning must be considered so that a source that has changed is not deleted accidentally.
+
+## 9.7 Retry Policy
+
+Retry is performed only for errors worth retrying, for example:
+
+- Temporary network errors.
+- Connection reset.
+- Selected server 5xx responses.
+- Throttling.
+
+No automatic retry on:
+
+- Invalid credentials.
+- Access denied.
+- Invalid object key.
+- Unsupported operation.
+- Permanent validation error.
+
+Retry uses exponential backoff with jitter and an attempt limit.
+
+Non-idempotent operations or operations with destructive effects require a dedicated retry policy.
 
 # 10. Frontend Architecture
 

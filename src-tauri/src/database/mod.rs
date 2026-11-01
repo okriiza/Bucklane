@@ -243,4 +243,43 @@ mod tests {
         .await;
         assert!(result.is_err());
     }
+
+    #[tokio::test]
+    async fn copy_migration_keeps_transfers_and_parts() {
+        let pool = sqlite::open_in_memory().await.unwrap();
+        migrations::run_before(&pool, 202611020001).await.unwrap();
+        insert_connection(&pool, "c1", "aws").await.unwrap();
+        insert_transfer(&pool, "t1", "c1").await;
+        sqlx::query(
+            "INSERT INTO transfer_parts (id, transfer_id, part_number, etag, size_bytes)
+             VALUES ('p1', 't1', 1, 'etag', 100)",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        migrations::run(&pool).await.unwrap();
+
+        assert_eq!(count(&pool, "SELECT COUNT(*) FROM transfers").await, 1);
+        assert_eq!(count(&pool, "SELECT COUNT(*) FROM transfer_parts").await, 1);
+        let copy = "INSERT INTO transfers
+                (id, connection_id, connection_name_snapshot, direction, bucket, object_key,
+                 local_path, created_at, source_connection_name_snapshot, source_bucket, source_key)
+             VALUES (?, 'c1', 'Test', 'COPY', 'b', 'k', '', '2026-11-02T00:00:00Z', ?, 'src', 'k')";
+        assert!(
+            sqlx::query(copy)
+                .bind("t2")
+                .bind(None::<String>)
+                .execute(&pool)
+                .await
+                .is_err(),
+            "a copy needs its source"
+        );
+        sqlx::query(copy)
+            .bind("t3")
+            .bind("Source")
+            .execute(&pool)
+            .await
+            .unwrap();
+    }
 }

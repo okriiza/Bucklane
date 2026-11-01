@@ -1,7 +1,7 @@
 use sqlx::sqlite::SqliteRow;
 use sqlx::{Row, SqlitePool};
 
-use crate::domain::transfer::{StoredTransfer, TransferDirection, TransferStatus};
+use crate::domain::transfer::{StoredTransfer, TransferDirection, TransferSource, TransferStatus};
 use crate::errors::AppError;
 
 macro_rules! columns {
@@ -9,7 +9,8 @@ macro_rules! columns {
         "id, connection_id, connection_name_snapshot, direction, bucket, object_key, local_path, \
          bytes_total, bytes_transferred, status, retry_count, error_code, error_message, \
          multipart_upload_id, overwrite, resume_etag, resume_offset, created_at, started_at, \
-         completed_at"
+         completed_at, source_connection_id, source_connection_name_snapshot, source_bucket, \
+         source_key, source_delete_after_copy"
     };
 }
 
@@ -30,7 +31,7 @@ impl TransferRepository {
         sqlx::query(concat!(
             "INSERT INTO transfers (",
             columns!(),
-            ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+            ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
         ))
         .bind(&t.id)
         .bind(&t.connection_id)
@@ -52,6 +53,15 @@ impl TransferRepository {
         .bind(&t.created_at)
         .bind(&t.started_at)
         .bind(&t.completed_at)
+        .bind(t.source.as_ref().and_then(|s| s.connection_id.as_deref()))
+        .bind(
+            t.source
+                .as_ref()
+                .map(|s| s.connection_name_snapshot.as_str()),
+        )
+        .bind(t.source.as_ref().map(|s| s.bucket.as_str()))
+        .bind(t.source.as_ref().map(|s| s.key.as_str()))
+        .bind(t.source.as_ref().is_some_and(|s| s.delete_after_copy))
         .execute(&self.pool)
         .await?;
         Ok(())
@@ -217,6 +227,21 @@ impl TransferRepository {
 fn from_row(row: &SqliteRow) -> Result<StoredTransfer, AppError> {
     let direction: String = row.try_get("direction")?;
     let status: String = row.try_get("status")?;
+    let source_bucket: Option<String> = row.try_get("source_bucket")?;
+    let source = match source_bucket {
+        Some(bucket) => Some(TransferSource {
+            connection_id: row.try_get("source_connection_id")?,
+            connection_name_snapshot: row
+                .try_get::<Option<String>, _>("source_connection_name_snapshot")?
+                .unwrap_or_default(),
+            bucket,
+            key: row
+                .try_get::<Option<String>, _>("source_key")?
+                .unwrap_or_default(),
+            delete_after_copy: row.try_get("source_delete_after_copy")?,
+        }),
+        None => None,
+    };
     Ok(StoredTransfer {
         id: row.try_get("id")?,
         connection_id: row.try_get("connection_id")?,
@@ -237,6 +262,7 @@ fn from_row(row: &SqliteRow) -> Result<StoredTransfer, AppError> {
         overwrite: row.try_get("overwrite")?,
         resume_etag: row.try_get("resume_etag")?,
         resume_offset: row.try_get("resume_offset")?,
+        source,
         created_at: row.try_get("created_at")?,
         started_at: row.try_get("started_at")?,
         completed_at: row.try_get("completed_at")?,

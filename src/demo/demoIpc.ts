@@ -172,7 +172,7 @@ function listObjects(prefix: string) {
 
 function transfer(
   id: string,
-  direction: "UPLOAD" | "DOWNLOAD",
+  direction: "UPLOAD" | "DOWNLOAD" | "COPY",
   key: string,
   bucket: string,
   total: number,
@@ -188,7 +188,8 @@ function transfer(
     direction,
     bucket,
     objectKey: key,
-    localFileName: key.split("/").pop(),
+    localFileName: direction === "COPY" ? "" : key.split("/").pop(),
+    source: null as Record<string, string | boolean> | null,
     bytesTotal: total,
     bytesTransferred: done,
     status,
@@ -199,6 +200,7 @@ function transfer(
     // An interrupted download keeps its partial file and can resume.
     resumableBytes: direction === "DOWNLOAD" && status === "FAILED" && done > 0 ? done : null,
     paused: false,
+    sourceKept: false,
     createdAt: ago(minutes),
     startedAt: ago(minutes),
     completedAt: status === "RUNNING" || status === "QUEUED" ? null : ago(minutes - 1),
@@ -206,6 +208,27 @@ function transfer(
 }
 
 const transfers = [
+  {
+    ...transfer(
+      "t0",
+      "COPY",
+      "brand/brand-guidelines-v4.pdf",
+      "site-assets",
+      12_582_912,
+      12_582_912,
+      "COMPLETED",
+      3,
+    ),
+    connectionId: "c-r2",
+    connectionNameSnapshot: "Website CDN",
+    source: {
+      connectionId: "c-aws",
+      connectionNameSnapshot: "Production assets",
+      bucket: "media-originals",
+      key: "marketing/brand-guidelines-v4.pdf",
+      deleteAfterCopy: false,
+    },
+  },
   transfer(
     "t1",
     "UPLOAD",
@@ -372,7 +395,11 @@ function respond(cmd: string, args: Record<string, unknown> = {}): unknown {
     case "open_support_page":
       return null;
     case "check_for_update":
-      return { version: "0.6.0", currentVersion: "0.5.0" };
+      return {
+        version: "0.6.0",
+        currentVersion: "0.5.0",
+        notes: "### Added\n\n- **Copy to another bucket or provider.**\n- Public URLs.",
+      };
     case "install_update":
     case "open_release_page":
     case "restart_app":
@@ -407,6 +434,14 @@ function respond(cmd: string, args: Record<string, unknown> = {}): unknown {
         url: `https://${String(args.bucket)}.s3.ap-southeast-1.amazonaws.com/${String(args.key)}`,
         baseUrl: null,
       };
+    case "enqueue_copy": {
+      const input = args.input as { keys: string[]; destinationPrefix: string };
+      return input.keys.map((key, i) => ({
+        kind: "queued",
+        transferId: `copy-${i}`,
+        key: `${input.destinationPrefix}${key.split("/").filter(Boolean).pop()}`,
+      }));
+    }
     case "set_bucket_public_url":
       return (args.input as { baseUrl: string | null }).baseUrl;
     case "create_share_link": {

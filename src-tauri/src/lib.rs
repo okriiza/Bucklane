@@ -75,6 +75,7 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             commands::files::pick_download_directory,
             commands::transfers::enqueue_upload,
             commands::transfers::enqueue_download,
+            commands::transfers::enqueue_copy,
             commands::transfers::list_transfers,
             commands::transfers::get_transfer,
             commands::transfers::cancel_transfer,
