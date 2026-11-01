@@ -1,6 +1,7 @@
 <script setup lang="ts">
+import { Check } from "@lucide/vue";
 import { PopoverAnchor, PopoverContent, PopoverPortal, PopoverRoot } from "reka-ui";
-import { computed, ref, useId, watch, type HTMLAttributes } from "vue";
+import { computed, nextTick, onBeforeUnmount, ref, useId, watch, type HTMLAttributes } from "vue";
 
 import Input from "@/components/ui/input/Input.vue";
 
@@ -21,10 +22,25 @@ const highlighted = ref(-1);
 const listId = useId();
 const input = ref<InstanceType<typeof Input> | null>(null);
 
+// The whole list while the value is one of the suggestions (just picked or
+// prefilled), so another can be chosen; otherwise the matches.
 const matches = computed(() => {
   const query = model.value.trim().toLowerCase();
-  return props.suggestions.filter((s) => s !== model.value && s.toLowerCase().includes(query));
+  if (!query || props.suggestions.includes(model.value)) return props.suggestions;
+  return props.suggestions.filter((s) => s.toLowerCase().includes(query));
 });
+const list = ref<HTMLElement | null>(null);
+const scrolled = ref({ top: false, bottom: false });
+
+/** Which edges have more items beyond them, for the fade hints. */
+function measure() {
+  const el = list.value;
+  if (!el) return;
+  scrolled.value = {
+    top: el.scrollTop > 0,
+    bottom: el.scrollTop + el.clientHeight < el.scrollHeight - 1,
+  };
+}
 const visible = computed(() => open.value && matches.value.length > 0);
 
 watch(matches, () => (highlighted.value = -1));
@@ -33,6 +49,30 @@ function pick(value: string) {
   model.value = value;
   open.value = false;
 }
+
+// The list's height settles only after the popover is positioned.
+const resizes = new ResizeObserver(() => measure());
+watch(list, (el, previous) => {
+  if (previous) resizes.unobserve(previous);
+  if (el) resizes.observe(el);
+});
+onBeforeUnmount(() => resizes.disconnect());
+
+// Opening highlights the current value, if it is a suggestion.
+watch(visible, async (isVisible) => {
+  if (!isVisible) return;
+  highlighted.value = matches.value.indexOf(model.value);
+  await nextTick();
+  measure();
+});
+
+// Keep the highlighted row in view while moving with the arrow keys.
+watch(highlighted, async (index) => {
+  await nextTick();
+  if (index >= 0)
+    document.getElementById(`${listId}-${index}`)?.scrollIntoView({ block: "nearest" });
+  measure();
+});
 
 function onKeydown(event: KeyboardEvent) {
   if (event.key === "ArrowDown" || event.key === "ArrowUp") {
@@ -76,7 +116,6 @@ function isInput(target: EventTarget | null) {
         :aria-controls="listId"
         :aria-activedescendant="highlighted >= 0 ? `${listId}-${highlighted}` : undefined"
         autocomplete="off"
-        @focus="open = true"
         @click="open = true"
         @input="open = true"
         @blur="open = false"
@@ -85,28 +124,45 @@ function isInput(target: EventTarget | null) {
     </PopoverAnchor>
     <PopoverPortal>
       <PopoverContent
-        :id="listId"
-        role="listbox"
         align="start"
         :side-offset="4"
-        class="bg-popover text-popover-foreground z-50 max-h-56 w-(--reka-popover-trigger-width) overflow-auto rounded-lg border p-1 shadow-[var(--shadow-float)]"
+        :collision-padding="12"
+        class="bg-popover text-popover-foreground relative z-50 w-(--reka-popover-trigger-width) overflow-hidden rounded-lg border shadow-[var(--shadow-float)]"
         @open-auto-focus.prevent
         @close-auto-focus.prevent
         @interact-outside="(event) => isInput(event.target) && event.preventDefault()"
       >
         <div
-          v-for="(value, index) in matches"
-          :id="`${listId}-${index}`"
-          :key="value"
-          role="option"
-          :aria-selected="index === highlighted"
-          class="cursor-default truncate rounded-md px-2 py-1.5 font-mono text-xs select-none"
-          :class="index === highlighted ? 'bg-accent' : 'hover:bg-accent'"
-          @mousedown.prevent="pick(value)"
-          @mousemove="highlighted = index"
+          :id="listId"
+          ref="list"
+          role="listbox"
+          class="max-h-[min(13.5rem,calc(var(--reka-popover-content-available-height)-0.5rem))] scroll-py-5 overflow-auto p-1"
+          @scroll="measure"
         >
-          {{ value }}
+          <div
+            v-for="(value, index) in matches"
+            :id="`${listId}-${index}`"
+            :key="value"
+            role="option"
+            :aria-selected="value === model"
+            class="flex cursor-default items-center gap-2 rounded-md px-2 py-1 font-mono text-xs select-none"
+            :class="index === highlighted ? 'bg-accent' : ''"
+            @mousedown.prevent="pick(value)"
+            @mousemove="highlighted = index"
+          >
+            <span class="min-w-0 flex-1 truncate">{{ value }}</span>
+            <Check v-if="value === model" class="text-primary size-3.5 shrink-0" />
+          </div>
         </div>
+        <!-- Fades hint that the list continues. -->
+        <div
+          v-if="scrolled.top"
+          class="from-popover pointer-events-none absolute inset-x-0 top-0 h-5 bg-gradient-to-b"
+        />
+        <div
+          v-if="scrolled.bottom"
+          class="from-popover pointer-events-none absolute inset-x-0 bottom-0 h-5 bg-gradient-to-t"
+        />
       </PopoverContent>
     </PopoverPortal>
   </PopoverRoot>
