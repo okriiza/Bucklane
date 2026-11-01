@@ -2,7 +2,7 @@
 
 Notable changes to Bucklane. Versions follow [Semantic Versioning](https://semver.org/).
 
-## Unreleased
+## 0.8.0 — 2026-11-01
 
 ### Added
 
