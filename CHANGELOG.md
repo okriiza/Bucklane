@@ -10,6 +10,10 @@ Notable changes to Bucklane. Versions follow [Semantic Versioning](https://semve
 - **Edit metadata.** Change a file's Content-Type, Cache-Control, Content-Disposition, Content-Encoding, Content-Language, and custom metadata without uploading it again. The contents stay the same. Storage class, encryption, and a public-read ACL are kept, and nothing is saved if the file changed on the server while you were editing.
 - The details panel shows Cache-Control, Content-Disposition, Content-Encoding, and Content-Language when they are set.
 
+### Changed
+
+- Connections show their provider's logo (Supabase, MinIO, Cloudflare, Wasabi, DigitalOcean) instead of a two-letter monogram. Amazon S3 gets an orange bucket, and custom endpoints a server icon.
+
 ## 0.7.0 — 2026-11-01
 
 ### Added

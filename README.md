@@ -462,3 +462,5 @@ _Be the first!_
 ## License
 
 Bucklane is released under the [MIT License](LICENSE).
+
+Provider names and logos are trademarks of their owners and are shown only to identify which service a connection uses; Bucklane isn't affiliated with or endorsed by them. Logos come from [Simple Icons](https://simpleicons.org); Amazon S3 is shown as a generic bucket.

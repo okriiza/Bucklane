@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { Server } from "@lucide/vue";
 import { computed } from "vue";
 
 import type { ProviderType } from "@/services/tauri";
@@ -7,26 +8,80 @@ const props = withDefaults(defineProps<{ provider: ProviderType; size?: "sm" | "
   size: "sm",
 });
 
-const MONOGRAMS: Record<ProviderType, string> = {
-  aws: "S3",
-  supabase: "SB",
-  minio: "MI",
-  cloudflare_r2: "R2",
-  wasabi: "WA",
-  digitalocean_spaces: "DO",
-  custom: "S3",
+interface Logo {
+  color: string;
+  /** Fill for every path after the first. */
+  accent?: string;
+  /** 24×24 paths. */
+  paths: string[];
+}
+
+// Brand marks from Simple Icons (simpleicons.org). Amazon asked Simple Icons
+// to remove its logos, so Amazon S3 gets a plain bucket in AWS orange instead.
+const LOGOS: Partial<Record<ProviderType, Logo>> = {
+  aws: {
+    color: "#FF9900",
+    accent: "#B86E00",
+    paths: [
+      "M2.5 5.2C2.5 3.43 6.75 2 12 2s9.5 1.43 9.5 3.2l-2.3 15.4C18.98 22.03 15.85 23 12 23s-6.98-.97-7.2-2.4Z",
+      "M12 7.2c-4.42 0-8-.9-8-2s3.58-2 8-2 8 .9 8 2-3.58 2-8 2Z",
+    ],
+  },
+  supabase: {
+    color: "#3FCF8E",
+    paths: [
+      "M11.9 1.036c-.015-.986-1.26-1.41-1.874-.637L.764 12.05C-.33 13.427.65 15.455 2.409 15.455h9.579l.113 7.51c.014.985 1.259 1.408 1.873.636l9.262-11.653c1.093-1.375.113-3.403-1.645-3.403h-9.642z",
+    ],
+  },
+  minio: {
+    color: "#C72E49",
+    paths: [
+      "M13.2072.006c-.6216-.0478-1.2.1943-1.6211.582a2.15 2.15 0 0 0-.0938 3.0352l3.4082 3.5507a3.042 3.042 0 0 1-.664 4.6875l-.463.2383V7.2853a15.4198 15.4198 0 0 0-8.0174 10.4862v.0176l6.5487-3.3281v7.621L13.7794 24V13.6817l.8965-.4629a4.4432 4.4432 0 0 0 1.2207-7.0292l-3.371-3.5254a.7489.7489 0 0 1 .037-1.0547.7522.7522 0 0 1 1.0567.0371l.4668.4863-.006.0059 4.0704 4.2441a.0566.0566 0 0 0 .082 0 .06.06 0 0 0 0-.0703l-3.1406-5.1425-.1484.1425.1484-.1445C14.4945.3926 13.8287.0538 13.2072.006Zm-.9024 9.8652v2.9941l-4.1523 2.1484a13.9787 13.9787 0 0 1 2.7676-3.9277 14.1784 14.1784 0 0 1 1.3847-1.2148z",
+    ],
+  },
+  cloudflare_r2: {
+    color: "#F38020",
+    paths: [
+      "M16.5088 16.8447c.1475-.5068.0908-.9707-.1553-1.3154-.2246-.3164-.6045-.499-1.0615-.5205l-8.6592-.1123a.1559.1559 0 0 1-.1333-.0713c-.0283-.042-.0351-.0986-.021-.1553.0278-.084.1123-.1484.2036-.1562l8.7359-.1123c1.0351-.0489 2.1601-.8868 2.5537-1.9136l.499-1.3013c.0215-.0561.0293-.1128.0147-.168-.5625-2.5463-2.835-4.4453-5.5499-4.4453-2.5039 0-4.6284 1.6177-5.3876 3.8614-.4927-.3658-1.1187-.5625-1.794-.499-1.2026.119-2.1665 1.083-2.2861 2.2856-.0283.31-.0069.6128.0635.894C1.5683 13.171 0 14.7754 0 16.752c0 .1748.0142.3515.0352.5273.0141.083.0844.1475.1689.1475h15.9814c.0909 0 .1758-.0645.2032-.1553l.12-.4268zm2.7568-5.5634c-.0771 0-.1611 0-.2383.0112-.0566 0-.1054.0415-.127.0976l-.3378 1.1744c-.1475.5068-.0918.9707.1543 1.3164.2256.3164.6055.498 1.0625.5195l1.8437.1133c.0557 0 .1055.0263.1329.0703.0283.043.0351.1074.0214.1562-.0283.084-.1132.1485-.204.1553l-1.921.1123c-1.041.0488-2.1582.8867-2.5527 1.914l-.1406.3585c-.0283.0713.0215.1416.0986.1416h6.5977c.0771 0 .1474-.0489.169-.126.1122-.4082.1757-.837.1757-1.2803 0-2.6025-2.125-4.727-4.7344-4.727",
+    ],
+  },
+  wasabi: {
+    color: "#01CD3E",
+    paths: [
+      "M20.483 3.517A11.91 11.91 0 0 0 12 0a11.91 11.91 0 0 0-8.483 3.517A11.91 11.91 0 0 0 0 12a11.91 11.91 0 0 0 3.517 8.483A11.91 11.91 0 0 0 12 24a11.91 11.91 0 0 0 8.483-3.517A11.91 11.91 0 0 0 24 12a11.91 11.91 0 0 0-3.517-8.483Zm1.29 7.387-5.16-4.683-5.285 4.984-2.774 2.615V9.932l4.206-3.994 3.146-2.969c3.163 1.379 5.478 4.365 5.867 7.935zm-.088 2.828a10.632 10.632 0 0 1-1.025 2.951l-2.952-2.668v-3.87Zm-8.183-11.47-2.227 2.103-2.739 2.598v-4.17A9.798 9.798 0 0 1 12 2.155c.513 0 1.007.035 1.502.106zM6.398 13.891l-4.083-3.658a9.744 9.744 0 0 1 1.078-2.987L6.398 9.95zm0-9.968v3.129l-1.75-1.573a8.623 8.623 0 0 1 1.75-1.556Zm-4.189 9.102 5.284 4.736 5.302-4.983 2.74-2.598v3.817l-7.423 7.016a9.823 9.823 0 0 1-5.903-7.988Zm8.306 8.695 5.02-4.754v4.206a9.833 9.833 0 0 1-3.553.654c-.495 0-.99-.035-1.467-.106zm7.176-1.714v-3.11l1.714 1.555a9.604 9.604 0 0 1-1.714 1.555z",
+    ],
+  },
+  digitalocean_spaces: {
+    color: "#0080FF",
+    paths: [
+      "M12.04 0C5.408-.02.005 5.37.005 11.992h4.638c0-4.923 4.882-8.731 10.064-6.855a6.95 6.95 0 014.147 4.148c1.889 5.177-1.924 10.055-6.84 10.064v-4.61H7.391v4.623h4.61V24c7.86 0 13.967-7.588 11.397-15.83-1.115-3.59-3.985-6.446-7.575-7.575A12.8 12.8 0 0012.039 0zM7.39 19.362H3.828v3.564H7.39zm-3.563 0v-2.978H.85v2.978z",
+    ],
+  },
 };
 
-const monogram = computed(() => MONOGRAMS[props.provider]);
+const logo = computed(() => LOGOS[props.provider]);
 </script>
 
-<!-- Neutral monogram tile; provider identity without adding more hues. -->
+<!-- Provider logo on a neutral tile; custom endpoints get a generic server icon. -->
 <template>
   <span
-    class="bg-background text-muted-foreground ring-border inline-flex shrink-0 items-center justify-center rounded-md font-mono font-semibold tracking-tight ring-1 shadow-[var(--shadow-soft)] ring-inset"
-    :class="size === 'lg' ? 'size-11 text-sm' : 'size-7 text-[10px]'"
+    class="bg-background text-muted-foreground ring-border inline-flex shrink-0 items-center justify-center rounded-md ring-1 shadow-[var(--shadow-soft)] ring-inset"
+    :class="size === 'lg' ? 'size-11' : 'size-7'"
     aria-hidden="true"
   >
-    {{ monogram }}
+    <svg
+      v-if="logo"
+      viewBox="0 0 24 24"
+      :fill="logo.color"
+      :class="size === 'lg' ? 'size-6' : 'size-4'"
+    >
+      <path
+        v-for="(d, index) in logo.paths"
+        :key="index"
+        :d="d"
+        :fill="index > 0 ? logo.accent : undefined"
+      />
+    </svg>
+    <Server v-else :class="size === 'lg' ? 'size-5' : 'size-3.5'" />
   </span>
 </template>
