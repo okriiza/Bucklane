@@ -2,6 +2,7 @@
 import { CircleAlert, Info, Plus, SlidersHorizontal, Trash2 } from "@lucide/vue";
 import { computed, ref, watch } from "vue";
 
+import SuggestInput from "@/components/common/SuggestInput.vue";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import Input from "@/components/ui/input/Input.vue";
@@ -29,6 +30,7 @@ const CONTENT_TYPES = [
   "video/mp4",
   "audio/mpeg",
 ];
+const ENCODINGS = ["gzip", "br"];
 const CACHE_CONTROLS = [
   "no-cache",
   "no-store",
@@ -142,11 +144,10 @@ async function save() {
         <div class="grid gap-3">
           <div class="grid gap-1.5">
             <Label for="meta-content-type">Content-Type</Label>
-            <Input
+            <SuggestInput
               id="meta-content-type"
               v-model="contentType"
-              list="meta-content-types"
-              autocomplete="off"
+              :suggestions="CONTENT_TYPES"
               spellcheck="false"
               placeholder="application/octet-stream"
               class="font-mono text-xs"
@@ -154,11 +155,10 @@ async function save() {
           </div>
           <div class="grid gap-1.5">
             <Label for="meta-cache-control">Cache-Control</Label>
-            <Input
+            <SuggestInput
               id="meta-cache-control"
               v-model="cacheControl"
-              list="meta-cache-controls"
-              autocomplete="off"
+              :suggestions="CACHE_CONTROLS"
               spellcheck="false"
               placeholder="public, max-age=3600"
               class="font-mono text-xs"
@@ -166,11 +166,10 @@ async function save() {
           </div>
           <div class="grid gap-1.5">
             <Label for="meta-content-disposition">Content-Disposition</Label>
-            <Input
+            <SuggestInput
               id="meta-content-disposition"
               v-model="contentDisposition"
-              list="meta-dispositions"
-              autocomplete="off"
+              :suggestions="dispositions"
               spellcheck="false"
               placeholder="inline"
               class="font-mono text-xs"
@@ -179,11 +178,10 @@ async function save() {
           <div class="grid gap-3 sm:grid-cols-2">
             <div class="grid gap-1.5">
               <Label for="meta-content-encoding">Content-Encoding</Label>
-              <Input
+              <SuggestInput
                 id="meta-content-encoding"
                 v-model="contentEncoding"
-                list="meta-encodings"
-                autocomplete="off"
+                :suggestions="ENCODINGS"
                 spellcheck="false"
                 placeholder="gzip"
                 class="font-mono text-xs"
@@ -265,20 +263,6 @@ async function save() {
             {{ busy ? $t("metadata.saving") : $t("metadata.save") }}
           </Button>
         </div>
-
-        <datalist id="meta-content-types">
-          <option v-for="value in CONTENT_TYPES" :key="value" :value="value" />
-        </datalist>
-        <datalist id="meta-cache-controls">
-          <option v-for="value in CACHE_CONTROLS" :key="value" :value="value" />
-        </datalist>
-        <datalist id="meta-dispositions">
-          <option v-for="value in dispositions" :key="value" :value="value" />
-        </datalist>
-        <datalist id="meta-encodings">
-          <option value="gzip" />
-          <option value="br" />
-        </datalist>
       </form>
 
       <template v-else>

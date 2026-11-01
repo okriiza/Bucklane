@@ -3,6 +3,7 @@ import { ArrowRight, CopyPlus, FolderInput, Info } from "@lucide/vue";
 import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 
+import SuggestInput from "@/components/common/SuggestInput.vue";
 import ProviderMark from "@/components/connections/ProviderMark.vue";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
@@ -180,18 +181,14 @@ function submit() {
         </div>
         <div class="grid gap-1.5">
           <Label for="copy-bucket">{{ $t("copyTo.bucket") }}</Label>
-          <Input
+          <SuggestInput
             id="copy-bucket"
             v-model="destinationBucket"
-            list="copy-buckets"
-            autocomplete="off"
+            :suggestions="buckets"
             spellcheck="false"
             :placeholder="bucketsLoading ? $t('explorer.loading') : $t('copyTo.bucketPlaceholder')"
             class="font-mono text-xs"
           />
-          <datalist id="copy-buckets">
-            <option v-for="name in buckets" :key="name" :value="name" />
-          </datalist>
         </div>
         <div class="grid gap-1.5">
           <Label for="copy-folder">
