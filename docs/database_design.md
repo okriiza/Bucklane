@@ -44,6 +44,7 @@ Persistent secrets (such as S3 secret access keys) are stored in the operating s
 ```mermaid
 erDiagram
     CONNECTIONS ||--o{ CONNECTION_BUCKETS : bookmarks
+    CONNECTIONS ||--o{ BUCKET_PUBLIC_URLS : "public base URLs"
     CONNECTIONS o|--o{ TRANSFERS : creates
     TRANSFERS ||--o{ TRANSFER_PARTS : tracks
 
@@ -67,6 +68,13 @@ erDiagram
         TEXT bucket_name
         TEXT display_name
         TEXT created_at
+    }
+
+    BUCKET_PUBLIC_URLS {
+        TEXT connection_id PK
+        TEXT bucket_name PK
+        TEXT base_url
+        TEXT updated_at
     }
 
     TRANSFERS {
@@ -205,6 +213,19 @@ Stores a typed set of application preferences using JSON-encoded values.
 
 **Rules:** validate each value in SettingsService; do not write credentials or arbitrary application objects here.
 
+### 3.6 `bucket_public_urls`
+
+Base URL (custom domain or CDN) that serves a bucket's public objects; "Copy public URL" appends the percent-encoded key to it instead of using the S3 endpoint address.
+
+| Column          | Type | Constraints  | Description                                 |
+| --------------- | ---- | ------------ | ------------------------------------------- |
+| `connection_id` | TEXT | PK, FK       | Parent connection                           |
+| `bucket_name`   | TEXT | PK           | Exact bucket name                           |
+| `base_url`      | TEXT | NOT NULL     | `http(s)` URL without trailing slash, query |
+| `updated_at`    | TEXT | NOT NULL     | Last updated timestamp                      |
+
+**Rules:** `PRIMARY KEY(connection_id, bucket_name)`; deleted with the connection. Validated by `normalize_public_base_url` (scheme, host, no credentials, query, or fragment). Not a secret.
+
 ## 4. Initial Migration
 
 **Location:** `src-tauri/migrations/202610140001_initial_schema.sql`
@@ -317,6 +338,8 @@ At application startup:
 | File | Change |
 | --- | --- |
 | `202610150001_transfer_overwrite.sql` | Adds `transfers.overwrite` so the user's conflict decision is honored at download finalization and on retry. |
+| `202610310001_download_resume.sql` | Adds `transfers.resume_etag` and `transfers.resume_offset` for resumable downloads. |
+| `202611010001_bucket_public_urls.sql` | Adds `bucket_public_urls` (§3.6). |
 
 ## 5. Default Settings
 
@@ -366,7 +389,7 @@ Because SQLite and the OS credential store are separate systems, this is **not**
 ### 6.3 Delete connection
 
 1. Check and stop active transfers using the connection.
-2. Delete connection metadata and cascaded bookmarks in SQLite.
+2. Delete connection metadata and cascaded bookmarks and public base URLs in SQLite.
 3. Preserve transfer history using `connection_name_snapshot` and nullable `connection_id`.
 4. Remove the no-longer-referenced secret from the OS credential store.
 5. Surface a cleanup warning if secret deletion fails.

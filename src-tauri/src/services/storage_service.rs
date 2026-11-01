@@ -1,31 +1,40 @@
+use std::time::Duration;
+
 use chrono::{SecondsFormat, Utc};
 
 use crate::domain::bucket::{
-    AddBucketBookmarkInput, BucketBookmark, BucketInfo, UpdateBucketBookmarkInput,
-    validate_bucket_name,
+    AddBucketBookmarkInput, BucketBookmark, BucketInfo, PublicUrl, SetBucketPublicUrlInput,
+    UpdateBucketBookmarkInput, normalize_public_base_url, validate_bucket_name,
 };
+use crate::domain::connection::ProviderType;
 use crate::errors::{AppError, ErrorCode};
-use crate::providers::s3_provider::S3StorageProvider;
+use crate::providers::s3_provider::{S3StorageProvider, encode_key};
 use crate::providers::storage_provider::StorageProvider;
 use crate::repositories::bucket_bookmark_repository::BucketBookmarkRepository;
+use crate::repositories::bucket_public_url_repository::BucketPublicUrlRepository;
 use crate::services::connection_service::ConnectionService;
+use crate::services::object_service::validate_key;
 
 const MAX_DISPLAY_NAME_LEN: usize = 100;
 
-/// Bucket listing and per-connection bucket bookmarks (BKT-001, BKT-005).
+/// Bucket listing, per-connection bucket bookmarks (BKT-001, BKT-005), and
+/// public object URLs.
 pub struct StorageService<'a> {
     connections: ConnectionService<'a>,
     bookmarks: BucketBookmarkRepository<'a>,
+    public_urls: BucketPublicUrlRepository<'a>,
 }
 
 impl<'a> StorageService<'a> {
     pub fn new(
         connections: ConnectionService<'a>,
         bookmarks: BucketBookmarkRepository<'a>,
+        public_urls: BucketPublicUrlRepository<'a>,
     ) -> Self {
         Self {
             connections,
             bookmarks,
+            public_urls,
         }
     }
 
@@ -104,6 +113,86 @@ impl<'a> StorageService<'a> {
             Err(bookmark_not_found())
         }
     }
+
+    /// Address of an object without a signature: the bucket's base URL if set,
+    /// otherwise the provider's own address for it. Whether it works depends
+    /// on the object being public, which is not checked.
+    pub async fn public_url(
+        &self,
+        connection_id: &str,
+        bucket: &str,
+        key: &str,
+    ) -> Result<PublicUrl, AppError> {
+        let bucket = validate_bucket_name(bucket)?;
+        validate_key(key)?;
+        if key.ends_with('/') {
+            return Err(AppError::new(
+                ErrorCode::OperationUnsupported,
+                "Folders have no URL; copy the URL of a file instead.",
+            ));
+        }
+        let connection = self.connections.get(connection_id).await?;
+
+        if let Some(base_url) = self.public_urls.get(connection_id, bucket).await? {
+            let url = format!("{base_url}/{}", encode_key(key));
+            return Ok(PublicUrl {
+                url: Some(url),
+                base_url: Some(base_url),
+            });
+        }
+        if connection.provider == ProviderType::CloudflareR2 {
+            return Ok(PublicUrl {
+                url: None,
+                base_url: None,
+            });
+        }
+
+        // Presigning (local, no request) yields the exact address the SDK
+        // uses: path or virtual-hosted style, and the bucket's region on AWS.
+        let client = self
+            .connections
+            .client_for_bucket(connection_id, bucket)
+            .await?;
+        let signed = S3StorageProvider::new(client)
+            .presign_get(bucket, key, Duration::from_secs(60))
+            .await?;
+        Ok(PublicUrl {
+            url: Some(unsigned_url(connection.provider, &signed)),
+            base_url: None,
+        })
+    }
+
+    pub async fn set_public_base_url(
+        &self,
+        input: SetBucketPublicUrlInput,
+    ) -> Result<Option<String>, AppError> {
+        let bucket = validate_bucket_name(&input.bucket)?;
+        self.connections.get(&input.connection_id).await?;
+        let Some(value) = input.base_url.as_deref().filter(|v| !v.trim().is_empty()) else {
+            self.public_urls
+                .delete(&input.connection_id, bucket)
+                .await?;
+            return Ok(None);
+        };
+        let base_url = normalize_public_base_url(value)?;
+        let now = Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true);
+        self.public_urls
+            .set(&input.connection_id, bucket, &base_url, &now)
+            .await?;
+        Ok(Some(base_url))
+    }
+}
+
+/// Strips the signature from a presigned URL. Supabase serves public objects
+/// from its own path next to the S3 API rather than from the S3 API itself.
+fn unsigned_url(provider: ProviderType, presigned: &str) -> String {
+    let url = presigned.split_once('?').map_or(presigned, |(url, _)| url);
+    if provider == ProviderType::Supabase
+        && let Some((origin, object)) = url.split_once("/storage/v1/s3/")
+    {
+        return format!("{origin}/storage/v1/object/public/{object}");
+    }
+    url.to_owned()
 }
 
 fn normalize_display_name(name: Option<&str>) -> Result<Option<String>, AppError> {
@@ -170,7 +259,33 @@ mod tests {
             StorageService::new(
                 ConnectionService::new(&self.pool, &self.store, &self.clients),
                 BucketBookmarkRepository::new(&self.pool),
+                BucketPublicUrlRepository::new(&self.pool),
             )
+        }
+
+        async fn connection(&self, provider: ProviderType, endpoint: &str) -> String {
+            ConnectionService::new(&self.pool, &self.store, &self.clients)
+                .create(ConnectionConfigInput {
+                    name: "Other".into(),
+                    provider,
+                    endpoint: Some(endpoint.into()),
+                    region: "us-east-1".into(),
+                    access_key_id: "key".into(),
+                    secret_access_key: Some(SecretString::new("secret")),
+                    force_path_style: true,
+                    allow_insecure_http: true,
+                })
+                .await
+                .unwrap()
+                .id
+        }
+
+        fn set_base(&self, connection_id: &str, base_url: Option<&str>) -> SetBucketPublicUrlInput {
+            SetBucketPublicUrlInput {
+                connection_id: connection_id.into(),
+                bucket: "photos".into(),
+                base_url: base_url.map(str::to_owned),
+            }
         }
 
         fn add(&self, bucket: &str) -> AddBucketBookmarkInput {
@@ -238,5 +353,89 @@ mod tests {
                 .is_empty()
         );
         assert!(f.service().remove_bookmark(&bookmark.id).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn public_url_prefers_the_bucket_base_url() {
+        let f = Fixture::new().await;
+        let id = f
+            .connection(ProviderType::Minio, "http://localhost:9000")
+            .await;
+        let key = "cats/a b.jpg";
+
+        let direct = f.service().public_url(&id, "photos", key).await.unwrap();
+        assert_eq!(
+            direct.url.as_deref(),
+            Some("http://localhost:9000/photos/cats/a%20b.jpg")
+        );
+        assert_eq!(direct.base_url, None);
+
+        let saved = f
+            .service()
+            .set_public_base_url(f.set_base(&id, Some("https://cdn.example.com/")))
+            .await
+            .unwrap();
+        assert_eq!(saved.as_deref(), Some("https://cdn.example.com"));
+        let custom = f.service().public_url(&id, "photos", key).await.unwrap();
+        assert_eq!(
+            custom.url.as_deref(),
+            Some("https://cdn.example.com/cats/a%20b.jpg")
+        );
+
+        f.service()
+            .set_public_base_url(f.set_base(&id, Some(" ")))
+            .await
+            .unwrap();
+        let cleared = f.service().public_url(&id, "photos", key).await.unwrap();
+        assert_eq!(cleared.url, direct.url);
+    }
+
+    #[tokio::test]
+    async fn r2_has_no_public_url_without_a_base_url() {
+        let f = Fixture::new().await;
+        let id = f
+            .connection(
+                ProviderType::CloudflareR2,
+                "https://acct.r2.cloudflarestorage.com",
+            )
+            .await;
+        let url = f
+            .service()
+            .public_url(&id, "photos", "a.jpg")
+            .await
+            .unwrap();
+        assert_eq!(url.url, None);
+
+        assert!(
+            f.service()
+                .public_url(&id, "photos", "folder/")
+                .await
+                .is_err(),
+            "folders have no URL"
+        );
+        assert!(
+            f.service()
+                .set_public_base_url(f.set_base(&id, Some("cdn.example.com")))
+                .await
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn unsigned_url_drops_the_signature() {
+        assert_eq!(
+            unsigned_url(
+                ProviderType::Aws,
+                "https://b.s3.us-east-1.amazonaws.com/a%20b.jpg?X-Amz-Signature=abc"
+            ),
+            "https://b.s3.us-east-1.amazonaws.com/a%20b.jpg"
+        );
+        assert_eq!(
+            unsigned_url(
+                ProviderType::Supabase,
+                "https://ref.supabase.co/storage/v1/s3/avatars/u/1.png?X-Amz-Signature=abc"
+            ),
+            "https://ref.supabase.co/storage/v1/object/public/avatars/u/1.png"
+        );
     }
 }

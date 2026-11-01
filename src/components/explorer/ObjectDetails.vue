@@ -1,13 +1,39 @@
 <script setup lang="ts">
-import { Copy, Download, Eye, FolderInput, Link2, Pencil, Trash2, X } from "@lucide/vue";
+import {
+  Copy,
+  Download,
+  Eye,
+  FolderInput,
+  Link2,
+  Pencil,
+  SlidersHorizontal,
+  Trash2,
+  X,
+} from "@lucide/vue";
+
+import { computed } from "vue";
 
 import { Button } from "@/components/ui/button";
 import { useExplorerStore } from "@/stores/explorer";
 import { formatBytes, formatDateTime } from "@/utils/format";
 
 const explorer = useExplorerStore();
+
+/** Optional HTTP headers, shown only when set. */
+const headers = computed(() => {
+  const m = explorer.metadata;
+  if (!m) return [];
+  return [
+    { label: "Cache-Control", value: m.cacheControl },
+    { label: "Content-Disposition", value: m.contentDisposition },
+    { label: "Content-Encoding", value: m.contentEncoding },
+    { label: "Content-Language", value: m.contentLanguage },
+  ].filter((h) => h.value);
+});
 const emit = defineEmits<{
-  action: [action: "preview" | "download" | "share" | "rename" | "copy" | "move" | "delete"];
+  action: [
+    action: "preview" | "download" | "share" | "metadata" | "rename" | "copy" | "move" | "delete",
+  ];
 }>();
 </script>
 
@@ -42,6 +68,9 @@ const emit = defineEmits<{
         </Button>
         <Button variant="outline" size="sm" @click="emit('action', 'share')">
           <Link2 /> {{ $t("share.button") }}
+        </Button>
+        <Button variant="outline" size="sm" @click="emit('action', 'metadata')">
+          <SlidersHorizontal /> {{ $t("metadata.action") }}
         </Button>
         <Button variant="outline" size="sm" @click="emit('action', 'rename')">
           <Pencil /> {{ $t("ops.rename") }}
@@ -91,6 +120,10 @@ const emit = defineEmits<{
         <div v-if="explorer.metadata.contentType">
           <dt class="text-muted-foreground text-xs">{{ $t("explorer.contentType") }}</dt>
           <dd class="font-mono text-xs select-text">{{ explorer.metadata.contentType }}</dd>
+        </div>
+        <div v-for="header in headers" :key="header.label">
+          <dt class="text-muted-foreground text-xs">{{ header.label }}</dt>
+          <dd class="font-mono text-xs break-all select-text">{{ header.value }}</dd>
         </div>
         <div v-if="explorer.metadata.etag">
           <dt class="text-muted-foreground text-xs">ETag</dt>

@@ -20,7 +20,17 @@ import type { SortKey, SortState } from "@/utils/sort";
 import RowActions from "./RowActions.vue";
 
 export type RowAction =
-  "preview" | "download" | "share" | "copyKey" | "copyUri" | "rename" | "copy" | "move" | "delete";
+  | "preview"
+  | "download"
+  | "share"
+  | "copyKey"
+  | "copyUri"
+  | "copyPublicUrl"
+  | "metadata"
+  | "rename"
+  | "copy"
+  | "move"
+  | "delete";
 
 const props = defineProps<{
   entries: StorageObject[];
@@ -190,6 +200,8 @@ function activate(entry: StorageObject) {
             @share="emit('action', 'share', entry)"
             @copy-key="emit('action', 'copyKey', entry)"
             @copy-uri="emit('action', 'copyUri', entry)"
+            @copy-public-url="emit('action', 'copyPublicUrl', entry)"
+            @metadata="emit('action', 'metadata', entry)"
             @rename="emit('action', 'rename', entry)"
             @copy="emit('action', 'copy', entry)"
             @move="emit('action', 'move', entry)"

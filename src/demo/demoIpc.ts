@@ -383,10 +383,32 @@ function respond(cmd: string, args: Record<string, unknown> = {}): unknown {
         size: 4_823_114,
         lastModified: ago(20),
         contentType: "application/pdf",
+        cacheControl: "public, max-age=3600",
+        contentDisposition: null,
+        contentEncoding: null,
+        contentLanguage: null,
         etag: '"9b2cf535f27731c974343645a3985328"',
         storageClass: "STANDARD",
         metadata: { "uploaded-by": "dewi.anggraini", department: "marketing" },
       };
+    case "update_object_metadata": {
+      const input = args.input as { key: string; etag: string; headers: Record<string, unknown> };
+      return {
+        key: input.key,
+        size: 4_823_114,
+        lastModified: new Date().toISOString(),
+        etag: input.etag,
+        storageClass: "STANDARD",
+        ...input.headers,
+      };
+    }
+    case "get_public_url":
+      return {
+        url: `https://${String(args.bucket)}.s3.ap-southeast-1.amazonaws.com/${String(args.key)}`,
+        baseUrl: null,
+      };
+    case "set_bucket_public_url":
+      return (args.input as { baseUrl: string | null }).baseUrl;
     case "create_share_link": {
       const input = args.input as { bucket: string; key: string; expiresInSeconds: number };
       return {

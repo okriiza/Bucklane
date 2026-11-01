@@ -3,7 +3,9 @@ use std::time::Duration;
 use async_trait::async_trait;
 
 use crate::domain::bucket::BucketInfo;
-use crate::domain::object::{DeleteObjectsResult, ListObjectsResponse, ObjectMetadata};
+use crate::domain::object::{
+    DeleteObjectsResult, ListObjectsResponse, ObjectHeaders, ObjectMetadata,
+};
 use crate::errors::AppError;
 
 /// One page of a ListObjectsV2 request.
@@ -39,6 +41,17 @@ pub trait StorageProvider: Send + Sync {
         source_key: &str,
         destination_key: &str,
         if_match: Option<&str>,
+    ) -> Result<(), AppError>;
+
+    /// Replaces the object's headers and user metadata with a server-side
+    /// copy onto itself; the content is unchanged. Fails if the object no
+    /// longer has `etag`.
+    async fn replace_metadata(
+        &self,
+        bucket: &str,
+        key: &str,
+        etag: &str,
+        headers: &ObjectHeaders,
     ) -> Result<(), AppError>;
 
     async fn delete_object(&self, bucket: &str, key: &str) -> Result<(), AppError>;

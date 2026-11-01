@@ -7,11 +7,14 @@ use aws_sdk_s3::error::{ProvideErrorMetadata, SdkError};
 use aws_sdk_s3::presigning::PresigningConfig;
 use aws_sdk_s3::primitives::ByteStream;
 use aws_sdk_s3::primitives::{DateTime, DateTimeFormat};
-use aws_sdk_s3::types::{CommonPrefix, Delete, Object, ObjectIdentifier};
+use aws_sdk_s3::types::{
+    CommonPrefix, Delete, MetadataDirective, Object, ObjectCannedAcl, ObjectIdentifier, Permission,
+};
 
 use crate::domain::bucket::BucketInfo;
 use crate::domain::object::{
-    DeleteFailure, DeleteObjectsResult, ListObjectsResponse, ObjectMetadata, StorageObject,
+    DeleteFailure, DeleteObjectsResult, ListObjectsResponse, ObjectHeaders, ObjectMetadata,
+    StorageObject,
 };
 use crate::errors::{AppError, ErrorCode};
 use crate::providers::storage_provider::{ListQuery, StorageProvider};
@@ -122,6 +125,10 @@ impl StorageProvider for S3StorageProvider {
             size: output.content_length(),
             last_modified: output.last_modified().and_then(format_date),
             content_type: output.content_type().map(str::to_owned),
+            cache_control: output.cache_control().map(str::to_owned),
+            content_disposition: output.content_disposition().map(str::to_owned),
+            content_encoding: output.content_encoding().map(str::to_owned),
+            content_language: output.content_language().map(str::to_owned),
             etag: output.e_tag().map(str::to_owned),
             storage_class: output.storage_class().map(|c| c.as_str().to_owned()),
             metadata: output
@@ -217,6 +224,74 @@ impl StorageProvider for S3StorageProvider {
         Ok(request.uri().to_owned())
     }
 
+    async fn replace_metadata(
+        &self,
+        bucket: &str,
+        key: &str,
+        etag: &str,
+        headers: &ObjectHeaders,
+    ) -> Result<(), AppError> {
+        // A REPLACE copy resets everything it is not given, so carry over the
+        // settings the editor does not show.
+        let current = self
+            .client
+            .head_object()
+            .bucket(bucket)
+            .key(key)
+            .send()
+            .await
+            .map_err(|e| map_sdk_error(e, ErrorCode::ObjectNotFound))?;
+        let expires = current
+            .expires_string()
+            .and_then(|s| DateTime::from_str(s, DateTimeFormat::HttpDate).ok());
+
+        // A copy never keeps the object's ACL. Re-apply the common public-read
+        // case so a public file stays public; providers without ACLs fail
+        // this request and need nothing re-applied.
+        let public_read = match self
+            .client
+            .get_object_acl()
+            .bucket(bucket)
+            .key(key)
+            .send()
+            .await
+        {
+            Ok(acl) => acl.grants().iter().any(|grant| {
+                grant.grantee().and_then(|g| g.uri()) == Some(ALL_USERS_URI)
+                    && matches!(
+                        grant.permission(),
+                        Some(Permission::Read | Permission::FullControl)
+                    )
+            }),
+            Err(_) => false,
+        };
+
+        self.client
+            .copy_object()
+            .bucket(bucket)
+            .key(key)
+            .copy_source(copy_source(bucket, key))
+            .copy_source_if_match(etag)
+            .metadata_directive(MetadataDirective::Replace)
+            .set_content_type(headers.content_type.clone())
+            .set_cache_control(headers.cache_control.clone())
+            .set_content_disposition(headers.content_disposition.clone())
+            .set_content_encoding(headers.content_encoding.clone())
+            .set_content_language(headers.content_language.clone())
+            .set_metadata(Some(headers.metadata.clone().into_iter().collect()))
+            .set_expires(expires)
+            .set_website_redirect_location(current.website_redirect_location().map(str::to_owned))
+            .set_storage_class(current.storage_class().cloned())
+            .set_server_side_encryption(current.server_side_encryption().cloned())
+            .set_ssekms_key_id(current.ssekms_key_id().map(str::to_owned))
+            .set_bucket_key_enabled(current.bucket_key_enabled())
+            .set_acl(public_read.then_some(ObjectCannedAcl::PublicRead))
+            .send()
+            .await
+            .map(|_| ())
+            .map_err(|e| map_sdk_error(e, ErrorCode::ObjectNotFound))
+    }
+
     async fn delete_object(&self, bucket: &str, key: &str) -> Result<(), AppError> {
         self.client
             .delete_object()
@@ -272,9 +347,16 @@ impl StorageProvider for S3StorageProvider {
     }
 }
 
-/// `x-amz-copy-source` value: bucket and URL-encoded key. `/` is kept so the
-/// key's folder structure is preserved.
+const ALL_USERS_URI: &str = "http://acs.amazonaws.com/groups/global/AllUsers";
+
+/// `x-amz-copy-source` value: bucket and URL-encoded key.
 fn copy_source(bucket: &str, key: &str) -> String {
+    format!("{bucket}/{}", encode_key(key))
+}
+
+/// Percent-encodes a key for use in a URL path. `/` is kept so the key's
+/// folder structure is preserved.
+pub fn encode_key(key: &str) -> String {
     let mut encoded = String::with_capacity(key.len());
     for byte in key.bytes() {
         if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'~' | b'/') {
@@ -283,7 +365,7 @@ fn copy_source(bucket: &str, key: &str) -> String {
             encoded.push_str(&format!("%{byte:02X}"));
         }
     }
-    format!("{bucket}/{encoded}")
+    encoded
 }
 
 /// Converts one ListObjectsV2 page into explorer entries: folders first, then
@@ -423,6 +505,10 @@ pub(crate) fn map_service_error(code: Option<&str>, status: u16, not_found: Erro
             } else {
                 "The object does not exist."
             },
+        ),
+        (Some("PreconditionFailed"), _) | (None, 412) => (
+            InvalidInput,
+            "The object changed on the server since it was read. Reload and try again.",
         ),
         (Some("NotImplemented" | "MethodNotAllowed"), _) | (None, 405 | 501) => (
             OperationUnsupported,

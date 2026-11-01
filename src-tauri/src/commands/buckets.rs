@@ -2,7 +2,8 @@ use tauri::State;
 
 use crate::app_state::AppState;
 use crate::domain::bucket::{
-    AddBucketBookmarkInput, BucketBookmark, BucketInfo, UpdateBucketBookmarkInput,
+    AddBucketBookmarkInput, BucketBookmark, BucketInfo, PublicUrl, SetBucketPublicUrlInput,
+    UpdateBucketBookmarkInput,
 };
 use crate::errors::AppError;
 
@@ -61,4 +62,30 @@ pub async fn remove_bucket_bookmark(
     id: String,
 ) -> Result<(), AppError> {
     state.storage()?.remove_bookmark(&id).await
+}
+
+/// Unsigned URL of an object, built from the bucket's base URL if one is set.
+#[tauri::command]
+#[specta::specta]
+pub async fn get_public_url(
+    state: State<'_, AppState>,
+    connection_id: String,
+    bucket: String,
+    key: String,
+) -> Result<PublicUrl, AppError> {
+    state
+        .storage()?
+        .public_url(&connection_id, &bucket, &key)
+        .await
+}
+
+/// Sets or clears the base URL (custom domain or CDN) of a bucket's public
+/// objects. Returns the normalized value.
+#[tauri::command]
+#[specta::specta]
+pub async fn set_bucket_public_url(
+    state: State<'_, AppState>,
+    input: SetBucketPublicUrlInput,
+) -> Result<Option<String>, AppError> {
+    state.storage()?.set_public_base_url(input).await
 }

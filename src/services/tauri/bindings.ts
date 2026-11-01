@@ -35,8 +35,17 @@ export const commands = {
 	addBucketBookmark: (input: AddBucketBookmarkInput) => typedError<BucketBookmark, AppError>(__TAURI_INVOKE("add_bucket_bookmark", { input })),
 	updateBucketBookmark: (input: UpdateBucketBookmarkInput) => typedError<BucketBookmark, AppError>(__TAURI_INVOKE("update_bucket_bookmark", { input })),
 	removeBucketBookmark: (id: string) => typedError<null, AppError>(__TAURI_INVOKE("remove_bucket_bookmark", { id })),
+	/**  Unsigned URL of an object, built from the bucket's base URL if one is set. */
+	getPublicUrl: (connectionId: string, bucket: string, key: string) => typedError<PublicUrl, AppError>(__TAURI_INVOKE("get_public_url", { connectionId, bucket, key })),
+	/**
+	 *  Sets or clears the base URL (custom domain or CDN) of a bucket's public
+	 *  objects. Returns the normalized value.
+	 */
+	setBucketPublicUrl: (input: SetBucketPublicUrlInput) => typedError<string | null, AppError>(__TAURI_INVOKE("set_bucket_public_url", { input })),
 	listObjects: (request: ListObjectsRequest) => typedError<ListObjectsResponse, AppError>(__TAURI_INVOKE("list_objects", { request })),
 	headObject: (connectionId: string, bucket: string, key: string) => typedError<ObjectMetadata, AppError>(__TAURI_INVOKE("head_object", { connectionId, bucket, key })),
+	/**  Replaces an object's headers and user metadata; returns the new metadata. */
+	updateObjectMetadata: (input: UpdateObjectMetadataInput) => typedError<ObjectMetadata, AppError>(__TAURI_INVOKE("update_object_metadata", { input })),
 	/**  Returns the key of the created folder marker. */
 	createFolder: (input: CreateFolderInput) => typedError<string, AppError>(__TAURI_INVOKE("create_folder", { input })),
 	copyObject: (input: CopyObjectInput) => typedError<ObjectOperationOutcome, AppError>(__TAURI_INVOKE("copy_object", { input })),
@@ -383,11 +392,26 @@ export type LocalFileSelection = {
 	isDirectory: boolean,
 };
 
+/**  The editable headers of an object: standard HTTP headers and user metadata. */
+export type ObjectHeaders = {
+	contentType: string | null,
+	cacheControl: string | null,
+	contentDisposition: string | null,
+	contentEncoding: string | null,
+	contentLanguage: string | null,
+	/**  User-defined `x-amz-meta-*` headers, named without the prefix. */
+	metadata: { [key in string]: string },
+};
+
 export type ObjectMetadata = {
 	key: string,
 	size: number | null,
 	lastModified: string | null,
 	contentType: string | null,
+	cacheControl: string | null,
+	contentDisposition: string | null,
+	contentEncoding: string | null,
+	contentLanguage: string | null,
 	/**  Not necessarily an MD5 of the content (TSD §9.6). */
 	etag: string | null,
 	storageClass: string | null,
@@ -486,6 +510,20 @@ export type ProviderProfile = {
 
 export type ProviderType = "aws" | "supabase" | "minio" | "cloudflare_r2" | "wasabi" | "digitalocean_spaces" | "custom";
 
+/**
+ *  Unsigned address of an object. It only works if the object is publicly
+ *  readable (bucket policy, public ACL, or a public custom domain).
+ */
+export type PublicUrl = {
+	/**
+	 *  `None` when the bucket has no base URL and the provider's S3 endpoint
+	 *  never serves public reads (Cloudflare R2).
+	 */
+	url: string | null,
+	/**  The bucket's base URL (custom domain or CDN), if one is set. */
+	baseUrl: string | null,
+};
+
 export type RelocateMode = "COPY" | "MOVE";
 
 /**
@@ -495,6 +533,13 @@ export type RelocateMode = "COPY" | "MOVE";
  *  redacted so it cannot leak through logs or error formatting (SEC-004).
  */
 export type SecretString = string;
+
+export type SetBucketPublicUrlInput = {
+	connectionId: string,
+	bucket: string,
+	/**  `None` or blank removes the bucket's base URL. */
+	baseUrl: string | null,
+};
 
 /**
  *  A presigned download URL. Never persisted or logged (SEC-004); it grants
@@ -591,6 +636,18 @@ export type UpdateConnectionInput = {
 export type UpdateInfo = {
 	version: string,
 	currentVersion: string,
+};
+
+export type UpdateObjectMetadataInput = {
+	connectionId: string,
+	bucket: string,
+	key: string,
+	/**
+	 *  ETag of the version the user edited; nothing changes if the object
+	 *  was replaced since.
+	 */
+	etag: string,
+	headers: ObjectHeaders,
 };
 
 /**  Download progress of the update package. */
