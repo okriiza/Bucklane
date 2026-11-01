@@ -181,6 +181,7 @@ Stores local transfer history and durable operational metadata. Runtime progress
 | `source_connection_name_snapshot` | TEXT | NULL           | Copy: source connection name at transfer time          |
 | `source_bucket`            | TEXT    | NULL                | Copy: source bucket                                    |
 | `source_key`               | TEXT    | NULL                | Copy: source object key                                |
+| `source_delete_after_copy` | INTEGER | NOT NULL, DEFAULT 0 | Copy: a move; delete the unchanged source afterwards   |
 | `created_at`               | TEXT    | NOT NULL            | Queued timestamp                                       |
 | `started_at`               | TEXT    | NULL                | Start timestamp                                        |
 | `completed_at`             | TEXT    | NULL                | Terminal-state timestamp                               |
@@ -347,6 +348,7 @@ At application startup:
 | `202610310001_download_resume.sql` | Adds `transfers.resume_etag` and `transfers.resume_offset` for resumable downloads. |
 | `202611010001_bucket_public_urls.sql` | Adds `bucket_public_urls` (§3.6). |
 | `202611020001_transfer_copy.sql` | Rebuilds `transfers` to allow `direction = 'COPY'` and adds the `source_*` columns (a `COPY` row must have its source). `transfer_parts` rows are saved and restored around the rebuild. |
+| `202611030001_transfer_move.sql` | Adds `transfers.source_delete_after_copy` for moves between buckets or connections. |
 
 ## 5. Default Settings
 

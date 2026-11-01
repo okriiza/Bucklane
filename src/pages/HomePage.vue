@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ArrowDown, ArrowRight, ArrowUp, CopyPlus, Database, Plus, Star } from "@lucide/vue";
+import { ArrowDown, ArrowRight, ArrowUp, Database, Plus, Star } from "@lucide/vue";
 import { computed, ref, watch } from "vue";
 
 import ProviderMark from "@/components/connections/ProviderMark.vue";
@@ -9,6 +9,7 @@ import { commands, unwrap, type BucketBookmark, type TransferDto } from "@/servi
 import { useConnectionStore } from "@/stores/connections";
 import { useTransferStore } from "@/stores/transfers";
 import { endpointHost, formatBytes, formatRelative } from "@/utils/format";
+import { TRANSFER_ICONS, transferKind, transferName } from "@/utils/transfer";
 
 const connections = useConnectionStore();
 const transfers = useTransferStore();
@@ -64,10 +65,6 @@ const STATUS_DOT: Record<TransferDto["status"], string> = {
   FAILED: "bg-destructive",
   CANCELED: "bg-muted-foreground/50",
 };
-
-function transferName(t: TransferDto) {
-  return t.direction === "UPLOAD" ? t.localFileName : (t.objectKey.split("/").pop() ?? t.objectKey);
-}
 </script>
 
 <template>
@@ -230,7 +227,7 @@ function transferName(t: TransferDto) {
             <div class="min-w-0 flex-1">
               <p class="flex items-center gap-1.5 text-[13px]">
                 <component
-                  :is="{ UPLOAD: ArrowUp, DOWNLOAD: ArrowDown, COPY: CopyPlus }[t.direction]"
+                  :is="TRANSFER_ICONS[transferKind(t)]"
                   class="text-muted-foreground size-3 shrink-0"
                 />
                 <span class="truncate font-medium" :title="t.objectKey">{{ transferName(t) }}</span>

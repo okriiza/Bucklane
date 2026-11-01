@@ -75,6 +75,9 @@ pub struct TransferSource {
     pub connection_name_snapshot: String,
     pub bucket: String,
     pub key: String,
+    /// A move: the source is deleted once the copy is verified, if it is
+    /// unchanged.
+    pub delete_after_copy: bool,
 }
 
 /// A persisted transfer. `local_path` is privacy-sensitive and never sent to
@@ -133,6 +136,8 @@ pub struct TransferDto {
     pub resumable_bytes: Option<i64>,
     /// Stopped by the user with Pause (status is FAILED with code PAUSED).
     pub paused: bool,
+    /// A completed move that kept its original; `error` says why.
+    pub source_kept: bool,
     pub created_at: String,
     pub started_at: Option<String>,
     pub completed_at: Option<String>,
@@ -167,6 +172,8 @@ impl From<&StoredTransfer> for TransferDto {
                 .then_some(t.resume_offset),
             paused: t.status == TransferStatus::Failed
                 && t.error_code.as_deref() == Some(crate::transfers::PAUSED_CODE),
+            source_kept: t.status == TransferStatus::Completed
+                && t.error_code.as_deref() == Some(crate::transfers::SOURCE_KEPT_CODE),
             created_at: t.created_at.clone(),
             started_at: t.started_at.clone(),
             completed_at: t.completed_at.clone(),
@@ -218,6 +225,8 @@ pub struct EnqueueCopyInput {
     /// Folder to copy into, ending in `/`; empty for the bucket root.
     pub destination_prefix: String,
     pub conflict_policy: TransferConflictPolicy,
+    /// `MOVE` deletes each original after its copy is verified.
+    pub mode: crate::domain::object::RelocateMode,
 }
 
 #[derive(Debug, Clone, Serialize, Type)]

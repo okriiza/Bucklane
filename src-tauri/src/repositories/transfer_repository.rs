@@ -10,7 +10,7 @@ macro_rules! columns {
          bytes_total, bytes_transferred, status, retry_count, error_code, error_message, \
          multipart_upload_id, overwrite, resume_etag, resume_offset, created_at, started_at, \
          completed_at, source_connection_id, source_connection_name_snapshot, source_bucket, \
-         source_key"
+         source_key, source_delete_after_copy"
     };
 }
 
@@ -31,7 +31,7 @@ impl TransferRepository {
         sqlx::query(concat!(
             "INSERT INTO transfers (",
             columns!(),
-            ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+            ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
         ))
         .bind(&t.id)
         .bind(&t.connection_id)
@@ -61,6 +61,7 @@ impl TransferRepository {
         )
         .bind(t.source.as_ref().map(|s| s.bucket.as_str()))
         .bind(t.source.as_ref().map(|s| s.key.as_str()))
+        .bind(t.source.as_ref().is_some_and(|s| s.delete_after_copy))
         .execute(&self.pool)
         .await?;
         Ok(())
@@ -237,6 +238,7 @@ fn from_row(row: &SqliteRow) -> Result<StoredTransfer, AppError> {
             key: row
                 .try_get::<Option<String>, _>("source_key")?
                 .unwrap_or_default(),
+            delete_after_copy: row.try_get("source_delete_after_copy")?,
         }),
         None => None,
     };

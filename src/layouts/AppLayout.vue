@@ -36,15 +36,26 @@ watch(
   { immediate: true },
 );
 
-// Refresh the open folder once uploads or copies into it complete. Bursts of
+// Refresh the open folder once uploads, copies, or moves change it. Bursts of
 // completions (many small files) are coalesced into one listing request.
 let refreshTimer: ReturnType<typeof setTimeout> | undefined;
 const stopListening = transfers.onCompleted((t) => {
   const loc = explorer.location;
-  if (t.direction === "DOWNLOAD" || !loc || t.connectionId !== loc.connectionId) return;
-  if (t.bucket !== loc.bucket) return;
+  if (!loc) return;
+  // A move also removes its original from the source folder.
+  const from = t.source?.deleteAfterCopy ? t.source : null;
+  const source =
+    !!from &&
+    from.connectionId === loc.connectionId &&
+    from.bucket === loc.bucket &&
+    from.key.startsWith(loc.prefix);
   const listed = new Set(explorer.entries.map((e) => e.key));
-  if (!uploadChangesListing(loc.prefix, t.objectKey, listed)) return;
+  const destination =
+    t.direction !== "DOWNLOAD" &&
+    t.connectionId === loc.connectionId &&
+    t.bucket === loc.bucket &&
+    uploadChangesListing(loc.prefix, t.objectKey, listed);
+  if (!source && !destination) return;
   clearTimeout(refreshTimer);
   refreshTimer = setTimeout(() => explorer.refresh(), 500);
 });

@@ -16,7 +16,7 @@ use tokio::sync::Semaphore;
 use tokio_util::sync::CancellationToken;
 
 use crate::domain::bucket::validate_bucket_name;
-use crate::domain::object::ObjectMetadata;
+use crate::domain::object::{ObjectMetadata, RelocateMode};
 use crate::domain::settings::AppSettings;
 use crate::domain::transfer::{
     EnqueueCopyInput, EnqueueDownloadInput, EnqueueItemResult, EnqueueUploadInput, StoredTransfer,
@@ -81,6 +81,8 @@ struct ActiveTransfer {
 
 /// Error code that marks a FAILED download as paused by the user.
 pub const PAUSED_CODE: &str = "PAUSED";
+/// Error code on a COMPLETED move whose original was deliberately kept.
+pub const SOURCE_KEPT_CODE: &str = "SOURCE_KEPT";
 
 /// Bytes transferred so far; uploads keep one counter per multipart part.
 #[derive(Default)]
@@ -498,10 +500,20 @@ impl TransferManager {
         );
         let same_bucket = input.source_connection_id == input.destination_connection_id
             && source_bucket == bucket;
+        let moving = input.mode == RelocateMode::Move;
 
         let mut results = Vec::new();
         let mut planned = Vec::new();
         for item in &input.keys {
+            let folder = item.split(ITEM_SEPARATOR).next().unwrap_or(item);
+            if moving && same_bucket && folder.ends_with('/') && prefix.starts_with(folder) {
+                let error = AppError::new(
+                    ErrorCode::InvalidInput,
+                    "A folder can't be moved into itself.",
+                );
+                results.push(rejected(item, item, error));
+                continue;
+            }
             match plan_copy(&source, &source_bucket, &provider, &bucket, prefix, item).await {
                 Ok(items) => planned.extend(items),
                 Err(error) => results.push(rejected(item, item, error)),
@@ -570,6 +582,7 @@ impl TransferManager {
                         connection_name_snapshot: source_name.clone(),
                         bucket: source_bucket.clone(),
                         key: plan.source_key,
+                        delete_after_copy: moving,
                     }),
                 )
                 .await?;
@@ -1143,7 +1156,8 @@ async fn plan_download(
 
 /// Expands one copy item like [`plan_download`]: an object key, a folder key
 /// ending in `/`, or `<folder key><SEP><object key>`. A folder is recreated
-/// inside the destination folder; empty folder markers are not copied.
+/// inside the destination folder, including its folder markers, so empty
+/// folders survive and a move leaves nothing behind.
 async fn plan_copy(
     source: &S3StorageProvider,
     source_bucket: &str,
@@ -1174,7 +1188,14 @@ async fn plan_copy(
     let parent = trimmed.rfind('/').map_or("", |i| &trimmed[..=i]);
     let objects = match only {
         Some(key) => vec![(key.to_owned(), None)],
-        None => list_folder(source, source_bucket, folder).await?,
+        None => {
+            let mut objects = list_folder(source, source_bucket, folder).await?;
+            // Listings leave out the folder's own marker; add it if present.
+            if remote_exists(source, source_bucket, folder).await? {
+                objects.insert(0, (folder.to_owned(), Some(0)));
+            }
+            objects
+        }
     };
     let base = format!("{prefix}{}", folder.strip_prefix(parent).unwrap_or(folder));
     let existing = match only {
@@ -1184,7 +1205,6 @@ async fn plan_copy(
 
     Ok(objects
         .into_iter()
-        .filter(|(key, _)| !key.ends_with('/'))
         .map(|(source_key, size)| {
             let relative = source_key.strip_prefix(parent).unwrap_or(&source_key);
             let key = format!("{prefix}{relative}");
@@ -1380,6 +1400,7 @@ mod s3_integration_tests {
                     connection_name_snapshot: "MinIO".into(),
                     bucket: self.bucket.clone(),
                     key: key.into(),
+                    delete_after_copy: false,
                 }),
                 created_at: now(),
                 started_at: None,
@@ -1485,6 +1506,7 @@ mod s3_integration_tests {
             connection_name_snapshot: "MinIO".into(),
             bucket: f.bucket.clone(),
             key: "media/clip.bin".into(),
+            delete_after_copy: false,
         });
         let progress = Progress::default();
         // 5 MiB parts: three ranged GETs feed three multipart parts.
@@ -1517,6 +1539,88 @@ mod s3_integration_tests {
         let bytes = stored.body.collect().await.unwrap().into_bytes();
         assert!(bytes[..] == data[..], "copied bytes differ");
         assert_eq!(copy.multipart_upload_id, None);
+    }
+
+    async fn move_transfer(f: &Fixture, destination: &str, key: &str) -> StoredTransfer {
+        f.client
+            .create_bucket()
+            .bucket(destination)
+            .send()
+            .await
+            .unwrap();
+        let mut t = f
+            .transfer(TransferDirection::Copy, key, &f.dir, false)
+            .await;
+        t.bucket = destination.to_owned();
+        t.local_path = String::new();
+        t.source = Some(TransferSource {
+            connection_id: None,
+            connection_name_snapshot: "MinIO".into(),
+            bucket: f.bucket.clone(),
+            key: key.into(),
+            delete_after_copy: true,
+        });
+        t
+    }
+
+    #[tokio::test]
+    async fn move_deletes_the_original_after_a_verified_copy() {
+        let Some(f) = Fixture::new().await else {
+            return;
+        };
+        put_object(&f, "report.pdf", b"quarterly numbers".to_vec()).await;
+        let destination = format!("{}-moved", f.bucket);
+        let mut t = move_transfer(&f, &destination, "report.pdf").await;
+
+        copy::run(
+            &f.client,
+            &f.client,
+            &f.repo,
+            &mut t,
+            &Progress::default(),
+            upload::UploadTuning::default(),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(t.error_code, None);
+        let provider = S3StorageProvider::new(f.client.clone());
+        assert!(
+            !remote_exists(&provider, &f.bucket, "report.pdf")
+                .await
+                .unwrap()
+        );
+        assert!(
+            remote_exists(&provider, &destination, "report.pdf")
+                .await
+                .unwrap()
+        );
+    }
+
+    #[tokio::test]
+    async fn move_keeps_an_original_that_changed() {
+        let Some(f) = Fixture::new().await else {
+            return;
+        };
+        put_object(&f, "notes.txt", b"new version".to_vec()).await;
+        let from = TransferSource {
+            connection_id: None,
+            connection_name_snapshot: "MinIO".into(),
+            bucket: f.bucket.clone(),
+            key: "notes.txt".into(),
+            delete_after_copy: true,
+        };
+
+        let kept =
+            copy::delete_source(&f.client, &from, Some("\"etag-of-the-copied-version\"")).await;
+
+        assert!(kept.is_some(), "a changed original must be kept");
+        let provider = S3StorageProvider::new(f.client.clone());
+        assert!(
+            remote_exists(&provider, &f.bucket, "notes.txt")
+                .await
+                .unwrap()
+        );
     }
 
     #[tokio::test]
@@ -1775,6 +1879,7 @@ mod s3_integration_tests {
         assert_eq!(
             planned,
             [
+                ("media/brand/", "archive/brand/", Some(false)),
                 ("media/brand/logo.svg", "archive/brand/logo.svg", Some(true)),
                 (
                     "media/brand/print/card.pdf",
@@ -1782,7 +1887,7 @@ mod s3_integration_tests {
                     Some(false)
                 ),
             ],
-            "marker skipped, sibling excluded, existing copy detected"
+            "marker kept, sibling excluded, existing copy detected"
         );
     }
 

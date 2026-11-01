@@ -40,6 +40,7 @@ import {
   commands,
   unwrap,
   type ObjectMetadata,
+  type RelocateMode,
   type ObjectOperationOutcome,
   type StorageObject,
 } from "@/services/tauri";
@@ -314,9 +315,11 @@ const previewKey = ref("");
 
 const copyToOpen = ref(false);
 const copyToEntries = ref<StorageObject[]>([]);
+const copyToMode = ref<RelocateMode>("COPY");
 
-function openCopyTo(entries: StorageObject[]) {
+function openCopyTo(entries: StorageObject[], mode: RelocateMode = "COPY") {
   copyToEntries.value = entries;
+  copyToMode.value = mode;
   copyToOpen.value = true;
 }
 
@@ -362,9 +365,12 @@ function onRowAction(action: RowAction, entry: StorageObject) {
     openShare(entry.key, "temporary");
   } else if (action === "copyPublicUrl") {
     void copyPublicUrl(entry);
-  } else if (action === "copyTo") {
-    // Copying a checked row acts on the whole selection.
-    openCopyTo(explorer.checkedKeys.has(entry.key) ? explorer.checkedEntries : [entry]);
+  } else if (action === "copyTo" || action === "moveTo") {
+    // Copying or moving a checked row acts on the whole selection.
+    openCopyTo(
+      explorer.checkedKeys.has(entry.key) ? explorer.checkedEntries : [entry],
+      action === "moveTo" ? "MOVE" : "COPY",
+    );
   } else if (action === "metadata") {
     metadataKey.value = entry.key;
     metadataOpen.value = true;
@@ -786,6 +792,7 @@ function goTo(prefix: string) {
       :connection-id="id"
       :bucket="bucket"
       :entries="copyToEntries"
+      :initial-mode="copyToMode"
       @copy="startCopy"
     />
     <MetadataDialog

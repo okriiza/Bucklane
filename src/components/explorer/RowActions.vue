@@ -38,6 +38,7 @@ const emit = defineEmits<{
   rename: [];
   copy: [];
   copyTo: [];
+  moveTo: [];
   move: [];
   delete: [];
 }>();
@@ -95,6 +96,9 @@ const itemClass =
           <DropdownMenuItem :class="itemClass" @select="emit('copyTo')">
             <CopyPlus /> {{ $t("copyTo.action") }}
           </DropdownMenuItem>
+          <DropdownMenuItem :class="itemClass" @select="emit('moveTo')">
+            <FolderInput /> {{ $t("copyTo.moveAction") }}
+          </DropdownMenuItem>
           <DropdownMenuSeparator class="bg-border -mx-1 my-1 h-px" />
         </template>
         <template v-else>
@@ -114,6 +118,9 @@ const itemClass =
           </DropdownMenuItem>
           <DropdownMenuItem :class="itemClass" @select="emit('copyTo')">
             <CopyPlus /> {{ $t("copyTo.action") }}
+          </DropdownMenuItem>
+          <DropdownMenuItem :class="itemClass" @select="emit('moveTo')">
+            <FolderInput /> {{ $t("copyTo.moveAction") }}
           </DropdownMenuItem>
           <DropdownMenuSeparator class="bg-border -mx-1 my-1 h-px" />
         </template>

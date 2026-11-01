@@ -1,16 +1,5 @@
 <script setup lang="ts">
-import {
-  ArrowDown,
-  ArrowUp,
-  ChevronDown,
-  ChevronUp,
-  CopyPlus,
-  FolderSearch,
-  Pause,
-  Play,
-  RotateCw,
-  X,
-} from "@lucide/vue";
+import { ChevronDown, ChevronUp, FolderSearch, Pause, Play, RotateCw, X } from "@lucide/vue";
 import { onUnmounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
@@ -19,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { toAppError, type TransferDto } from "@/services/tauri";
 import { useTransferStore } from "@/stores/transfers";
 import { formatBytes, formatDuration, formatSpeed } from "@/utils/format";
+import { TRANSFER_ICONS, transferKind, transferName as name } from "@/utils/transfer";
 
 const store = useTransferStore();
 const { t: translate } = useI18n();
@@ -43,7 +33,7 @@ function resumeLabel(t: TransferDto) {
 /** Failed and canceled transfers can be started again from the beginning. */
 function againLabel(t: TransferDto) {
   if (t.status === "FAILED") return translate("transfers.retry");
-  return translate(AGAIN[t.direction]);
+  return translate(AGAIN[transferKind(t)]);
 }
 
 /** Its connections still exist, so it can be started again. */
@@ -55,12 +45,13 @@ const AGAIN = {
   UPLOAD: "transfers.uploadAgain",
   DOWNLOAD: "transfers.downloadAgain",
   COPY: "transfers.copyAgain",
+  MOVE: "transfers.moveAgain",
 } as const;
-const ICONS = { UPLOAD: ArrowUp, DOWNLOAD: ArrowDown, COPY: CopyPlus } as const;
 const LABELS = {
   UPLOAD: "transfers.upload",
   DOWNLOAD: "transfers.download",
   COPY: "transfers.copy",
+  MOVE: "transfers.move",
 } as const;
 // Collapsed while idle so it doesn't take space from the page. It opens when
 // a transfer starts, and closes again shortly after a batch finishes cleanly.
@@ -99,10 +90,6 @@ function percent(t: TransferDto) {
   if (t.status === "COMPLETED") return 100;
   if (!t.bytesTotal) return null;
   return Math.min(100, Math.floor(((t.bytesTransferred ?? 0) / t.bytesTotal) * 100));
-}
-
-function name(t: TransferDto) {
-  return t.direction === "UPLOAD" ? t.localFileName : (t.objectKey.split("/").pop() ?? t.objectKey);
 }
 
 async function run(action: () => Promise<void>) {
@@ -184,14 +171,17 @@ const STATUS_CLASS: Record<TransferDto["status"], string> = {
           class="hover:bg-accent/40 grid grid-cols-[1rem_minmax(0,1fr)_10rem_9rem_3.5rem] items-center gap-3 px-4 py-2 transition-colors"
         >
           <component
-            :is="ICONS[t.direction]"
+            :is="TRANSFER_ICONS[transferKind(t)]"
             class="text-muted-foreground size-3.5"
-            :aria-label="$t(LABELS[t.direction])"
+            :aria-label="$t(LABELS[transferKind(t)])"
           />
           <div class="min-w-0">
             <div class="truncate font-medium" :title="t.objectKey">{{ name(t) }}</div>
             <div class="text-muted-foreground truncate">
-              <template v-if="t.error && t.status !== 'CANCELED'">
+              <template v-if="t.sourceKept && t.error">
+                <span class="text-warning" :title="t.error.message">{{ t.error.message }}</span>
+              </template>
+              <template v-else-if="t.error && t.status !== 'CANCELED'">
                 <span class="text-destructive" :title="t.error.message">{{ t.error.message }}</span>
               </template>
               <template v-else-if="t.source">

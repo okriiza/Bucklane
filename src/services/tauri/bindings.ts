@@ -318,6 +318,8 @@ export type EnqueueCopyInput = {
 	/**  Folder to copy into, ending in `/`; empty for the bucket root. */
 	destinationPrefix: string,
 	conflictPolicy: TransferConflictPolicy,
+	/**  `MOVE` deletes each original after its copy is verified. */
+	mode: RelocateMode,
 };
 
 export type EnqueueDownloadInput = {
@@ -634,6 +636,8 @@ export type TransferDto = {
 	resumableBytes: number | null,
 	/**  Stopped by the user with Pause (status is FAILED with code PAUSED). */
 	paused: boolean,
+	/**  A completed move that kept its original; `error` says why. */
+	sourceKept: boolean,
 	createdAt: string,
 	startedAt: string | null,
 	completedAt: string | null,
@@ -649,6 +653,11 @@ export type TransferSource = {
 	connectionNameSnapshot: string,
 	bucket: string,
 	key: string,
+	/**
+	 *  A move: the source is deleted once the copy is verified, if it is
+	 *  unchanged.
+	 */
+	deleteAfterCopy: boolean,
 };
 
 export type TransferStatus = "QUEUED" | "RUNNING" | "COMPLETED" | "FAILED" | "CANCELED";

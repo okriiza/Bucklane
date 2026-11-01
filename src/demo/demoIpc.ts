@@ -189,7 +189,7 @@ function transfer(
     bucket,
     objectKey: key,
     localFileName: direction === "COPY" ? "" : key.split("/").pop(),
-    source: null as Record<string, string> | null,
+    source: null as Record<string, string | boolean> | null,
     bytesTotal: total,
     bytesTransferred: done,
     status,
@@ -200,6 +200,7 @@ function transfer(
     // An interrupted download keeps its partial file and can resume.
     resumableBytes: direction === "DOWNLOAD" && status === "FAILED" && done > 0 ? done : null,
     paused: false,
+    sourceKept: false,
     createdAt: ago(minutes),
     startedAt: ago(minutes),
     completedAt: status === "RUNNING" || status === "QUEUED" ? null : ago(minutes - 1),
@@ -225,6 +226,7 @@ const transfers = [
       connectionNameSnapshot: "Production assets",
       bucket: "media-originals",
       key: "marketing/brand-guidelines-v4.pdf",
+      deleteAfterCopy: false,
     },
   },
   transfer(

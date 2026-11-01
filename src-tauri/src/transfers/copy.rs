@@ -3,20 +3,21 @@ use std::sync::{Arc, Mutex};
 use aws_sdk_s3::Client;
 
 use crate::domain::object::ObjectHeaders;
-use crate::domain::transfer::StoredTransfer;
+use crate::domain::transfer::{StoredTransfer, TransferSource};
 use crate::errors::{AppError, ErrorCode};
 use crate::providers::s3_provider::S3StorageProvider;
 use crate::providers::storage_provider::StorageProvider;
 use crate::repositories::transfer_repository::TransferRepository;
 
-use super::Progress;
 use super::body::{ObjectRange, counting_object_body};
 use super::upload::{self, UploadTuning};
+use super::{Progress, SOURCE_KEPT_CODE};
 
 /// Copies one object to another bucket or connection (TSD §9.5). Bytes are
 /// streamed from ranged GETs straight into the destination's PUT or
 /// multipart parts; nothing is written to disk and at most one chunk per
-/// part is held in memory.
+/// part is held in memory. A move then deletes the source if it is
+/// unchanged; otherwise the source is kept and the reason recorded on `t`.
 pub(super) async fn run(
     source: &Client,
     destination: &Client,
@@ -38,6 +39,7 @@ pub(super) async fn run(
         .ok_or_else(|| AppError::internal("The source did not report the object's size."))?;
     t.bytes_total = i64::try_from(size).ok();
     repo.update(t).await?;
+    let etag = metadata.etag.clone();
 
     let provider = S3StorageProvider::new(destination.clone());
     upload::ensure_destination_free(&provider, t).await?;
@@ -103,5 +105,51 @@ pub(super) async fn run(
         } else {
             err
         }
-    })
+    })?;
+
+    if from.delete_after_copy
+        && let Some(reason) = delete_source(source, &from, etag.as_deref()).await
+    {
+        tracing::warn!(transfer_id = %t.id, "move kept its original");
+        t.error_code = Some(SOURCE_KEPT_CODE.to_owned());
+        t.error_message = Some(reason);
+    }
+    Ok(())
+}
+
+/// Deletes a moved object's original if it still is the version that was
+/// copied. Returns why the original was kept, if it was.
+pub(super) async fn delete_source(
+    source: &Client,
+    from: &TransferSource,
+    copied_etag: Option<&str>,
+) -> Option<String> {
+    let provider = S3StorageProvider::new(source.clone());
+    match provider.head_object(&from.bucket, &from.key).await {
+        Ok(current) if copied_etag.is_some() && current.etag.as_deref() == copied_etag => {}
+        Ok(_) => {
+            return Some(
+                "Copied, but the original changed during the move (or its version couldn't be confirmed), so it was kept."
+                    .to_owned(),
+            );
+        }
+        // Already gone: nothing left to delete.
+        Err(err) if err.code == ErrorCode::ObjectNotFound => return None,
+        Err(err) => {
+            return Some(format!(
+                "Copied, but the original was kept: {}",
+                err.message
+            ));
+        }
+    }
+    provider
+        .delete_object(&from.bucket, &from.key)
+        .await
+        .err()
+        .map(|err| {
+            format!(
+                "Copied, but the original could not be deleted: {}",
+                err.message
+            )
+        })
 }

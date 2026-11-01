@@ -7,6 +7,7 @@ import {
   unwrap,
   type EnqueueItemResult,
   type LocalFileSelection,
+  type RelocateMode,
   type TransferConflictPolicy,
   type TransferDirection,
 } from "@/services/tauri";
@@ -126,11 +127,14 @@ export function useTransferActions() {
     }
   }
 
-  /** Copies objects or folders (keys ending in `/`) to another bucket or connection. */
+  /**
+   * Copies or moves objects or folders (keys ending in `/`) to another
+   * bucket or connection.
+   */
   function copyTo(
     source: { connectionId: string; bucket: string },
     keys: string[],
-    to: UploadTarget,
+    to: UploadTarget & { mode: RelocateMode },
   ) {
     if (!keys.length) return Promise.resolve();
     return withConflicts("COPY", (items, policy) =>
@@ -143,6 +147,7 @@ export function useTransferActions() {
           destinationBucket: to.bucket,
           destinationPrefix: to.prefix,
           conflictPolicy: policy,
+          mode: to.mode,
         }),
       ),
     );

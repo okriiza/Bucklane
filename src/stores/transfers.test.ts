@@ -29,6 +29,7 @@ function transfer(overrides: Partial<TransferDto> = {}): TransferDto {
     error: null,
     resumableBytes: null,
     paused: false,
+    sourceKept: false,
     createdAt: "2026-10-15T00:00:00.000Z",
     startedAt: null,
     completedAt: null,
