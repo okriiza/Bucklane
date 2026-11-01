@@ -237,6 +237,31 @@ export default {
     copyUriLabel: "S3 URI",
     copiedValue: "{label} copied to clipboard",
     copyFailed: "Couldn't copy to the clipboard.",
+    copyPublicUrl: "Copy public URL",
+    publicUrlCopied: "Public URL copied to clipboard",
+    publicUrlCopiedHint: "It opens only if the file is publicly readable.",
+    modes: { temporary: "Temporary link", public: "Public URL" },
+    baseUrl: "Custom domain or CDN",
+    baseUrlHint:
+      "Optional. Used for every file in “{bucket}” on this connection, e.g. a CloudFront, r2.dev, or custom domain.",
+    removeBase: "Remove",
+    publicNeedsBase:
+      "Cloudflare R2 doesn't serve public files from its S3 endpoint. Enter the bucket's r2.dev or custom domain below.",
+    publicNote:
+      "A public URL has no expiry and no signature. It opens only if the file is publicly readable, through a bucket policy, a public ACL, or a public domain.",
+  },
+  metadata: {
+    action: "Edit metadata",
+    title: "Edit metadata",
+    noCustom: "No custom metadata.",
+    name: "Name",
+    value: "Value",
+    add: "Add field",
+    remove: "Remove field",
+    note: "Saving rewrites the object's headers with a server-side copy. The contents stay the same, but its last-modified time changes. Files over 5 GiB aren't supported yet.",
+    save: "Save",
+    saving: "Saving…",
+    saved: "Metadata saved",
   },
   delete: {
     title: "Delete {count} item? | Delete {count} items?",

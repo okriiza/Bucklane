@@ -588,6 +588,9 @@ delete_objects
 prepare_prefix_delete
 execute_prefix_delete
 create_share_link
+get_public_url
+set_bucket_public_url
+update_object_metadata
 preview_object
 ```
 
@@ -596,6 +599,10 @@ preview_object
 The preview content type is determined by the preview kind, not by the object's `Content-Type`, which anyone with write access to the bucket can set: PDFs are always `application/pdf`, images only use types from an allowlist (raster and `image/svg+xml`, which are safe in `<img>`), and everything else is `application/octet-stream`. The frontend also picks the blob type from the preview kind. Reading stops at the size limit even if HEAD does not report a size or the server ignores Range.
 
 `create_share_link` creates a presigned GET URL for a single object (60 seconds to 7 days, the SigV4 limit). The object's existence is checked first. The URL is neither stored nor logged because it acts as a bearer credential (SEC-004); a link can only be revoked early by rotating the access key.
+
+`get_public_url` returns an object's unsigned URL. If the bucket has a base URL (`set_bucket_public_url`, stored in `bucket_public_urls`), the URL is the base plus the percent-encoded key. Otherwise the backend presigns a GET locally and strips the query string, so the address matches the SDK's own addressing (path or virtual-hosted style, and the bucket's region on AWS). Supabase URLs are rewritten from `/storage/v1/s3/` to its public object path `/storage/v1/object/public/`. Cloudflare R2 returns no URL without a base, because its S3 endpoint never serves public reads. Base URLs must be `http(s)` with a host and no credentials, query, or fragment. Whether the object is actually public is not checked.
+
+`update_object_metadata` replaces an object's Content-Type, Cache-Control, Content-Disposition, Content-Encoding, Content-Language, and user metadata with `CopyObject` onto itself (`MetadataDirective: REPLACE`). The request carries the ETag the editor loaded: the backend compares it to a fresh HEAD and sends it as `x-amz-copy-source-if-match`, so nothing is saved if the content changed meanwhile (a `412` maps to a "changed on the server" error). Because a REPLACE copy resets what it is not given, the copy carries over the storage class, server-side encryption settings (SSE-S3/SSE-KMS key and bucket key), `Expires`, and website redirect, and re-applies `public-read` if `GetObjectAcl` shows an `AllUsers` read grant (providers without ACLs skip this). Values must be printable ASCII (no CR/LF); metadata names are lowercased, may use letters, digits, `-`, `_`, and `.`, and must total at most 2 KB with their values. Objects over 5 GiB are rejected (single-request copy limit). Tags are kept by S3's default `TaggingDirective: COPY`.
 
 Rename is `move_object` with the same bucket and a new destination key; there is no separate rename command.
 

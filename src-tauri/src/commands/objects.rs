@@ -6,7 +6,7 @@ use crate::domain::object::{
     CopyObjectInput, CreateFolderInput, CreateShareLinkInput, DeleteObjectsInput,
     DeleteObjectsResult, ExistingObjectPolicy, ListObjectsRequest, ListObjectsResponse,
     ObjectMetadata, ObjectOperationOutcome, ObjectPreview, PrefixDeletePlan, PrefixRelocateInput,
-    PrefixRelocatePlan, PrefixRelocateResult, ShareLink,
+    PrefixRelocatePlan, PrefixRelocateResult, ShareLink, UpdateObjectMetadataInput,
 };
 use crate::errors::AppError;
 use crate::events::FolderRelocateProgress;
@@ -32,6 +32,16 @@ pub async fn head_object(
         .objects()?
         .head_object(&connection_id, &bucket, &key)
         .await
+}
+
+/// Replaces an object's headers and user metadata; returns the new metadata.
+#[tauri::command]
+#[specta::specta]
+pub async fn update_object_metadata(
+    state: State<'_, AppState>,
+    input: UpdateObjectMetadataInput,
+) -> Result<ObjectMetadata, AppError> {
+    state.objects()?.update_metadata(input).await
 }
 
 /// Returns the key of the created folder marker.

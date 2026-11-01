@@ -1,7 +1,12 @@
 import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { commands, type ListObjectsResponse, type StorageObject } from "@/services/tauri";
+import {
+  commands,
+  type ListObjectsResponse,
+  type ObjectMetadata,
+  type StorageObject,
+} from "@/services/tauri";
 
 import { AUTO_LOAD_LIMIT, useExplorerStore } from "./explorer";
 
@@ -240,20 +245,41 @@ describe("useExplorerStore", () => {
     expect(store.entries).toEqual([]);
   });
 
+  const metadata = (overrides: Partial<ObjectMetadata> = {}): ObjectMetadata => ({
+    key: "docs/a.txt",
+    size: 1,
+    lastModified: null,
+    contentType: "text/plain",
+    cacheControl: null,
+    contentDisposition: null,
+    contentEncoding: null,
+    contentLanguage: null,
+    etag: null,
+    storageClass: null,
+    metadata: {},
+    ...overrides,
+  });
+
+  it("shows saved metadata without reloading the folder", async () => {
+    mocked.listObjects.mockResolvedValue(page([entry("docs/a.txt")]));
+    mocked.headObject.mockResolvedValue({ status: "ok", data: metadata() });
+    const store = useExplorerStore();
+    await store.open(docs);
+    await store.select("docs/a.txt");
+    mocked.listObjects.mockClear();
+
+    store.applyMetadata(
+      metadata({ cacheControl: "no-cache", lastModified: "2026-11-01T00:00:00Z" }),
+    );
+
+    expect(store.metadata?.cacheControl).toBe("no-cache");
+    expect(store.entries[0]?.lastModified).toBe("2026-11-01T00:00:00Z");
+    expect(mocked.listObjects).not.toHaveBeenCalled();
+  });
+
   it("loads metadata for the selected object", async () => {
     mocked.listObjects.mockResolvedValue(page([entry("docs/a.txt")]));
-    mocked.headObject.mockResolvedValue({
-      status: "ok",
-      data: {
-        key: "docs/a.txt",
-        size: 1,
-        lastModified: null,
-        contentType: "text/plain",
-        etag: null,
-        storageClass: null,
-        metadata: {},
-      },
-    });
+    mocked.headObject.mockResolvedValue({ status: "ok", data: metadata() });
     const store = useExplorerStore();
     await store.open(docs);
 

@@ -122,6 +122,7 @@ mod tests {
         assert_eq!(
             tables,
             [
+                "bucket_public_urls",
                 "connection_buckets",
                 "connections",
                 "settings",

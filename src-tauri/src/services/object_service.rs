@@ -11,7 +11,7 @@ use crate::domain::object::{
     DeleteObjectsInput, DeleteObjectsResult, ExistingObjectPolicy, ListObjectsRequest,
     ListObjectsResponse, ObjectMetadata, ObjectOperationOutcome, ObjectPreview, PrefixDeletePlan,
     PrefixRelocateInput, PrefixRelocatePlan, PrefixRelocateResult, PreviewKind, RelocateMode,
-    ShareLink,
+    ShareLink, UpdateObjectMetadataInput,
 };
 use crate::errors::{AppError, ErrorCode};
 use crate::providers::s3_provider::S3StorageProvider;
@@ -211,6 +211,43 @@ impl<'a> ObjectService<'a> {
             url,
             expires_at: expires_at.to_rfc3339_opts(SecondsFormat::Millis, true),
         })
+    }
+
+    /// Edits an object's headers and user metadata. The content is unchanged;
+    /// S3 rewrites the object with a server-side copy onto itself.
+    pub async fn update_metadata(
+        &self,
+        input: UpdateObjectMetadataInput,
+    ) -> Result<ObjectMetadata, AppError> {
+        let bucket = validate_bucket_name(&input.bucket)?;
+        validate_key(&input.key)?;
+        if input.key.ends_with('/') {
+            return Err(AppError::new(
+                ErrorCode::OperationUnsupported,
+                "Folders have no metadata to edit.",
+            ));
+        }
+        let headers = input.headers.normalized()?;
+
+        let provider = self.provider(&input.connection_id, bucket).await?;
+        let current = provider.head_object(bucket, &input.key).await?;
+        if current.etag.as_deref() != Some(input.etag.as_str()) {
+            return Err(invalid(
+                "The file changed on the server since you opened it. Reload it and try again.",
+            ));
+        }
+        if current.size.unwrap_or(0) > MAX_SINGLE_COPY_BYTES {
+            return Err(AppError::new(
+                ErrorCode::OperationUnsupported,
+                "The metadata of objects larger than 5 GiB can't be edited yet.",
+            ));
+        }
+
+        provider
+            .replace_metadata(bucket, &input.key, &input.etag, &headers)
+            .await?;
+        tracing::info!(connection_id = %input.connection_id, "object metadata updated");
+        provider.head_object(bucket, &input.key).await
     }
 
     /// Creates a zero-byte `name/` marker so an empty folder is visible
@@ -875,7 +912,7 @@ fn source_kept(reason: &str) -> ObjectOperationOutcome {
     }
 }
 
-fn validate_key(key: &str) -> Result<(), AppError> {
+pub(crate) fn validate_key(key: &str) -> Result<(), AppError> {
     if key.is_empty() {
         return Err(invalid("The object key is empty."));
     }
@@ -1100,6 +1137,7 @@ mod s3_integration_tests {
     use super::*;
     use crate::database::test_pool;
     use crate::domain::connection::{ConnectionConfigInput, ProviderType};
+    use crate::domain::object::ObjectHeaders;
     use crate::providers::s3_client_factory::ClientCache;
     use crate::security::SecretString;
     use crate::security::credential_store::memory::MemoryCredentialStore;
@@ -1200,6 +1238,77 @@ mod s3_integration_tests {
                 conflict_policy: policy,
             }
         }
+    }
+
+    #[tokio::test]
+    async fn metadata_update_replaces_headers_and_keeps_content() {
+        let Some(f) = Fixture::new().await else {
+            return;
+        };
+        f.raw()
+            .await
+            .put_object()
+            .bucket(&f.bucket)
+            .key("site/index.html")
+            .body(ByteStream::from_static(b"<h1>hi</h1>"))
+            .content_type("application/octet-stream")
+            .metadata("old", "1")
+            .send()
+            .await
+            .unwrap();
+        let before = f
+            .service()
+            .head_object(&f.connection_id, &f.bucket, "site/index.html")
+            .await
+            .unwrap();
+        let input = |etag: Option<String>| UpdateObjectMetadataInput {
+            connection_id: f.connection_id.clone(),
+            bucket: f.bucket.clone(),
+            key: "site/index.html".into(),
+            etag: etag.unwrap_or_default(),
+            headers: ObjectHeaders {
+                content_type: Some("text/html; charset=utf-8".into()),
+                cache_control: Some("public, max-age=60".into()),
+                metadata: [("Owner".to_owned(), "web".to_owned())].into(),
+                ..ObjectHeaders::default()
+            },
+        };
+
+        let after = f
+            .service()
+            .update_metadata(input(before.etag.clone()))
+            .await
+            .unwrap();
+        assert_eq!(
+            after.content_type.as_deref(),
+            Some("text/html; charset=utf-8")
+        );
+        assert_eq!(after.cache_control.as_deref(), Some("public, max-age=60"));
+        assert_eq!(
+            after.metadata.into_iter().collect::<Vec<_>>(),
+            [("owner".to_owned(), "web".to_owned())],
+            "old metadata is replaced, names are lowercased"
+        );
+        assert_eq!(after.size, before.size);
+        let provider = f
+            .service()
+            .provider(&f.connection_id, &f.bucket)
+            .await
+            .unwrap();
+        let (body, _) = provider
+            .get_bytes(&f.bucket, "site/index.html", 1024)
+            .await
+            .unwrap();
+        assert_eq!(body, b"<h1>hi</h1>");
+
+        // Someone replaces the file while the editor is open: nothing changes.
+        f.put("site/index.html", b"<h1>replaced</h1>").await;
+        let err = f
+            .service()
+            .update_metadata(input(before.etag))
+            .await
+            .unwrap_err();
+        assert_eq!(err.code, ErrorCode::InvalidInput);
     }
 
     #[tokio::test]

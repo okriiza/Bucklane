@@ -6,6 +6,7 @@ use tauri::AppHandle;
 use crate::errors::{AppError, ErrorCode};
 use crate::providers::s3_client_factory::ClientCache;
 use crate::repositories::bucket_bookmark_repository::BucketBookmarkRepository;
+use crate::repositories::bucket_public_url_repository::BucketPublicUrlRepository;
 use crate::repositories::settings_repository::SettingsRepository;
 use crate::security::credential_store::CredentialStore;
 use crate::security::local_selection::SelectionRegistry;
@@ -67,6 +68,7 @@ impl AppState {
         Ok(StorageService::new(
             self.connections()?,
             BucketBookmarkRepository::new(self.db()?),
+            BucketPublicUrlRepository::new(self.db()?),
         ))
     }
 

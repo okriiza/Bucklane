@@ -242,6 +242,16 @@ export const useExplorerStore = defineStore("explorer", () => {
     }
   }
 
+  /** Shows metadata saved elsewhere (e.g. the metadata editor) without a reload. */
+  function applyMetadata(updated: ObjectMetadata) {
+    if (selectedKey.value === updated.key) metadata.value = updated;
+    entries.value = entries.value.map((e) =>
+      e.key === updated.key && !e.isPrefix
+        ? { ...e, size: updated.size, lastModified: updated.lastModified, etag: updated.etag }
+        : e,
+    );
+  }
+
   function clearSelection() {
     metadataSeq++;
     selectedKey.value = null;
@@ -398,6 +408,7 @@ export const useExplorerStore = defineStore("explorer", () => {
     selectedKey,
     selected,
     metadata,
+    applyMetadata,
     metadataError,
     metadataLoading,
     open,

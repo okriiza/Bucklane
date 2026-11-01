@@ -7,8 +7,10 @@ import {
   FolderInput,
   Info,
   Link2,
+  Globe,
   MoreHorizontal,
   Pencil,
+  SlidersHorizontal,
   Trash2,
 } from "@lucide/vue";
 import {
@@ -30,6 +32,8 @@ const emit = defineEmits<{
   share: [];
   copyKey: [];
   copyUri: [];
+  copyPublicUrl: [];
+  metadata: [];
   rename: [];
   copy: [];
   move: [];
@@ -72,6 +76,9 @@ const itemClass =
           <DropdownMenuItem :class="itemClass" @select="emit('share')">
             <Link2 /> {{ $t("share.menu") }}
           </DropdownMenuItem>
+          <DropdownMenuItem :class="itemClass" @select="emit('metadata')">
+            <SlidersHorizontal /> {{ $t("metadata.action") }}
+          </DropdownMenuItem>
           <DropdownMenuSeparator class="bg-border -mx-1 my-1 h-px" />
           <DropdownMenuItem :class="itemClass" @select="emit('rename')">
             <Pencil /> {{ $t("ops.rename") }}
@@ -107,6 +114,9 @@ const itemClass =
         </DropdownMenuItem>
         <DropdownMenuItem :class="itemClass" @select="emit('copyUri')">
           <ClipboardCopy /> {{ $t("share.copyUri") }}
+        </DropdownMenuItem>
+        <DropdownMenuItem v-if="!entry.isPrefix" :class="itemClass" @select="emit('copyPublicUrl')">
+          <Globe /> {{ $t("share.copyPublicUrl") }}
         </DropdownMenuItem>
         <DropdownMenuSeparator class="bg-border -mx-1 my-1 h-px" />
         <DropdownMenuItem

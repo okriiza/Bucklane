@@ -2,6 +2,18 @@
 
 Notable changes to Bucklane. Versions follow [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Added
+
+- **Public URLs.** **Copy public URL** in a file's **⋯** menu copies its unsigned address, and the share dialog has a **Public URL** tab next to temporary links. Set a custom domain or CDN (CloudFront, r2.dev, your own domain) per bucket and every public URL uses it. Supabase public URLs use its public object path; Cloudflare R2 asks for the bucket's public domain.
+- **Edit metadata.** Change a file's Content-Type, Cache-Control, Content-Disposition, Content-Encoding, Content-Language, and custom metadata without uploading it again. The contents stay the same. Storage class, encryption, and a public-read ACL are kept, and nothing is saved if the file changed on the server while you were editing.
+- The details panel shows Cache-Control, Content-Disposition, Content-Encoding, and Content-Language when they are set.
+
+### Changed
+
+- Connections show their provider's logo (Supabase, MinIO, Cloudflare, Wasabi, DigitalOcean) instead of a two-letter monogram. Amazon S3 gets an orange bucket, and custom endpoints a server icon.
+
 ## 0.7.0 — 2026-11-01
 
 ### Added

@@ -3,6 +3,8 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
+use crate::errors::{AppError, ErrorCode};
+
 /// An entry in a listing: either an object or a virtual folder (common prefix).
 ///
 /// `key` is an opaque S3 identifier, never a local filesystem path (TSD §4.2).
@@ -51,11 +53,112 @@ pub struct ObjectMetadata {
     pub size: Option<i64>,
     pub last_modified: Option<String>,
     pub content_type: Option<String>,
+    pub cache_control: Option<String>,
+    pub content_disposition: Option<String>,
+    pub content_encoding: Option<String>,
+    pub content_language: Option<String>,
     /// Not necessarily an MD5 of the content (TSD §9.6).
     pub etag: Option<String>,
     pub storage_class: Option<String>,
     /// User-defined `x-amz-meta-*` headers.
     pub metadata: BTreeMap<String, String>,
+}
+
+/// AWS limit for the combined size of user metadata names and values.
+const MAX_USER_METADATA_BYTES: usize = 2048;
+const MAX_HEADER_VALUE_LEN: usize = 1024;
+
+/// The editable headers of an object: standard HTTP headers and user metadata.
+#[derive(Debug, Clone, Default, PartialEq, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct ObjectHeaders {
+    pub content_type: Option<String>,
+    pub cache_control: Option<String>,
+    pub content_disposition: Option<String>,
+    pub content_encoding: Option<String>,
+    pub content_language: Option<String>,
+    /// User-defined `x-amz-meta-*` headers, named without the prefix.
+    pub metadata: BTreeMap<String, String>,
+}
+
+impl ObjectHeaders {
+    /// Trims values, drops empty headers, and lowercases metadata names the
+    /// way S3 stores them. Rejects anything that is not a valid HTTP header
+    /// value: non-ASCII metadata is stored inconsistently across providers.
+    pub fn normalized(self) -> Result<Self, AppError> {
+        let header = |value: Option<String>, label: &str| {
+            let Some(value) = value.map(|v| v.trim().to_owned()).filter(|v| !v.is_empty()) else {
+                return Ok(None);
+            };
+            if value.len() > MAX_HEADER_VALUE_LEN || !is_header_value(&value) {
+                return Err(invalid_header(format!(
+                    "{label} may only contain printable ASCII characters (at most {MAX_HEADER_VALUE_LEN})."
+                )));
+            }
+            Ok(Some(value))
+        };
+
+        let mut metadata = BTreeMap::new();
+        for (name, value) in self.metadata {
+            let name = name.trim().to_ascii_lowercase();
+            let name = name.strip_prefix("x-amz-meta-").unwrap_or(&name).to_owned();
+            if name.is_empty()
+                || !name
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.'))
+            {
+                return Err(invalid_header(
+                    "Metadata names may only contain letters, digits, '-', '_' and '.'.",
+                ));
+            }
+            let value = value.trim().to_owned();
+            if !is_header_value(&value) {
+                return Err(invalid_header(format!(
+                    "The value of \"{name}\" may only contain printable ASCII characters."
+                )));
+            }
+            if metadata.insert(name.clone(), value).is_some() {
+                return Err(invalid_header(format!(
+                    "The metadata name \"{name}\" is used more than once."
+                )));
+            }
+        }
+        let size: usize = metadata.iter().map(|(n, v)| n.len() + v.len()).sum();
+        if size > MAX_USER_METADATA_BYTES {
+            return Err(invalid_header(format!(
+                "User metadata may be at most {MAX_USER_METADATA_BYTES} bytes in total."
+            )));
+        }
+
+        Ok(Self {
+            content_type: header(self.content_type, "Content-Type")?,
+            cache_control: header(self.cache_control, "Cache-Control")?,
+            content_disposition: header(self.content_disposition, "Content-Disposition")?,
+            content_encoding: header(self.content_encoding, "Content-Encoding")?,
+            content_language: header(self.content_language, "Content-Language")?,
+            metadata,
+        })
+    }
+}
+
+fn is_header_value(value: &str) -> bool {
+    value.bytes().all(|b| b == b' ' || b.is_ascii_graphic())
+}
+
+fn invalid_header(message: impl Into<String>) -> AppError {
+    AppError::new(ErrorCode::InvalidInput, message)
+}
+
+#[derive(Debug, Clone, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateObjectMetadataInput {
+    pub connection_id: String,
+    pub bucket: String,
+    pub key: String,
+    /// ETag of the version the user edited; nothing changes if the object
+    /// was replaced since.
+    pub etag: String,
+    pub headers: ObjectHeaders,
 }
 
 /// What to do when the destination key already exists (ADR-013).
@@ -245,4 +348,58 @@ pub struct ObjectPreview {
     pub truncated: bool,
     #[specta(type = Option<f64>)]
     pub size: Option<i64>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn headers(metadata: &[(&str, &str)]) -> ObjectHeaders {
+        ObjectHeaders {
+            metadata: metadata
+                .iter()
+                .map(|(n, v)| ((*n).to_owned(), (*v).to_owned()))
+                .collect(),
+            ..ObjectHeaders::default()
+        }
+    }
+
+    #[test]
+    fn normalizes_headers_and_metadata_names() {
+        let normalized = ObjectHeaders {
+            content_type: Some("  text/plain ".into()),
+            cache_control: Some("   ".into()),
+            ..headers(&[("X-Amz-Meta-Owner", " dewi "), ("Build.ID", "42")])
+        }
+        .normalized()
+        .unwrap();
+
+        assert_eq!(normalized.content_type.as_deref(), Some("text/plain"));
+        assert_eq!(normalized.cache_control, None, "blank headers are dropped");
+        assert_eq!(normalized.metadata["owner"], "dewi");
+        assert_eq!(normalized.metadata["build.id"], "42");
+    }
+
+    #[test]
+    fn rejects_invalid_headers_and_metadata() {
+        let bad_header = ObjectHeaders {
+            content_disposition: Some("attachment\r\nX-Evil: 1".into()),
+            ..ObjectHeaders::default()
+        };
+        assert!(bad_header.normalized().is_err(), "header injection");
+        assert!(headers(&[("owner name", "x")]).normalized().is_err());
+        assert!(headers(&[("x-amz-meta-", "x")]).normalized().is_err());
+        assert!(
+            headers(&[("owner", "Dédé")]).normalized().is_err(),
+            "non-ASCII"
+        );
+        assert!(
+            headers(&[("Owner", "a"), ("owner", "b")])
+                .normalized()
+                .is_err(),
+            "duplicate after lowercasing"
+        );
+        let long = "x".repeat(MAX_USER_METADATA_BYTES);
+        assert!(headers(&[("big", &long)]).normalized().is_err());
+    }
 }

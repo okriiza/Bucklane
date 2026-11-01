@@ -26,13 +26,21 @@ import ExplorerBreadcrumb from "@/components/explorer/ExplorerBreadcrumb.vue";
 import FolderRelocateDialog, {
   type FolderRelocateRequest,
 } from "@/components/explorer/FolderRelocateDialog.vue";
+import MetadataDialog from "@/components/explorer/MetadataDialog.vue";
 import ObjectDetails from "@/components/explorer/ObjectDetails.vue";
 import ObjectTable, { type RowAction } from "@/components/explorer/ObjectTable.vue";
 import PreviewDialog from "@/components/explorer/PreviewDialog.vue";
 import ShareLinkDialog from "@/components/explorer/ShareLinkDialog.vue";
 import UploadButton from "@/components/explorer/UploadButton.vue";
 import { Button } from "@/components/ui/button";
-import { CommandError, type ObjectOperationOutcome, type StorageObject } from "@/services/tauri";
+import {
+  CommandError,
+  commands,
+  unwrap,
+  type ObjectMetadata,
+  type ObjectOperationOutcome,
+  type StorageObject,
+} from "@/services/tauri";
 import { useObjectDrag } from "@/composables/useObjectDrag";
 import { useTransferActions } from "@/composables/useTransferActions";
 import { toAppError } from "@/services/tauri";
@@ -287,6 +295,7 @@ function downloadEntries(entries: StorageObject[]) {
 
 const shareOpen = ref(false);
 const shareKey = ref("");
+const shareMode = ref<"temporary" | "public">("temporary");
 const insecureConnection = computed(() => connections.byId(props.id)?.allowInsecureHttp ?? false);
 
 async function copyToClipboard(text: string, label: string) {
@@ -301,13 +310,43 @@ async function copyToClipboard(text: string, label: string) {
 const previewOpen = ref(false);
 const previewKey = ref("");
 
+const metadataOpen = ref(false);
+const metadataKey = ref("");
+
+function onMetadataSaved(updated: ObjectMetadata) {
+  explorer.applyMetadata(updated);
+  toast.success(t("metadata.saved"));
+}
+
+function openShare(key: string, mode: "temporary" | "public") {
+  shareKey.value = key;
+  shareMode.value = mode;
+  shareOpen.value = true;
+}
+
+/** Copies right away; without a usable address, opens the dialog to set one. */
+async function copyPublicUrl(entry: StorageObject) {
+  try {
+    const { url } = await unwrap(commands.getPublicUrl(props.id, props.bucket, entry.key));
+    if (!url) return openShare(entry.key, "public");
+    await copyText(url);
+    toast.success(t("share.publicUrlCopied"), { description: t("share.publicUrlCopiedHint") });
+  } catch (err) {
+    toast.error(err instanceof CommandError ? err.appError.message : t("share.copyFailed"));
+  }
+}
+
 function onRowAction(action: RowAction, entry: StorageObject) {
   if (action === "preview") {
     previewKey.value = entry.key;
     previewOpen.value = true;
   } else if (action === "share") {
-    shareKey.value = entry.key;
-    shareOpen.value = true;
+    openShare(entry.key, "temporary");
+  } else if (action === "copyPublicUrl") {
+    void copyPublicUrl(entry);
+  } else if (action === "metadata") {
+    metadataKey.value = entry.key;
+    metadataOpen.value = true;
   } else if (action === "copyKey") {
     void copyToClipboard(entry.key, t("share.copyKeyLabel"));
   } else if (action === "copyUri") {
@@ -716,6 +755,14 @@ function goTo(prefix: string) {
       :bucket="bucket"
       :object-key="shareKey"
       :insecure="insecureConnection"
+      :initial-mode="shareMode"
+    />
+    <MetadataDialog
+      v-model:open="metadataOpen"
+      :connection-id="id"
+      :bucket="bucket"
+      :object-key="metadataKey"
+      @saved="onMetadataSaved"
     />
 
     <!-- Drag preview following the pointer. -->

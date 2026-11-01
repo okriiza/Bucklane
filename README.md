@@ -53,7 +53,8 @@ Available for **macOS** (Apple Silicon and Intel), **Windows**, and **Linux**.
 | **Safe file operations**                  | Rename, copy, and move files. A move deletes the original only after the copy is verified. Replacing an existing file always asks first.                                                                              |
 | **Folder delete you can trust**           | Before deleting a folder, Bucklane counts exactly how many objects and bytes will be removed and deletes only those.                                                                                                  |
 | **Quick preview**                         | Press Space or double-click to preview images, PDFs, and text or code files without downloading them first.                                                                                                           |
-| **Share links**                           | Create a time-limited download link for any file (15 minutes to 7 days) and copy it in one click. Copy an object's key or `s3://` URI just as quickly.                                                                |
+| **Share links and public URLs**           | Create a time-limited download link for any file (15 minutes to 7 days), or copy its public URL, using your own domain or CDN if you set one. Copy an object's key or `s3://` URI just as quickly.                    |
+| **Edit metadata**                         | Change Content-Type, Cache-Control, Content-Disposition, and custom metadata without uploading the file again.                                                                                                        |
 | **Bookmarks and pinned buckets**          | Open a bucket by name even when your keys can't list buckets, and star the ones you use most so they appear on the Overview.                                                                                          |
 | **Overview dashboard**                    | See active transfers, what you uploaded and downloaded today, your connections, pinned buckets, and recent activity at a glance.                                                                                      |
 | **Light and dark mode**                   | Follows your system, or pick one in Settings.                                                                                                                                                                         |
@@ -227,7 +228,8 @@ Uninstalling leaves your local data and keychain entries in place. To remove sec
 
 - Click a **connection** in the sidebar to see its buckets, then click a **bucket** to open it.
 - Click a **folder** to open it. Use the **breadcrumb** or the **↑** button to go back up.
-- Click a **file** to see its details: size, content type, last modified, ETag, storage class, and custom metadata.
+- Click a **file** to see its details: size, content type, caching and download headers, last modified, ETag, storage class, and custom metadata.
+- To change those headers, click **Edit metadata** in the details panel or the **⋯** menu. Edit Content-Type, Cache-Control, Content-Disposition, Content-Encoding, Content-Language, or custom fields, then click **Save**. The file isn't uploaded again and its contents stay the same; only its last-modified time changes. Files over 5 GiB aren't supported yet.
 - Large folders show their first 100 items right away (adjustable in Settings) and load the rest in the background, up to 10,000 items, so every subfolder ends up on top and sorting and filtering cover the whole folder. Past 10,000, click **Load more** at the bottom.
 - Click a **column header** (Name, Size, Last modified) to sort; click again to reverse. Folders stay on top, and the order is remembered.
 - Typing in the **search** box filters the items already loaded. Press **Enter** to search the whole folder on the server for names that **start with** your text — S3 only matches the beginning of a name, and the match is case-sensitive.
@@ -277,6 +279,8 @@ Nothing is ever overwritten without your confirmation.
 - Open the **⋯** menu on a file and choose **Share link…**, or click the file and use **Share** in the details panel.
 - Pick how long the link should work (15 minutes, 1 hour, 1 day, or 7 days) and click **Create link**. The link is copied to your clipboard.
 - Anyone with the link can download the file until it expires. Bucklane doesn't keep a list of created links; to cut off a link early, rotate the connection's access key.
+- For files anyone may read, choose **Copy public URL** from the **⋯** menu, or the **Public URL** tab in the share dialog. A public URL never expires and opens only if the file is public (bucket policy, public ACL, or a public domain); Bucklane doesn't check that for you.
+- If the bucket is served from a custom domain or CDN (CloudFront, Cloudflare R2's r2.dev or custom domain, your own domain), enter it under **Custom domain or CDN** in the **Public URL** tab. Every public URL for that bucket then uses it. Cloudflare R2 needs this, because its S3 endpoint doesn't serve public files.
 - To copy where an object lives, use **Copy key** or **Copy S3 URI** (`s3://bucket/key`) from the **⋯** menu. These work for folders too.
 
 ### Creating folders
@@ -458,3 +462,5 @@ _Be the first!_
 ## License
 
 Bucklane is released under the [MIT License](LICENSE).
+
+Provider names and logos are trademarks of their owners and are shown only to identify which service a connection uses; Bucklane isn't affiliated with or endorsed by them. Logos come from [Simple Icons](https://simpleicons.org); Amazon S3 is shown as a generic bucket.
