@@ -18,3 +18,7 @@ src-tauri/gen/schemas/
 # Local env
 .env
 .env.*
+
+# Python bytecode
+__pycache__/
+*.pyc
