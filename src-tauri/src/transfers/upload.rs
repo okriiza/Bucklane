@@ -1,10 +1,13 @@
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
+use std::sync::Arc;
+use std::sync::atomic::AtomicU64;
 
 use aws_sdk_s3::Client;
-use aws_sdk_s3::primitives::ByteStream;
+use aws_sdk_s3::primitives::{ByteStream, SdkBody};
 use aws_sdk_s3::types::{CompletedMultipartUpload, CompletedPart};
 use futures_util::{StreamExt, TryStreamExt, stream};
 
+use crate::domain::object::ObjectHeaders;
 use crate::domain::transfer::StoredTransfer;
 use crate::errors::{AppError, ErrorCode};
 use crate::providers::s3_provider::{S3StorageProvider, map_sdk_error};
@@ -68,62 +71,98 @@ pub(super) async fn run(
     repo.update(t).await?;
 
     let provider = S3StorageProvider::new(client.clone());
-    // The conflict was resolved when queued; re-check so a retry or a
-    // concurrent change never silently replaces an object.
-    if !t.overwrite {
-        match provider.head_object(&t.bucket, &t.object_key).await {
-            Ok(_) => {
-                return Err(AppError::new(
-                    ErrorCode::TransferFailed,
-                    "An object with this name now exists at the destination. It was not replaced.",
-                ));
-            }
-            Err(err) if err.code == ErrorCode::ObjectNotFound => {}
-            Err(err) => return Err(err),
-        }
-    }
+    ensure_destination_free(&provider, t).await?;
 
-    let content_type = mime_guess::from_path(&path).first_raw().map(str::to_owned);
+    let headers = ObjectHeaders {
+        content_type: mime_guess::from_path(&path).first_raw().map(str::to_owned),
+        ..ObjectHeaders::default()
+    };
+    let body = |offset, len, counter| counting_file_body(path.clone(), offset, len, counter);
+    write_object(client, repo, t, size, &headers, progress, tuning, &body).await?;
+    verify_size(
+        &provider,
+        t,
+        size,
+        "The uploaded object's size does not match the local file.",
+    )
+    .await
+}
+
+/// Builds the body for `len` bytes starting at `offset`, counting into the
+/// given counter.
+pub(super) type BodyFactory<'a> = dyn Fn(u64, u64, Arc<AtomicU64>) -> SdkBody + Sync + 'a;
+
+/// The conflict was resolved when queued; re-check so a retry or a
+/// concurrent change never silently replaces an object.
+pub(super) async fn ensure_destination_free(
+    provider: &S3StorageProvider,
+    t: &StoredTransfer,
+) -> Result<(), AppError> {
+    if t.overwrite {
+        return Ok(());
+    }
+    match provider.head_object(&t.bucket, &t.object_key).await {
+        Ok(_) => Err(AppError::new(
+            ErrorCode::TransferFailed,
+            "An object with this name now exists at the destination. It was not replaced.",
+        )),
+        Err(err) if err.code == ErrorCode::ObjectNotFound => Ok(()),
+        Err(err) => Err(err),
+    }
+}
+
+/// Stores `size` bytes at the transfer's destination with one PUT, or with
+/// a multipart upload at or above the threshold.
+#[allow(clippy::too_many_arguments)]
+pub(super) async fn write_object(
+    client: &Client,
+    repo: &TransferRepository,
+    t: &mut StoredTransfer,
+    size: u64,
+    headers: &ObjectHeaders,
+    progress: &Progress,
+    tuning: UploadTuning,
+    body: &BodyFactory<'_>,
+) -> Result<(), AppError> {
     if size < tuning.threshold {
         client
             .put_object()
             .bucket(&t.bucket)
             .key(&t.object_key)
-            .set_content_type(content_type)
+            .set_content_type(headers.content_type.clone())
+            .set_cache_control(headers.cache_control.clone())
+            .set_content_disposition(headers.content_disposition.clone())
+            .set_content_encoding(headers.content_encoding.clone())
+            .set_content_language(headers.content_language.clone())
+            .set_metadata(user_metadata(headers))
             .content_length(i64::try_from(size).unwrap_or(i64::MAX))
-            .body(ByteStream::new(counting_file_body(
-                path,
-                0,
-                size,
-                progress.counter(),
-            )))
+            .body(ByteStream::new(body(0, size, progress.counter())))
             .send()
             .await
             .map_err(|e| map_sdk_error(e, ErrorCode::BucketNotFound))?;
+        Ok(())
     } else {
         let part_size = part_size_for(size, tuning.part_size);
-        multipart(
-            client,
-            repo,
-            t,
-            &path,
-            size,
-            part_size,
-            content_type,
-            progress,
-        )
-        .await?;
+        multipart(client, repo, t, size, part_size, headers, progress, body).await
     }
+}
 
-    // Verify the stored object has the expected size.
+/// Fails unless the stored object has the expected size.
+pub(super) async fn verify_size(
+    provider: &S3StorageProvider,
+    t: &StoredTransfer,
+    size: u64,
+    mismatch: &str,
+) -> Result<(), AppError> {
     let stored = provider.head_object(&t.bucket, &t.object_key).await?;
     if stored.size != i64::try_from(size).ok() {
-        return Err(AppError::new(
-            ErrorCode::TransferFailed,
-            "The uploaded object's size does not match the local file.",
-        ));
+        return Err(AppError::new(ErrorCode::TransferFailed, mismatch));
     }
     Ok(())
+}
+
+fn user_metadata(headers: &ObjectHeaders) -> Option<std::collections::HashMap<String, String>> {
+    (!headers.metadata.is_empty()).then(|| headers.metadata.clone().into_iter().collect())
 }
 
 /// Part size ≥ the preferred size, large enough to stay within 10,000
@@ -138,17 +177,22 @@ async fn multipart(
     client: &Client,
     repo: &TransferRepository,
     t: &mut StoredTransfer,
-    path: &Path,
     size: u64,
     part_size: u64,
-    content_type: Option<String>,
+    headers: &ObjectHeaders,
     progress: &Progress,
+    body: &BodyFactory<'_>,
 ) -> Result<(), AppError> {
     let created = client
         .create_multipart_upload()
         .bucket(&t.bucket)
         .key(&t.object_key)
-        .set_content_type(content_type)
+        .set_content_type(headers.content_type.clone())
+        .set_cache_control(headers.cache_control.clone())
+        .set_content_disposition(headers.content_disposition.clone())
+        .set_content_encoding(headers.content_encoding.clone())
+        .set_content_language(headers.content_language.clone())
+        .set_metadata(user_metadata(headers))
         .send()
         .await
         .map_err(|e| map_sdk_error(e, ErrorCode::BucketNotFound))?;
@@ -168,7 +212,7 @@ async fn multipart(
         .map(|n| {
             let offset = (n - 1) * part_size;
             let len = part_size.min(size - offset);
-            let body = counting_file_body(path.to_path_buf(), offset, len, progress.counter());
+            let body = body(offset, len, progress.counter());
             let (bucket, key, upload_id, transfer_id) = (
                 bucket.clone(),
                 key.clone(),

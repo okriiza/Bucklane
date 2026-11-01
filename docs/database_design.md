@@ -161,12 +161,12 @@ Stores local transfer history and durable operational metadata. Runtime progress
 | Column                     | Type    | Constraints         | Description                                            |
 | -------------------------- | ------- | ------------------- | ------------------------------------------------------ |
 | `id`                       | TEXT    | PK                  | Transfer UUID v7                                       |
-| `connection_id`            | TEXT    | NULL, FK            | Source connection; nullable for deleted connections    |
+| `connection_id`            | TEXT    | NULL, FK            | Connection; the destination of a copy; NULL if deleted |
 | `connection_name_snapshot` | TEXT    | NOT NULL            | Human-readable name at transfer time                   |
-| `direction`                | TEXT    | NOT NULL, CHECK     | `UPLOAD` or `DOWNLOAD`                                 |
+| `direction`                | TEXT    | NOT NULL, CHECK     | `UPLOAD`, `DOWNLOAD`, or `COPY`                        |
 | `bucket`                   | TEXT    | NOT NULL            | Target/source bucket                                   |
 | `object_key`               | TEXT    | NOT NULL            | Exact S3 object key                                    |
-| `local_path`               | TEXT    | NOT NULL            | Local file path; treat as privacy-sensitive            |
+| `local_path`               | TEXT    | NOT NULL            | Local file path (empty for copies); privacy-sensitive  |
 | `bytes_total`              | INTEGER | NULL, CHECK >= 0    | Expected bytes if known                                |
 | `bytes_transferred`        | INTEGER | NOT NULL, DEFAULT 0 | Observed transferred bytes                             |
 | `status`                   | TEXT    | NOT NULL, CHECK     | `QUEUED`, `RUNNING`, `COMPLETED`, `FAILED`, `CANCELED` |
@@ -175,6 +175,12 @@ Stores local transfer history and durable operational metadata. Runtime progress
 | `error_message`            | TEXT    | NULL                | Sanitized diagnostic message                           |
 | `multipart_upload_id`      | TEXT    | NULL                | Remote multipart upload ID for recovery/cleanup        |
 | `overwrite`                | INTEGER | NOT NULL, DEFAULT 0 | User chose to replace an existing destination (0/1)    |
+| `resume_etag`              | TEXT    | NULL                | Download: ETag the partial file belongs to             |
+| `resume_offset`            | INTEGER | NOT NULL, DEFAULT 0 | Download: bytes known to be on disk                    |
+| `source_connection_id`     | TEXT    | NULL, FK            | Copy: connection read from; NULL if deleted            |
+| `source_connection_name_snapshot` | TEXT | NULL           | Copy: source connection name at transfer time          |
+| `source_bucket`            | TEXT    | NULL                | Copy: source bucket                                    |
+| `source_key`               | TEXT    | NULL                | Copy: source object key                                |
 | `created_at`               | TEXT    | NOT NULL            | Queued timestamp                                       |
 | `started_at`               | TEXT    | NULL                | Start timestamp                                        |
 | `completed_at`             | TEXT    | NULL                | Terminal-state timestamp                               |
@@ -340,6 +346,7 @@ At application startup:
 | `202610150001_transfer_overwrite.sql` | Adds `transfers.overwrite` so the user's conflict decision is honored at download finalization and on retry. |
 | `202610310001_download_resume.sql` | Adds `transfers.resume_etag` and `transfers.resume_offset` for resumable downloads. |
 | `202611010001_bucket_public_urls.sql` | Adds `bucket_public_urls` (§3.6). |
+| `202611020001_transfer_copy.sql` | Rebuilds `transfers` to allow `direction = 'COPY'` and adds the `source_*` columns (a `COPY` row must have its source). `transfer_parts` rows are saved and restored around the rebuild. |
 
 ## 5. Default Settings
 

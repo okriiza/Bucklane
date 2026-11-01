@@ -29,6 +29,7 @@ export type RowAction =
   | "metadata"
   | "rename"
   | "copy"
+  | "copyTo"
   | "move"
   | "delete";
 
@@ -204,6 +205,7 @@ function activate(entry: StorageObject) {
             @metadata="emit('action', 'metadata', entry)"
             @rename="emit('action', 'rename', entry)"
             @copy="emit('action', 'copy', entry)"
+            @copy-to="emit('action', 'copyTo', entry)"
             @move="emit('action', 'move', entry)"
             @delete="emit('action', 'delete', entry)"
           />

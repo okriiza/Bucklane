@@ -1118,6 +1118,22 @@ An object ETag must not always be assumed to be an MD5 hash of the content.
 
 Concurrent modification and versioning must be considered so that a source that has changed is not deleted accidentally.
 
+## 9.7 Copy Between Buckets and Connections
+
+`enqueue_copy` copies objects or whole folders to another bucket, on the same or another connection. Each object becomes a `COPY` transfer in the normal queue (progress, cancel, retry, concurrency limit). The destination is the transfer's `connection_id` / `bucket` / `object_key`; the source is stored in `source_connection_id`, `source_connection_name_snapshot`, `source_bucket`, and `source_key`. `local_path` is empty.
+
+Planning mirrors downloads: a folder key is listed recursively (at most `MAX_FOLDER_FILES` objects) and recreated inside the destination folder, so `media/brand/logo.svg` copied into `archive/` becomes `archive/brand/logo.svg`. Folder markers are not copied. Existing destinations follow the transfer conflict policy (`ASK`, `SKIP`, `OVERWRITE`, `RENAME`); folder plans gather the destination's keys once instead of one HEAD per object. Copying an object onto itself and destination keys longer than 1,024 bytes are rejected per item.
+
+The bytes are streamed through Bucklane; there is no server-side copy between connections, because the two connections have different credentials and may be different providers:
+
+1. HEAD the source for its size, ETag, and headers.
+2. Re-check that the destination is still free unless the user chose to overwrite.
+3. Below the multipart threshold, one PUT; otherwise a multipart upload with the configured part size and 4 parts in flight. Each part's body is a ranged GET of the source, with `If-Match` on the ETag from step 1, so every byte comes from the same version. Bodies are rebuildable: an SDK retry sends a new GET. Nothing is written to disk.
+4. A server that ignores `Range` would return the object from its start; this is detected (no `Content-Range`) and the copy fails rather than storing wrong bytes.
+5. Verify the destination size.
+
+Content-Type, Cache-Control, Content-Disposition, Content-Encoding, Content-Language, and user metadata are copied. Storage class, ACLs, encryption settings, and tags belong to the source provider and are not. A failing source surfaces in the SDK only as a generic send error, so the body records the source's own error and the transfer reports that instead. Cancel and failure abort the multipart upload like an upload does; copies cannot be paused. Deleting either connection sets its column to NULL; a copy whose source connection is gone cannot be retried, and deleting a connection is blocked while a copy reads from or writes to it.
+
 # 10. Frontend Architecture
 
 ## 10.1 Vue Directory Structure

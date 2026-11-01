@@ -2,7 +2,7 @@ use tauri::State;
 
 use crate::app_state::AppState;
 use crate::domain::transfer::{
-    EnqueueDownloadInput, EnqueueItemResult, EnqueueUploadInput, TransferDto,
+    EnqueueCopyInput, EnqueueDownloadInput, EnqueueItemResult, EnqueueUploadInput, TransferDto,
 };
 use crate::errors::AppError;
 
@@ -30,6 +30,16 @@ pub async fn enqueue_download(
         .transfers()?
         .enqueue_download(input, &state.selections)
         .await
+}
+
+/// Queues copies to another bucket or connection, streamed through Bucklane.
+#[tauri::command]
+#[specta::specta]
+pub async fn enqueue_copy(
+    state: State<'_, AppState>,
+    input: EnqueueCopyInput,
+) -> Result<Vec<EnqueueItemResult>, AppError> {
+    state.transfers()?.enqueue_copy(input).await
 }
 
 #[tauri::command]

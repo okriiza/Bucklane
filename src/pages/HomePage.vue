@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ArrowDown, ArrowRight, ArrowUp, Database, Plus, Star } from "@lucide/vue";
+import { ArrowDown, ArrowRight, ArrowUp, CopyPlus, Database, Plus, Star } from "@lucide/vue";
 import { computed, ref, watch } from "vue";
 
 import ProviderMark from "@/components/connections/ProviderMark.vue";
@@ -230,7 +230,7 @@ function transferName(t: TransferDto) {
             <div class="min-w-0 flex-1">
               <p class="flex items-center gap-1.5 text-[13px]">
                 <component
-                  :is="t.direction === 'UPLOAD' ? ArrowUp : ArrowDown"
+                  :is="{ UPLOAD: ArrowUp, DOWNLOAD: ArrowDown, COPY: CopyPlus }[t.direction]"
                   class="text-muted-foreground size-3 shrink-0"
                 />
                 <span class="truncate font-medium" :title="t.objectKey">{{ transferName(t) }}</span>

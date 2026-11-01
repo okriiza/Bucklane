@@ -1,7 +1,7 @@
 import { defineStore } from "pinia";
 import { ref } from "vue";
 
-import type { TransferConflictPolicy } from "@/services/tauri";
+import type { TransferConflictPolicy, TransferDirection } from "@/services/tauri";
 
 export type ConflictChoice = Exclude<TransferConflictPolicy, "ASK">;
 
@@ -13,10 +13,10 @@ export type ConflictChoice = Exclude<TransferConflictPolicy, "ASK">;
 export const useConflictPromptStore = defineStore("conflictPrompt", () => {
   const open = ref(false);
   const names = ref<string[]>([]);
-  const direction = ref<"UPLOAD" | "DOWNLOAD">("UPLOAD");
+  const direction = ref<TransferDirection>("UPLOAD");
   let resolver: ((choice: ConflictChoice | null) => void) | null = null;
 
-  function ask(conflicting: string[], dir: "UPLOAD" | "DOWNLOAD") {
+  function ask(conflicting: string[], dir: TransferDirection) {
     resolver?.(null);
     names.value = conflicting;
     direction.value = dir;

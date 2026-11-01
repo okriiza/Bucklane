@@ -3,6 +3,7 @@ import {
   ArrowUp,
   CircleAlert,
   Copy,
+  CopyPlus,
   Download,
   FolderInput,
   FolderOpen,
@@ -20,6 +21,7 @@ import { toast } from "vue-sonner";
 
 import ConfirmDialog from "@/components/common/ConfirmDialog.vue";
 import PromptDialog from "@/components/common/PromptDialog.vue";
+import CopyToDialog, { type CopyDestination } from "@/components/explorer/CopyToDialog.vue";
 import DeleteObjectsDialog from "@/components/explorer/DeleteObjectsDialog.vue";
 import DragGhost from "@/components/explorer/DragGhost.vue";
 import ExplorerBreadcrumb from "@/components/explorer/ExplorerBreadcrumb.vue";
@@ -54,7 +56,7 @@ import { nextSort } from "@/utils/sort";
 const props = defineProps<{ id: string; bucket: string; prefix: string }>();
 
 const router = useRouter();
-const { pickAndUpload, pickAndUploadFolder, pickAndDownload } = useTransferActions();
+const { pickAndUpload, pickAndUploadFolder, pickAndDownload, copyTo } = useTransferActions();
 const uploadTarget = computed(() => ({
   connectionId: props.id,
   bucket: props.bucket,
@@ -310,6 +312,22 @@ async function copyToClipboard(text: string, label: string) {
 const previewOpen = ref(false);
 const previewKey = ref("");
 
+const copyToOpen = ref(false);
+const copyToEntries = ref<StorageObject[]>([]);
+
+function openCopyTo(entries: StorageObject[]) {
+  copyToEntries.value = entries;
+  copyToOpen.value = true;
+}
+
+function startCopy(destination: CopyDestination) {
+  return copyTo(
+    { connectionId: props.id, bucket: props.bucket },
+    copyToEntries.value.map((e) => e.key),
+    destination,
+  );
+}
+
 const metadataOpen = ref(false);
 const metadataKey = ref("");
 
@@ -344,6 +362,9 @@ function onRowAction(action: RowAction, entry: StorageObject) {
     openShare(entry.key, "temporary");
   } else if (action === "copyPublicUrl") {
     void copyPublicUrl(entry);
+  } else if (action === "copyTo") {
+    // Copying a checked row acts on the whole selection.
+    openCopyTo(explorer.checkedKeys.has(entry.key) ? explorer.checkedEntries : [entry]);
   } else if (action === "metadata") {
     metadataKey.value = entry.key;
     metadataOpen.value = true;
@@ -541,6 +562,9 @@ function goTo(prefix: string) {
           </span>
           <Button variant="outline" size="sm" @click="downloadEntries(explorer.checkedEntries)">
             <Download /> {{ $t("transfers.downloadAction") }}
+          </Button>
+          <Button variant="outline" size="sm" @click="openCopyTo(explorer.checkedEntries)">
+            <CopyPlus /> {{ $t("copyTo.short") }}
           </Button>
           <template v-if="singleCheckedFile">
             <Button variant="outline" size="sm" @click="openPrompt('rename', singleCheckedFile)">
@@ -756,6 +780,13 @@ function goTo(prefix: string) {
       :object-key="shareKey"
       :insecure="insecureConnection"
       :initial-mode="shareMode"
+    />
+    <CopyToDialog
+      v-model:open="copyToOpen"
+      :connection-id="id"
+      :bucket="bucket"
+      :entries="copyToEntries"
+      @copy="startCopy"
     />
     <MetadataDialog
       v-model:open="metadataOpen"

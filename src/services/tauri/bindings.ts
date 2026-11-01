@@ -93,6 +93,8 @@ export const commands = {
 	 */
 	enqueueUpload: (input: EnqueueUploadInput) => typedError<EnqueueItemResult[], AppError>(__TAURI_INVOKE("enqueue_upload", { input })),
 	enqueueDownload: (input: EnqueueDownloadInput) => typedError<EnqueueItemResult[], AppError>(__TAURI_INVOKE("enqueue_download", { input })),
+	/**  Queues copies to another bucket or connection, streamed through Bucklane. */
+	enqueueCopy: (input: EnqueueCopyInput) => typedError<EnqueueItemResult[], AppError>(__TAURI_INVOKE("enqueue_copy", { input })),
 	listTransfers: () => typedError<TransferDto[], AppError>(__TAURI_INVOKE("list_transfers")),
 	getTransfer: (id: string) => typedError<TransferDto, AppError>(__TAURI_INVOKE("get_transfer", { id })),
 	cancelTransfer: (id: string) => typedError<null, AppError>(__TAURI_INVOKE("cancel_transfer", { id })),
@@ -298,6 +300,22 @@ export type DiagnosticsInfo = {
 	os: string,
 	arch: string,
 	databaseOk: boolean,
+};
+
+/**
+ *  Copies objects or whole folders to another bucket, on the same or another
+ *  connection.
+ */
+export type EnqueueCopyInput = {
+	sourceConnectionId: string,
+	sourceBucket: string,
+	/**  Object keys, folder keys ending in `/`, or conflict items to resend. */
+	keys: string[],
+	destinationConnectionId: string,
+	destinationBucket: string,
+	/**  Folder to copy into, ending in `/`; empty for the bucket root. */
+	destinationPrefix: string,
+	conflictPolicy: TransferConflictPolicy,
 };
 
 export type EnqueueDownloadInput = {
@@ -590,7 +608,9 @@ export type Theme = "system" | "light" | "dark";
 /**  What to do when a transfer's destination already exists (TSD §6.5.1). */
 export type TransferConflictPolicy = "ASK" | "OVERWRITE" | "SKIP" | "RENAME";
 
-export type TransferDirection = "UPLOAD" | "DOWNLOAD";
+export type TransferDirection = "UPLOAD" | "DOWNLOAD" | 
+/**  From one bucket or connection to another, streamed through Bucklane. */
+"COPY";
 
 export type TransferDto = {
 	id: string,
@@ -599,8 +619,10 @@ export type TransferDto = {
 	direction: TransferDirection,
 	bucket: string,
 	objectKey: string,
-	/**  Base name of the local file only. */
+	/**  Base name of the local file only; empty for copies. */
 	localFileName: string,
+	/**  Copy only. */
+	source: TransferSource | null,
 	bytesTotal: number | null,
 	bytesTransferred: number | null,
 	status: TransferStatus,
@@ -613,6 +635,18 @@ export type TransferDto = {
 	createdAt: string,
 	startedAt: string | null,
 	completedAt: string | null,
+};
+
+/**
+ *  Where a copy reads from. The destination is the transfer's own
+ *  connection, bucket, and key.
+ */
+export type TransferSource = {
+	/**  `None` once the source connection is deleted. */
+	connectionId: string | null,
+	connectionNameSnapshot: string,
+	bucket: string,
+	key: string,
 };
 
 export type TransferStatus = "QUEUED" | "RUNNING" | "COMPLETED" | "FAILED" | "CANCELED";

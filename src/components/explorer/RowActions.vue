@@ -2,6 +2,7 @@
 import {
   ClipboardCopy,
   Copy,
+  CopyPlus,
   Download,
   Eye,
   FolderInput,
@@ -36,6 +37,7 @@ const emit = defineEmits<{
   metadata: [];
   rename: [];
   copy: [];
+  copyTo: [];
   move: [];
   delete: [];
 }>();
@@ -90,6 +92,9 @@ const itemClass =
           <DropdownMenuItem :class="itemClass" @select="emit('move')">
             <FolderInput /> {{ $t("ops.move") }}
           </DropdownMenuItem>
+          <DropdownMenuItem :class="itemClass" @select="emit('copyTo')">
+            <CopyPlus /> {{ $t("copyTo.action") }}
+          </DropdownMenuItem>
           <DropdownMenuSeparator class="bg-border -mx-1 my-1 h-px" />
         </template>
         <template v-else>
@@ -106,6 +111,9 @@ const itemClass =
           </DropdownMenuItem>
           <DropdownMenuItem :class="itemClass" @select="emit('move')">
             <FolderInput /> {{ $t("ops.move") }}
+          </DropdownMenuItem>
+          <DropdownMenuItem :class="itemClass" @select="emit('copyTo')">
+            <CopyPlus /> {{ $t("copyTo.action") }}
           </DropdownMenuItem>
           <DropdownMenuSeparator class="bg-border -mx-1 my-1 h-px" />
         </template>

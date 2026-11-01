@@ -21,6 +21,7 @@ function transfer(overrides: Partial<TransferDto> = {}): TransferDto {
     bucket: "b",
     objectKey: "docs/a.txt",
     localFileName: "a.txt",
+    source: null,
     bytesTotal: 10,
     bytesTransferred: 0,
     status: "QUEUED",
