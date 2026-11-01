@@ -1,4 +1,4 @@
--- Copies between buckets or connections (TSD §9.7): a COPY transfer streams
+-- Copies between buckets or connections (TSD §9.5): a COPY transfer streams
 -- an object from its source (source_* columns) to the destination in
 -- connection_id / bucket / object_key. local_path is unused ('') for copies.
 --

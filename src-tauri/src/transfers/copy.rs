@@ -13,7 +13,7 @@ use super::Progress;
 use super::body::{ObjectRange, counting_object_body};
 use super::upload::{self, UploadTuning};
 
-/// Copies one object to another bucket or connection (TSD §9.7). Bytes are
+/// Copies one object to another bucket or connection (TSD §9.5). Bytes are
 /// streamed from ranged GETs straight into the destination's PUT or
 /// multipart parts; nothing is written to disk and at most one chunk per
 /// part is held in memory.
