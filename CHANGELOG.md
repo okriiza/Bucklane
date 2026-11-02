@@ -2,6 +2,12 @@
 
 Notable changes to Bucklane. Versions follow [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Fixed
+
+- **Full-speed transfers in the background on macOS.** Downloads, uploads, and copies no longer slow down while Bucklane's window is hidden behind other windows (macOS App Nap). A download that ran at about 12 MB/s in the background now runs at the full speed of the connection.
+
 ## 0.9.0 — 2026-11-02
 
 ### Added
