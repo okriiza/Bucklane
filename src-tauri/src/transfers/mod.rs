@@ -1,3 +1,4 @@
+mod activity;
 mod body;
 mod copy;
 mod download;
@@ -739,6 +740,8 @@ impl Inner {
         let outcome = match permit {
             None => stopped(),
             Some(_permit) => {
+                // Hidden windows must not slow transfers down (App Nap).
+                let _activity = activity::TransferActivity::begin();
                 t.status = TransferStatus::Running;
                 t.started_at = Some(now());
                 // A resuming download starts at its checkpoint, so the speed
