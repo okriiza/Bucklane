@@ -1,0 +1,392 @@
+<!doctype html>
+<!--
+  "What's new, v0.6 → v0.9" banner, rendered to PNG by scripts/social-images.mjs.
+  ?size=wide (1280×640) or ?size=square (1080×1080).
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Bucklane update banner</title>
+    <style>
+      @font-face {
+        font-family: "Geist";
+        src: url("../../node_modules/@fontsource-variable/geist/files/geist-latin-wght-normal.woff2")
+          format("woff2");
+        font-weight: 100 900;
+      }
+      @font-face {
+        font-family: "Geist Mono";
+        src: url("../../node_modules/@fontsource-variable/geist-mono/files/geist-mono-latin-wght-normal.woff2")
+          format("woff2");
+        font-weight: 100 900;
+      }
+
+      :root {
+        --bg: #0b1222;
+        --card: rgba(17, 24, 39, 0.82);
+        --ink: #eef2f8;
+        --muted: #93a1b8;
+        --accent: #38bdf8;
+        --accent-soft: rgba(56, 189, 248, 0.14);
+        --line: rgba(148, 163, 184, 0.18);
+      }
+
+      * {
+        box-sizing: border-box;
+        margin: 0;
+      }
+
+      html,
+      body {
+        background: var(--bg);
+      }
+
+      .banner {
+        position: relative;
+        overflow: hidden;
+        width: 1280px;
+        height: 640px;
+        font-family: "Geist", system-ui, sans-serif;
+        color: var(--ink);
+        background:
+          radial-gradient(820px 520px at 85% 35%, rgba(56, 189, 248, 0.18), transparent 60%),
+          radial-gradient(600px 420px at 0% 100%, rgba(99, 102, 241, 0.16), transparent 60%),
+          var(--bg);
+      }
+
+      .banner::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background-image:
+          linear-gradient(var(--line) 1px, transparent 1px),
+          linear-gradient(90deg, var(--line) 1px, transparent 1px);
+        background-size: 48px 48px;
+        mask-image: radial-gradient(ellipse at 70% 40%, black 10%, transparent 70%);
+        opacity: 0.45;
+      }
+
+      .copy {
+        position: absolute;
+        left: 72px;
+        top: 72px;
+        width: 470px;
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        font-size: 26px;
+        font-weight: 650;
+        letter-spacing: -0.01em;
+      }
+
+      .brand img {
+        width: 52px;
+        height: 52px;
+        border-radius: 12px;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+      }
+
+      .range {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 36px;
+        padding: 6px 12px;
+        border: 1px solid rgba(56, 189, 248, 0.35);
+        border-radius: 999px;
+        background: var(--accent-soft);
+        color: var(--accent);
+        font-family: "Geist Mono", ui-monospace, monospace;
+        font-size: 15px;
+        font-weight: 500;
+      }
+
+      h1 {
+        margin-top: 18px;
+        font-size: 50px;
+        line-height: 1.05;
+        font-weight: 700;
+        letter-spacing: -0.035em;
+      }
+
+      h1 em {
+        font-style: normal;
+        color: var(--accent);
+      }
+
+      .lede {
+        margin-top: 20px;
+        font-size: 20px;
+        line-height: 1.45;
+        color: var(--muted);
+      }
+
+      .meta {
+        position: absolute;
+        left: 72px;
+        bottom: 56px;
+        display: flex;
+        gap: 22px;
+        font-family: "Geist Mono", ui-monospace, monospace;
+        font-size: 15px;
+        color: var(--muted);
+      }
+
+      .meta b {
+        color: var(--accent);
+        font-weight: 500;
+      }
+
+      .cards {
+        position: absolute;
+        left: 600px;
+        top: 72px;
+        width: 608px;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+      }
+
+      .card {
+        position: relative;
+        min-height: 236px;
+        padding: 22px;
+        border: 1px solid rgba(148, 163, 184, 0.22);
+        border-radius: 16px;
+        background: var(--card);
+        box-shadow: 0 24px 48px rgba(0, 0, 0, 0.35);
+      }
+
+      .card.hero {
+        border-color: rgba(56, 189, 248, 0.45);
+        box-shadow:
+          0 24px 48px rgba(0, 0, 0, 0.35),
+          0 0 0 1px rgba(56, 189, 248, 0.12),
+          0 0 60px rgba(56, 189, 248, 0.12);
+      }
+
+      .version {
+        position: absolute;
+        top: 20px;
+        right: 20px;
+        font-family: "Geist Mono", ui-monospace, monospace;
+        font-size: 13px;
+        color: var(--muted);
+      }
+
+      .hero .version {
+        color: var(--accent);
+      }
+
+      .icon {
+        display: inline-flex;
+        width: 44px;
+        height: 44px;
+        align-items: center;
+        justify-content: center;
+        border-radius: 12px;
+        background: var(--accent-soft);
+        color: var(--accent);
+      }
+
+      .icon svg {
+        width: 22px;
+        height: 22px;
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 2;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+
+      .card h2 {
+        margin-top: 18px;
+        font-size: 21px;
+        line-height: 1.2;
+        font-weight: 650;
+        letter-spacing: -0.02em;
+      }
+
+      .card p {
+        margin-top: 8px;
+        font-size: 15px;
+        line-height: 1.45;
+        color: var(--muted);
+      }
+
+      /* S3 → R2 strip in the hero card. */
+      .flow {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .flow .tile {
+        display: inline-flex;
+        width: 44px;
+        height: 44px;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid rgba(148, 163, 184, 0.25);
+        border-radius: 12px;
+        background: #0f1626;
+      }
+
+      .flow .tile svg {
+        width: 24px;
+        height: 24px;
+      }
+
+      .flow .arrow {
+        width: 22px;
+        height: 22px;
+        fill: none;
+        stroke: var(--accent);
+        stroke-width: 2;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+
+      /* Square: copy on top, cards below. */
+      .square {
+        width: 1080px;
+        height: 1080px;
+      }
+
+      .square .copy {
+        left: 80px;
+        top: 80px;
+        width: 920px;
+      }
+
+      .square h1 {
+        font-size: 64px;
+      }
+
+      .square .lede {
+        width: 800px;
+        font-size: 23px;
+      }
+
+      .square .cards {
+        left: 80px;
+        top: 470px;
+        width: 920px;
+        gap: 20px;
+      }
+
+      .square .card {
+        min-height: 238px;
+        padding: 26px;
+      }
+
+      .square .card h2 {
+        font-size: 24px;
+      }
+
+      .square .card p {
+        font-size: 17px;
+      }
+
+      .square .meta {
+        left: auto;
+        right: 80px;
+        top: 92px;
+        bottom: auto;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="banner" id="banner">
+      <div class="copy">
+        <div class="brand">
+          <img src="../../src-tauri/icons/128x128@2x.png" alt="" />
+          Bucklane
+        </div>
+        <div class="range">v0.6 → v0.9 · what's new</div>
+        <h1>Move your files between <em>any S3 provider</em></h1>
+        <p class="lede">
+          Plus resumable downloads, public URLs, a metadata editor, and whole-folder moves. Free and
+          open source.
+        </p>
+      </div>
+      <div class="meta"><span><b>●</b> macOS · Windows · Linux</span><span>MIT license</span></div>
+
+      <div class="cards">
+        <div class="card hero">
+          <span class="version">v0.9</span>
+          <div class="flow">
+            <span class="tile">
+              <svg viewBox="0 0 24 24">
+                <path
+                  fill="#FF9900"
+                  d="M2.5 5.2C2.5 3.43 6.75 2 12 2s9.5 1.43 9.5 3.2l-2.3 15.4C18.98 22.03 15.85 23 12 23s-6.98-.97-7.2-2.4Z"
+                />
+                <path fill="#B86E00" d="M12 7.2c-4.42 0-8-.9-8-2s3.58-2 8-2 8 .9 8 2-3.58 2-8 2Z" />
+              </svg>
+            </span>
+            <svg class="arrow" viewBox="0 0 24 24"><path d="M5 12h14" /><path d="m12 5 7 7-7 7" /></svg>
+            <span class="tile">
+              <svg viewBox="0 0 24 24">
+                <path
+                  fill="#F38020"
+                  d="M16.5088 16.8447c.1475-.5068.0908-.9707-.1553-1.3154-.2246-.3164-.6045-.499-1.0615-.5205l-8.6592-.1123a.1559.1559 0 0 1-.1333-.0713c-.0283-.042-.0351-.0986-.021-.1553.0278-.084.1123-.1484.2036-.1562l8.7359-.1123c1.0351-.0489 2.1601-.8868 2.5537-1.9136l.499-1.3013c.0215-.0561.0293-.1128.0147-.168-.5625-2.5463-2.835-4.4453-5.5499-4.4453-2.5039 0-4.6284 1.6177-5.3876 3.8614-.4927-.3658-1.1187-.5625-1.794-.499-1.2026.119-2.1665 1.083-2.2861 2.2856-.0283.31-.0069.6128.0635.894C1.5683 13.171 0 14.7754 0 16.752c0 .1748.0142.3515.0352.5273.0141.083.0844.1475.1689.1475h15.9814c.0909 0 .1758-.0645.2032-.1553l.12-.4268zm2.7568-5.5634c-.0771 0-.1611 0-.2383.0112-.0566 0-.1054.0415-.127.0976l-.3378 1.1744c-.1475.5068-.0918.9707.1543 1.3164.2256.3164.6055.498 1.0625.5195l1.8437.1133c.0557 0 .1055.0263.1329.0703.0283.043.0351.1074.0214.1562-.0283.084-.1132.1485-.204.1553l-1.921.1123c-1.041.0488-2.1582.8867-2.5527 1.914l-.1406.3585c-.0283.0713.0215.1416.0986.1416h6.5977c.0771 0 .1474-.0489.169-.126.1122-.4082.1757-.837.1757-1.2803 0-2.6025-2.125-4.727-4.7344-4.727"
+                />
+              </svg>
+            </span>
+          </div>
+          <h2>Copy &amp; move between buckets and providers</h2>
+          <p>Streamed straight across, folders included. Originals go only after a verified copy.</p>
+        </div>
+
+        <div class="card">
+          <span class="version">v0.8</span>
+          <span class="icon">
+            <svg viewBox="0 0 24 24">
+              <circle cx="12" cy="12" r="10" />
+              <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20" />
+              <path d="M2 12h20" />
+            </svg>
+          </span>
+          <h2>Public URLs &amp; metadata editor</h2>
+          <p>Copy a file's URL with your own CDN, edit Content-Type and Cache-Control in place.</p>
+        </div>
+
+        <div class="card">
+          <span class="version">v0.7</span>
+          <span class="icon">
+            <svg viewBox="0 0 24 24">
+              <rect x="14" y="3" width="5" height="18" rx="1" />
+              <rect x="5" y="3" width="5" height="18" rx="1" />
+            </svg>
+          </span>
+          <h2>Resumable downloads</h2>
+          <p>Pause, resume, and pick up after a dropped connection instead of starting over.</p>
+        </div>
+
+        <div class="card">
+          <span class="version">v0.6</span>
+          <span class="icon">
+            <svg viewBox="0 0 24 24">
+              <path
+                d="M2 9V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H20a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-1"
+              />
+              <path d="M2 13h10" />
+              <path d="m9 16 3-3-3-3" />
+            </svg>
+          </span>
+          <h2>Folder moves &amp; drag and drop</h2>
+          <p>Rename, copy, or move whole folders, or drag them onto any folder.</p>
+        </div>
+      </div>
+    </div>
+    <script>
+      if (new URLSearchParams(location.search).get("size") === "square") {
+        document.getElementById("banner").classList.add("square");
+      }
+    </script>
+  </body>
+</html>

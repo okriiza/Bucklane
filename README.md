@@ -388,9 +388,10 @@ Still stuck? Open **About → Report a problem**: **Copy diagnostics** gives a s
 
 ## Current limitations
 
-- A single folder rename, copy, or move is limited to **10,000** objects.
+- A single folder rename, copy, or move is limited to **10,000** objects, and so is a folder copy or move to another bucket.
 - A single folder upload or download is limited to **10,000** files. Empty folders aren't uploaded.
-- Copying, moving, or renaming objects larger than **5 GB** isn't supported yet.
+- Renaming, copying, or moving objects larger than **5 GB** within a bucket isn't supported yet. **Copy or move to another bucket** handles any size, and works within the same bucket too.
+- Copying or moving to another bucket streams every file through your computer, even when both buckets are on the same connection, so it's limited by your connection speed. Copies can be canceled but not paused.
 - A single folder delete is limited to **100,000** objects.
 - Interrupted **uploads** don't resume; they're marked as failed and can be retried from the start. (Downloads resume.)
 - Installers aren't code-signed yet (see [Download and install](#download-and-install)).

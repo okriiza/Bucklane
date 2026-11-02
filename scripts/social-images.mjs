@@ -1,10 +1,11 @@
 /**
- * Renders docs/social/banner.html to PNG images for social media:
+ * Renders the social banners in docs/social to PNG images:
  *
  *   node scripts/social-images.mjs
  *
- * Outputs docs/social/bucklane-banner-wide.png (1280×640, also usable as the
- * GitHub social preview) and bucklane-banner-square.png (1080×1080), both at 2×.
+ * banner.html → bucklane-banner-{wide,square}.png (the wide one doubles as the
+ * GitHub social preview); update.html → bucklane-update-{wide,square}.png
+ * for release announcements. Wide is 1280×640, square 1080×1080, both at 2×.
  * Run `pnpm screenshots` first if the app screenshots are out of date.
  * Env: CHROME_PATH (browser executable).
  */
@@ -15,6 +16,10 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import puppeteer from "puppeteer-core";
 
 const SOCIAL_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "docs", "social");
+const PAGES = [
+  { file: "banner.html", output: "bucklane-banner" },
+  { file: "update.html", output: "bucklane-update" },
+];
 const SIZES = [
   { name: "wide", width: 1280, height: 640 },
   { name: "square", width: 1080, height: 1080 },
@@ -43,15 +48,17 @@ const browser = await puppeteer.launch({
 });
 try {
   const page = await browser.newPage();
-  for (const { name, width, height } of SIZES) {
-    await page.setViewport({ width, height, deviceScaleFactor: 2 });
-    const url = pathToFileURL(join(SOCIAL_DIR, "banner.html"));
-    url.search = `size=${name}`;
-    await page.goto(url.href, { waitUntil: "networkidle0" });
-    await page.evaluate(() => document.fonts.ready);
-    const path = join(SOCIAL_DIR, `bucklane-banner-${name}.png`);
-    await page.screenshot({ path, clip: { x: 0, y: 0, width, height } });
-    console.log(`✓ ${path}`);
+  for (const { file, output } of PAGES) {
+    for (const { name, width, height } of SIZES) {
+      await page.setViewport({ width, height, deviceScaleFactor: 2 });
+      const url = pathToFileURL(join(SOCIAL_DIR, file));
+      url.search = `size=${name}`;
+      await page.goto(url.href, { waitUntil: "networkidle0" });
+      await page.evaluate(() => document.fonts.ready);
+      const path = join(SOCIAL_DIR, `${output}-${name}.png`);
+      await page.screenshot({ path, clip: { x: 0, y: 0, width, height } });
+      console.log(`✓ ${path}`);
+    }
   }
 } finally {
   await browser.close();
