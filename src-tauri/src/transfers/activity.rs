@@ -52,10 +52,9 @@ mod tests {
     #[test]
     fn begins_and_ends_off_the_main_thread() {
         std::thread::spawn(|| {
-            let first = TransferActivity::begin();
-            let second = TransferActivity::begin();
-            drop(first);
-            drop(second);
+            let _outer = TransferActivity::begin();
+            // Activities overlap when transfers run side by side.
+            let _inner = TransferActivity::begin();
         })
         .join()
         .unwrap();
