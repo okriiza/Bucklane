@@ -1,8 +1,10 @@
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::atomic::AtomicU64;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use aws_sdk_s3::Client;
+use aws_sdk_s3::error::ProvideErrorMetadata;
 use aws_sdk_s3::primitives::{ByteStream, SdkBody};
 use aws_sdk_s3::types::{CompletedMultipartUpload, CompletedPart};
 use futures_util::{StreamExt, TryStreamExt, stream};
@@ -12,7 +14,7 @@ use crate::domain::transfer::StoredTransfer;
 use crate::errors::{AppError, ErrorCode};
 use crate::providers::s3_provider::{S3StorageProvider, map_sdk_error};
 use crate::providers::storage_provider::StorageProvider;
-use crate::repositories::transfer_repository::TransferRepository;
+use crate::repositories::transfer_repository::{StoredPart, TransferRepository};
 
 use super::Progress;
 use super::body::counting_file_body;
@@ -56,17 +58,17 @@ pub(super) async fn run(
     tuning: UploadTuning,
 ) -> Result<(), AppError> {
     let path = PathBuf::from(&t.local_path);
-    let size = tokio::fs::metadata(&path)
+    let metadata = tokio::fs::metadata(&path)
         .await
         .ok()
-        .filter(|m| m.is_file())
-        .map(|m| m.len())
+        .filter(std::fs::Metadata::is_file)
         .ok_or_else(|| {
             AppError::new(
                 ErrorCode::LocalFileError,
                 "The file no longer exists or cannot be read.",
             )
         })?;
+    let size = metadata.len();
     t.bytes_total = i64::try_from(size).ok();
     repo.update(t).await?;
 
@@ -77,8 +79,20 @@ pub(super) async fn run(
         content_type: mime_guess::from_path(&path).first_raw().map(str::to_owned),
         ..ObjectHeaders::default()
     };
+    let version = file_version(&metadata);
     let body = |offset, len, counter| counting_file_body(path.clone(), offset, len, counter);
-    write_object(client, repo, t, size, &headers, progress, tuning, &body).await?;
+    write_object(
+        client,
+        repo,
+        t,
+        size,
+        &headers,
+        version.as_deref(),
+        progress,
+        tuning,
+        &body,
+    )
+    .await?;
     verify_size(
         &provider,
         t,
@@ -86,6 +100,17 @@ pub(super) async fn run(
         "The uploaded object's size does not match the local file.",
     )
     .await
+}
+
+/// Identifies the local file's contents for resuming: an upload continues
+/// only if the file still has the same size and modification time.
+pub(super) fn file_version(metadata: &std::fs::Metadata) -> Option<String> {
+    let modified = metadata
+        .modified()
+        .ok()?
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()?;
+    Some(format!("file:{}:{}", metadata.len(), modified.as_nanos()))
 }
 
 /// Builds the body for `len` bytes starting at `offset`, counting into the
@@ -112,7 +137,9 @@ pub(super) async fn ensure_destination_free(
 }
 
 /// Stores `size` bytes at the transfer's destination with one PUT, or with
-/// a multipart upload at or above the threshold.
+/// a multipart upload at or above the threshold. `version` identifies the
+/// source's contents; a multipart upload kept from an earlier attempt of
+/// the same version continues where it stopped.
 #[allow(clippy::too_many_arguments)]
 pub(super) async fn write_object(
     client: &Client,
@@ -120,11 +147,14 @@ pub(super) async fn write_object(
     t: &mut StoredTransfer,
     size: u64,
     headers: &ObjectHeaders,
+    version: Option<&str>,
     progress: &Progress,
     tuning: UploadTuning,
     body: &BodyFactory<'_>,
 ) -> Result<(), AppError> {
     if size < tuning.threshold {
+        // A kept multipart upload is useless for a single PUT.
+        discard_upload(client, repo, t).await?;
         client
             .put_object()
             .bucket(&t.bucket)
@@ -143,7 +173,10 @@ pub(super) async fn write_object(
         Ok(())
     } else {
         let part_size = part_size_for(size, tuning.part_size);
-        multipart(client, repo, t, size, part_size, headers, progress, body).await
+        multipart(
+            client, repo, t, size, part_size, headers, version, progress, body,
+        )
+        .await
     }
 }
 
@@ -180,35 +213,57 @@ async fn multipart(
     size: u64,
     part_size: u64,
     headers: &ObjectHeaders,
+    version: Option<&str>,
     progress: &Progress,
     body: &BodyFactory<'_>,
 ) -> Result<(), AppError> {
-    let created = client
-        .create_multipart_upload()
-        .bucket(&t.bucket)
-        .key(&t.object_key)
-        .set_content_type(headers.content_type.clone())
-        .set_cache_control(headers.cache_control.clone())
-        .set_content_disposition(headers.content_disposition.clone())
-        .set_content_encoding(headers.content_encoding.clone())
-        .set_content_language(headers.content_language.clone())
-        .set_metadata(user_metadata(headers))
-        .send()
-        .await
-        .map_err(|e| map_sdk_error(e, ErrorCode::BucketNotFound))?;
-    let upload_id = created
-        .upload_id()
-        .ok_or_else(|| AppError::internal("The provider did not return an upload ID."))?
-        .to_owned();
-    // Persist immediately so a crash or failure can still abort it.
-    t.multipart_upload_id = Some(upload_id.clone());
-    repo.update(t).await?;
-
     let part_count = size.div_ceil(part_size);
+    let kept = kept_parts(client, repo, t, size, part_size, version).await?;
+    let upload_id = match (&t.multipart_upload_id, kept.is_some()) {
+        (Some(id), true) => id.clone(),
+        _ => {
+            discard_upload(client, repo, t).await?;
+            let created = client
+                .create_multipart_upload()
+                .bucket(&t.bucket)
+                .key(&t.object_key)
+                .set_content_type(headers.content_type.clone())
+                .set_cache_control(headers.cache_control.clone())
+                .set_content_disposition(headers.content_disposition.clone())
+                .set_content_encoding(headers.content_encoding.clone())
+                .set_content_language(headers.content_language.clone())
+                .set_metadata(user_metadata(headers))
+                .send()
+                .await
+                .map_err(|e| map_sdk_error(e, ErrorCode::BucketNotFound))?;
+            let upload_id = created
+                .upload_id()
+                .ok_or_else(|| AppError::internal("The provider did not return an upload ID."))?
+                .to_owned();
+            // Persist immediately so a crash or failure can still abort or
+            // resume it.
+            t.multipart_upload_id = Some(upload_id.clone());
+            t.resume_etag = version.map(str::to_owned);
+            t.resume_offset = 0;
+            repo.update(t).await?;
+            upload_id
+        }
+    };
+
+    let kept = kept.unwrap_or_default();
+    if !kept.is_empty() {
+        tracing::info!(transfer_id = %t.id, parts = kept.len(), "resuming multipart upload");
+    }
+    let kept_bytes: u64 = kept.iter().map(|p| p.size.unsigned_abs()).sum();
+    progress.counter().store(kept_bytes, Ordering::Relaxed);
+    let done: HashSet<i32> = kept.iter().map(|p| p.number).collect();
+
     let transfer_id = t.id.clone();
     let (bucket, key) = (t.bucket.clone(), t.object_key.clone());
+    let missing = (1..=part_count)
+        .filter(|n| !done.contains(&i32::try_from(*n).expect("at most 10,000 parts")));
 
-    let mut parts: Vec<CompletedPart> = stream::iter(1..=part_count)
+    let mut parts: Vec<CompletedPart> = stream::iter(missing)
         .map(|n| {
             let offset = (n - 1) * part_size;
             let len = part_size.min(size - offset);
@@ -254,6 +309,12 @@ async fn multipart(
         .buffer_unordered(PART_CONCURRENCY)
         .try_collect()
         .await?;
+    parts.extend(kept.into_iter().map(|p| {
+        CompletedPart::builder()
+            .part_number(p.number)
+            .e_tag(p.etag)
+            .build()
+    }));
 
     // Completion requires parts in ascending order.
     parts.sort_by_key(|p| p.part_number());
@@ -272,9 +333,92 @@ async fn multipart(
         .map_err(|e| map_sdk_error(e, ErrorCode::BucketNotFound))?;
 
     t.multipart_upload_id = None;
+    t.resume_etag = None;
     repo.delete_parts(&t.id).await?;
+    t.resume_offset = 0;
     repo.update(t).await?;
     Ok(())
+}
+
+/// The parts an earlier attempt stored, if its multipart upload can be
+/// continued: same source version, same part layout, and the provider still
+/// has the upload. `None` means start over.
+async fn kept_parts(
+    client: &Client,
+    repo: &TransferRepository,
+    t: &StoredTransfer,
+    size: u64,
+    part_size: u64,
+    version: Option<&str>,
+) -> Result<Option<Vec<StoredPart>>, AppError> {
+    let Some(upload_id) = &t.multipart_upload_id else {
+        return Ok(None);
+    };
+    if version.is_none() || t.resume_etag.as_deref() != version {
+        return Ok(None);
+    }
+    let parts = repo.parts(&t.id).await?;
+    if !parts_fit(&parts, size, part_size) {
+        return Ok(None);
+    }
+    // An upload aborted elsewhere or expired by a lifecycle rule is gone;
+    // so is anything the provider can't confirm.
+    match client
+        .list_parts()
+        .bucket(&t.bucket)
+        .key(&t.object_key)
+        .upload_id(upload_id)
+        .max_parts(1)
+        .send()
+        .await
+    {
+        Ok(_) => Ok(Some(parts)),
+        Err(err) => {
+            tracing::info!(
+                transfer_id = %t.id,
+                code = err.code().unwrap_or("unknown"),
+                "kept multipart upload is unavailable; starting over"
+            );
+            Ok(None)
+        }
+    }
+}
+
+/// Every stored part has the size the current layout gives it, so a part
+/// size changed in Settings since then starts the upload over.
+fn parts_fit(parts: &[StoredPart], size: u64, part_size: u64) -> bool {
+    let count = size.div_ceil(part_size);
+    parts.iter().all(|p| {
+        let Ok(n) = u64::try_from(p.number) else {
+            return false;
+        };
+        if n == 0 || n > count {
+            return false;
+        }
+        let offset = (n - 1) * part_size;
+        u64::try_from(p.size).ok() == Some(part_size.min(size - offset))
+    })
+}
+
+/// Aborts a multipart upload kept from an earlier attempt, if any.
+async fn discard_upload(
+    client: &Client,
+    repo: &TransferRepository,
+    t: &mut StoredTransfer,
+) -> Result<(), AppError> {
+    let Some(upload_id) = t.multipart_upload_id.clone() else {
+        return Ok(());
+    };
+    if let Err(err) = abort(client, &t.bucket, &t.object_key, &upload_id).await {
+        // Starting over matters more; the old upload just costs storage
+        // until the provider expires it.
+        tracing::warn!(transfer_id = %t.id, error = %err, "could not abort the earlier multipart upload");
+    }
+    t.multipart_upload_id = None;
+    t.resume_etag = None;
+    repo.delete_parts(&t.id).await?;
+    t.resume_offset = 0;
+    repo.update(t).await
 }
 
 pub(super) async fn abort(
@@ -307,6 +451,28 @@ pub(super) async fn abort(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn part(number: i32, size: u64) -> StoredPart {
+        StoredPart {
+            number,
+            etag: format!("\"{number}\""),
+            size: i64::try_from(size).unwrap(),
+        }
+    }
+
+    #[test]
+    fn kept_parts_must_match_the_current_layout() {
+        let size = 12 * MIB;
+        let parts = [part(1, 5 * MIB), part(3, 2 * MIB)];
+        assert!(parts_fit(&parts, size, 5 * MIB));
+        assert!(parts_fit(&[], size, 5 * MIB));
+        // Part size changed in Settings since.
+        assert!(!parts_fit(&parts, size, 6 * MIB));
+        // Beyond the last part, or a short middle part.
+        assert!(!parts_fit(&[part(4, MIB)], size, 5 * MIB));
+        assert!(!parts_fit(&[part(2, MIB)], size, 5 * MIB));
+        assert!(!parts_fit(&[part(0, 5 * MIB)], size, 5 * MIB));
+    }
 
     #[test]
     fn part_size_respects_s3_limits() {

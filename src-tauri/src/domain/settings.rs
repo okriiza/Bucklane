@@ -24,8 +24,9 @@ pub struct AppSettings {
     pub explorer_page_size: u32,
     /// Look for a new release on startup. Manual checks always work.
     pub check_for_updates: bool,
-    /// Continue interrupted downloads when Bucklane starts, instead of
-    /// waiting for the user to click Resume.
+    /// Continue interrupted transfers when Bucklane starts, instead of
+    /// waiting for the user to click Resume. (Named before uploads could
+    /// resume; the stored setting keeps its name.)
     pub resume_downloads_automatically: bool,
 }
 

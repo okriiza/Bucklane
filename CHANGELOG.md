@@ -2,6 +2,12 @@
 
 Notable changes to Bucklane. Versions follow [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Added
+
+- **Pause and resume uploads, copies, and moves.** Every transfer now has a pause button, not just downloads. A large upload, copy, or move that is paused, cut off, or interrupted by closing Bucklane continues from the parts the provider already stored instead of starting over. If the file changed in the meantime, it starts over so old and new data are never mixed. Files below the multipart threshold (64 MB by default) start over. **Resume interrupted transfers automatically** in Settings now covers uploads and copies too.
+
 ## 0.9.1 — 2026-11-02
 
 ### Fixed

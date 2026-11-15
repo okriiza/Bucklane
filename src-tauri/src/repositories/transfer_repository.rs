@@ -14,6 +14,14 @@ macro_rules! columns {
     };
 }
 
+/// A multipart part already stored by the provider.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StoredPart {
+    pub number: i32,
+    pub etag: String,
+    pub size: i64,
+}
+
 /// How many transfers the panel shows; older history stays in the database.
 const LIST_LIMIT: i64 = 500;
 
@@ -134,12 +142,12 @@ impl TransferRepository {
 
     /// Failed (not paused) downloads that may have kept a temporary file;
     /// clearing history removes them, paused ones stay.
-    pub async fn failed_downloads(&self) -> Result<Vec<StoredTransfer>, AppError> {
+    /// Failed transfers the user did not pause; Clear history removes them.
+    pub async fn failed_unpaused(&self) -> Result<Vec<StoredTransfer>, AppError> {
         let rows = sqlx::query(concat!(
             "SELECT ",
             columns!(),
-            " FROM transfers WHERE direction = 'DOWNLOAD' AND status = 'FAILED' \
-              AND error_code IS NOT 'PAUSED'"
+            " FROM transfers WHERE status = 'FAILED' AND error_code IS NOT 'PAUSED'"
         ))
         .fetch_all(&self.pool)
         .await?;
@@ -155,6 +163,8 @@ impl TransferRepository {
         Ok(())
     }
 
+    /// Records a stored part and counts it into the transfer's
+    /// `resume_offset`, the bytes a resumed upload can skip.
     pub async fn add_part(
         &self,
         transfer_id: &str,
@@ -162,6 +172,7 @@ impl TransferRepository {
         etag: &str,
         size: i64,
     ) -> Result<(), AppError> {
+        let mut tx = self.pool.begin().await?;
         sqlx::query(
             "INSERT INTO transfer_parts (id, transfer_id, part_number, etag, size_bytes)
              VALUES (?, ?, ?, ?, ?)
@@ -172,16 +183,53 @@ impl TransferRepository {
         .bind(part_number)
         .bind(etag)
         .bind(size)
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await?;
+        sqlx::query(
+            "UPDATE transfers SET resume_offset =
+               (SELECT COALESCE(SUM(size_bytes), 0) FROM transfer_parts WHERE transfer_id = ?)
+             WHERE id = ?",
+        )
+        .bind(transfer_id)
+        .bind(transfer_id)
+        .execute(&mut *tx)
+        .await?;
+        tx.commit().await?;
         Ok(())
     }
 
+    /// Stored parts in ascending order.
+    pub async fn parts(&self, transfer_id: &str) -> Result<Vec<StoredPart>, AppError> {
+        let rows = sqlx::query(
+            "SELECT part_number, etag, size_bytes FROM transfer_parts
+             WHERE transfer_id = ? ORDER BY part_number",
+        )
+        .bind(transfer_id)
+        .fetch_all(&self.pool)
+        .await?;
+        rows.iter()
+            .map(|row| {
+                Ok(StoredPart {
+                    number: row.try_get("part_number")?,
+                    etag: row.try_get("etag")?,
+                    size: row.try_get("size_bytes")?,
+                })
+            })
+            .collect()
+    }
+
+    /// Forgets the stored parts and the bytes they accounted for.
     pub async fn delete_parts(&self, transfer_id: &str) -> Result<(), AppError> {
+        let mut tx = self.pool.begin().await?;
         sqlx::query("DELETE FROM transfer_parts WHERE transfer_id = ?")
             .bind(transfer_id)
-            .execute(&self.pool)
+            .execute(&mut *tx)
             .await?;
+        sqlx::query("UPDATE transfers SET resume_offset = 0 WHERE id = ?")
+            .bind(transfer_id)
+            .execute(&mut *tx)
+            .await?;
+        tx.commit().await?;
         Ok(())
     }
 
@@ -197,13 +245,13 @@ impl TransferRepository {
         rows.iter().map(from_row).collect()
     }
 
-    /// Ended transfers whose multipart upload may still exist remotely.
+    /// Canceled transfers whose multipart upload may still exist remotely.
+    /// A failed one keeps its upload to resume.
     pub async fn with_orphaned_uploads(&self) -> Result<Vec<StoredTransfer>, AppError> {
         let rows = sqlx::query(concat!(
             "SELECT ",
             columns!(),
-            " FROM transfers WHERE multipart_upload_id IS NOT NULL
-               AND status IN ('FAILED', 'CANCELED')"
+            " FROM transfers WHERE multipart_upload_id IS NOT NULL AND status = 'CANCELED'"
         ))
         .fetch_all(&self.pool)
         .await?;

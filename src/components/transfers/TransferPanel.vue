@@ -246,7 +246,6 @@ const STATUS_CLASS: Record<TransferDto["status"], string> = {
           <div class="flex justify-end gap-0.5">
             <template v-if="t.status === 'QUEUED' || t.status === 'RUNNING'">
               <Button
-                v-if="t.direction === 'DOWNLOAD'"
                 variant="ghost"
                 size="icon"
                 class="size-6"

@@ -310,9 +310,9 @@ Click **New folder** in the toolbar.
 
 ### Transfers
 
-The **Transfers** panel shows every upload and download with its progress, speed, time remaining, and status. Click the folder icon on a finished transfer to show the file in Finder or File Explorer. You can **cancel** a running or queued transfer, **retry** a failed one, start a canceled one again (**Download again** / **Upload again**), and **clear finished** ones from the list. Downloads can also be **paused** (⏸) and resumed later; a paused download keeps its partial file and stays in the list when you clear finished transfers.
+The **Transfers** panel shows every upload and download with its progress, speed, time remaining, and status. Click the folder icon on a finished transfer to show the file in Finder or File Explorer. You can **cancel** a running or queued transfer, **retry** a failed one, start a canceled one again (**Download again** / **Upload again**), and **clear finished** ones from the list. Any transfer can also be **paused** (⏸) and resumed later; a paused transfer keeps what it has done and stays in the list when you clear finished transfers.
 
-Downloads **resume**. If a download is cut off (the connection drops, Bucklane is closed, or the computer shuts down), its row shows **Can resume from …** and a ▶ **Resume** button that continues from where it stopped instead of starting over. Bucklane makes its progress safe on disk every few seconds, so at most the last few seconds are downloaded again. If the file changed on the server in the meantime, it starts over so old and new data are never mixed. Turn on **Resume interrupted downloads automatically** in Settings to continue them as soon as Bucklane starts. The panel opens on its own when a transfer starts and tucks itself away when everything finishes successfully.
+Transfers **resume**. If a transfer is cut off (the connection drops, Bucklane is closed, or the computer shuts down), its row shows **Can resume from …** and a ▶ **Resume** button that continues from where it stopped instead of starting over. A download makes its progress safe on disk every few seconds, so at most the last few seconds are downloaded again. A large upload, copy, or move keeps every part the provider already stored and sends only the rest. If the source changed in the meantime (the file on the server, or the local file you are uploading), it starts over so old and new data are never mixed. Files below the multipart threshold (64 MB by default) are sent in one request and start over. Turn on **Resume interrupted transfers automatically** in Settings to continue them as soon as Bucklane starts. The panel opens on its own when a transfer starts and tucks itself away when everything finishes successfully.
 
 ### Keyboard shortcuts
 
@@ -337,7 +337,7 @@ Open **Settings** in the sidebar.
 | Multipart threshold                        | 64 MB        | Files this size or larger are uploaded in parts (5–5120 MB).                   |
 | Part size                                  | 16 MB        | Size of each part; raised automatically for very large files (5–5120 MB).      |
 | Items per page                             | 100          | How many items appear first when a folder opens (50–1000).                     |
-| Resume interrupted downloads automatically | Off          | Continue cut-off downloads when Bucklane starts instead of waiting for Resume. |
+| Resume interrupted transfers automatically | Off          | Continue cut-off transfers when Bucklane starts instead of waiting for Resume. |
 | Check for updates on startup               | On           | Asks GitHub once per launch whether a newer release exists.                    |
 
 **Reset to defaults** restores all settings without affecting your connections.
@@ -391,9 +391,9 @@ Still stuck? Open **About → Report a problem**: **Copy diagnostics** gives a s
 - A single folder rename, copy, or move is limited to **10,000** objects, and so is a folder copy or move to another bucket.
 - A single folder upload or download is limited to **10,000** files. Empty folders aren't uploaded.
 - Renaming, copying, or moving objects larger than **5 GB** within a bucket isn't supported yet. **Copy or move to another bucket** handles any size, and works within the same bucket too.
-- Copying or moving to another bucket streams every file through your computer, even when both buckets are on the same connection, so it's limited by your connection speed. Copies can be canceled but not paused.
+- Copying or moving to another bucket streams every file through your computer, even when both buckets are on the same connection, so it's limited by your connection speed.
 - A single folder delete is limited to **100,000** objects.
-- Interrupted **uploads** don't resume; they're marked as failed and can be retried from the start. (Downloads resume.)
+- Uploads, copies, and moves below the multipart threshold (64 MB by default) start over when resumed; larger ones continue from the parts already stored. A paused or failed upload keeps its stored parts on the provider until it is resumed, canceled, or cleared from the list.
 - Installers aren't code-signed yet (see [Download and install](#download-and-install)).
 - PDF preview isn't available on Linux (the system web view has no PDF viewer); download the file instead.
 - The interface is in English.

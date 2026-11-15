@@ -175,8 +175,8 @@ Stores local transfer history and durable operational metadata. Runtime progress
 | `error_message`            | TEXT    | NULL                | Sanitized diagnostic message                           |
 | `multipart_upload_id`      | TEXT    | NULL                | Remote multipart upload ID for recovery/cleanup        |
 | `overwrite`                | INTEGER | NOT NULL, DEFAULT 0 | User chose to replace an existing destination (0/1)    |
-| `resume_etag`              | TEXT    | NULL                | Download: ETag the partial file belongs to             |
-| `resume_offset`            | INTEGER | NOT NULL, DEFAULT 0 | Download: bytes known to be on disk                    |
+| `resume_etag`              | TEXT    | NULL                | Source version the kept work belongs to (see below)    |
+| `resume_offset`            | INTEGER | NOT NULL, DEFAULT 0 | Bytes kept for resuming                                |
 | `source_connection_id`     | TEXT    | NULL, FK            | Copy: connection read from; NULL if deleted            |
 | `source_connection_name_snapshot` | TEXT | NULL           | Copy: source connection name at transfer time          |
 | `source_bucket`            | TEXT    | NULL                | Copy: source bucket                                    |
@@ -191,12 +191,12 @@ Stores local transfer history and durable operational metadata. Runtime progress
 - `connection_id` uses `ON DELETE SET NULL` to retain transfer history after connection deletion.
 - Existing active transfers must be canceled or safely stopped before a connection is removed.
 - On application restart, stale `RUNNING` transfers must be reconciled (e.g. `FAILED` with error `INTERRUPTED`) unless an explicitly supported resume procedure takes ownership.
-- A persisted multipart upload ID **does not** imply that uploads can resume across application restarts in MVP.
+- `resume_etag` / `resume_offset`: for a download, the object's ETag and the bytes of the temporary file known to be on disk; for a multipart upload or copy, the source version (`file:<size>:<mtime ns>` of the local file, or the source object's ETag) and the total size of its `transfer_parts`. A kept multipart upload resumes only while that version and the part layout still match (TSD §9.3).
 - Protect local paths and object names in diagnostics and exported support bundles.
 
 ### 3.4 `transfer_parts`
 
-Tracks completed multipart upload parts for cleanup, inspection, and potential future resume support.
+Tracks completed multipart upload parts so a paused, failed, or interrupted upload or copy can resume. Recording a part also updates `transfers.resume_offset` in the same transaction.
 
 | Column        | Type    | Constraints    | Description                 |
 | ------------- | ------- | -------------- | --------------------------- |
@@ -407,14 +407,14 @@ Because SQLite and the OS credential store are separate systems, this is **not**
 
 1. Load non-terminal transfers from SQLite.
 2. Reconcile stale `QUEUED` and `RUNNING` state to `FAILED / INTERRUPTED` for MVP; nothing restarts without user action.
-3. Identify orphaned multipart uploads for best-effort cleanup.
+3. Abort multipart uploads left by canceled transfers (best-effort). Failed transfers keep theirs to resume.
 4. Never automatically overwrite local or remote files on recovery.
 
 ### 6.5 Retention
 
 - Connection metadata: until user deletes the connection.
 - Transfer history: retained until manually cleared or a future user-configurable retention policy applies. Clearing deletes only terminal-state rows (`COMPLETED`, `FAILED`, `CANCELED`) and skips rows whose `multipart_upload_id` has not been cleaned up.
-- Retrying a failed multipart upload resets the same row to `QUEUED`, increments `retry_count`, clears `multipart_upload_id` after a best-effort abort, and deletes its `transfer_parts`.
+- Retrying a failed multipart upload resets the same row to `QUEUED` and increments `retry_count`; the run continues the kept upload or, if it can't, aborts it, clears `multipart_upload_id`, and deletes its `transfer_parts`.
 - Multipart metadata: retain while necessary for cleanup and delete after successful completion/abort and record reconciliation.
 - Temporary downloads: controlled by the transfer engine, not SQLite.
 
@@ -477,7 +477,6 @@ Avoid storing object listings as a local authoritative cache in MVP. Listings ar
 - Distributed transactions between SQLite and OS Keychain.
 - Cross-device account sync.
 - Automatic two-way file synchronization.
-- Guaranteed multipart resume across application restart.
 - Organization-level RBAC or central user management.
 - S3 version history and lifecycle administration.
 

@@ -99,9 +99,12 @@ pub struct StoredTransfer {
     pub error_message: Option<String>,
     pub multipart_upload_id: Option<String>,
     pub overwrite: bool,
-    /// Download only: ETag of the object the temporary file belongs to.
+    /// Version of the source the kept partial work belongs to: the object's
+    /// ETag for a download or copy, the local file's size and modification
+    /// time for an upload.
     pub resume_etag: Option<String>,
-    /// Download only: bytes of the temporary file known to be on disk.
+    /// Bytes kept for resuming: the temporary file of a download, or the
+    /// parts already stored by a multipart upload or copy.
     pub resume_offset: i64,
     /// Copy only; empty `local_path`.
     pub source: Option<TransferSource>,
@@ -131,7 +134,7 @@ pub struct TransferDto {
     #[specta(type = u32)]
     pub retry_count: i64,
     pub error: Option<AppError>,
-    /// A failed download that can continue from this many bytes.
+    /// A failed transfer that can continue from this many bytes.
     #[specta(type = Option<f64>)]
     pub resumable_bytes: Option<i64>,
     /// Stopped by the user with Pause (status is FAILED with code PAUSED).
@@ -166,10 +169,10 @@ impl From<&StoredTransfer> for TransferDto {
                 .error_message
                 .as_ref()
                 .map(|message| crate::errors::AppError::stored(t.error_code.as_deref(), message)),
-            resumable_bytes: (t.direction == TransferDirection::Download
-                && t.status == TransferStatus::Failed
-                && t.resume_offset > 0)
-                .then_some(t.resume_offset),
+            resumable_bytes: (t.status == TransferStatus::Failed
+                && t.resume_offset > 0
+                && (t.direction == TransferDirection::Download || t.multipart_upload_id.is_some()))
+            .then_some(t.resume_offset),
             paused: t.status == TransferStatus::Failed
                 && t.error_code.as_deref() == Some(crate::transfers::PAUSED_CODE),
             source_kept: t.status == TransferStatus::Completed
@@ -302,5 +305,19 @@ mod tests {
         let early = TransferDto::from(&download(TransferStatus::Failed, Some("PAUSED"), 0));
         assert!(early.paused);
         assert_eq!(early.resumable_bytes, None);
+    }
+
+    #[test]
+    fn uploads_resume_only_while_their_multipart_upload_is_kept() {
+        let mut upload = download(TransferStatus::Failed, Some("PAUSED"), 400);
+        upload.direction = TransferDirection::Upload;
+        upload.multipart_upload_id = Some("u1".into());
+        assert_eq!(TransferDto::from(&upload).resumable_bytes, Some(400));
+
+        // Aborted, or a single-request upload: starts over.
+        upload.multipart_upload_id = None;
+        let dto = TransferDto::from(&upload);
+        assert!(dto.paused);
+        assert_eq!(dto.resumable_bytes, None);
     }
 }
