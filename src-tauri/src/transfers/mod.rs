@@ -853,7 +853,18 @@ impl Inner {
                         &from.bucket,
                     )
                     .await?;
-                copy::run(&source_client, &client, &self.repo, t, progress, tuning).await
+                // Same connection: the provider can copy it server-side.
+                let same_connection = from.connection_id == t.connection_id;
+                copy::run(
+                    &source_client,
+                    &client,
+                    same_connection,
+                    &self.repo,
+                    t,
+                    progress,
+                    tuning,
+                )
+                .await
             }
         }
     }
@@ -1486,7 +1497,16 @@ mod s3_integration_tests {
     }
 
     #[tokio::test]
-    async fn copy_streams_parts_and_keeps_headers() {
+    async fn streamed_copy_keeps_parts_and_headers() {
+        copy_keeps_parts_and_headers(false).await;
+    }
+
+    #[tokio::test]
+    async fn server_side_copy_keeps_parts_and_headers() {
+        copy_keeps_parts_and_headers(true).await;
+    }
+
+    async fn copy_keeps_parts_and_headers(same_connection: bool) {
         let Some(f) = Fixture::new().await else {
             return;
         };
@@ -1523,14 +1543,23 @@ mod s3_integration_tests {
             delete_after_copy: false,
         });
         let progress = Progress::default();
-        // 5 MiB parts: three ranged GETs feed three multipart parts.
+        // 5 MiB parts: three multipart parts, fed by ranged GETs when
+        // streamed or copied by the provider within one connection.
         let tuning = upload::UploadTuning {
             threshold: 5 * 1024 * 1024,
             part_size: 5 * 1024 * 1024,
         };
-        copy::run(&f.client, &f.client, &f.repo, &mut copy, &progress, tuning)
-            .await
-            .unwrap();
+        copy::run(
+            &f.client,
+            &f.client,
+            same_connection,
+            &f.repo,
+            &mut copy,
+            &progress,
+            tuning,
+        )
+        .await
+        .unwrap();
 
         assert_eq!(progress.total(), data.len() as i64);
         let stored = f
@@ -1578,7 +1607,16 @@ mod s3_integration_tests {
     }
 
     #[tokio::test]
-    async fn move_deletes_the_original_after_a_verified_copy() {
+    async fn streamed_move_deletes_the_original_after_a_verified_copy() {
+        move_deletes_the_original(false).await;
+    }
+
+    #[tokio::test]
+    async fn server_side_move_deletes_the_original_after_a_verified_copy() {
+        move_deletes_the_original(true).await;
+    }
+
+    async fn move_deletes_the_original(same_connection: bool) {
         let Some(f) = Fixture::new().await else {
             return;
         };
@@ -1589,6 +1627,7 @@ mod s3_integration_tests {
         copy::run(
             &f.client,
             &f.client,
+            same_connection,
             &f.repo,
             &mut t,
             &Progress::default(),

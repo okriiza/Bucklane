@@ -12,17 +12,14 @@ use futures_util::{StreamExt, TryStreamExt, stream};
 use crate::domain::object::ObjectHeaders;
 use crate::domain::transfer::StoredTransfer;
 use crate::errors::{AppError, ErrorCode};
-use crate::providers::s3_provider::{S3StorageProvider, map_sdk_error};
-use crate::providers::storage_provider::StorageProvider;
+use crate::providers::s3_provider::{S3StorageProvider, map_sdk_error, part_size_for};
+use crate::providers::storage_provider::{CopySource, StorageProvider};
 use crate::repositories::transfer_repository::{StoredPart, TransferRepository};
 
 use super::Progress;
 use super::body::counting_file_body;
 
 const MIB: u64 = 1024 * 1024;
-/// S3 limits: parts ≥ 5 MiB (except the last) and at most 10,000 parts.
-const MIN_PART_SIZE: u64 = 5 * MIB;
-const MAX_PARTS: u64 = 10_000;
 /// Parts uploaded concurrently within one transfer.
 const PART_CONCURRENCY: usize = 4;
 
@@ -90,7 +87,7 @@ pub(super) async fn run(
         version.as_deref(),
         progress,
         tuning,
-        &body,
+        PartSource::Stream(&body),
     )
     .await?;
     verify_size(
@@ -116,6 +113,16 @@ pub(super) fn file_version(metadata: &std::fs::Metadata) -> Option<String> {
 /// Builds the body for `len` bytes starting at `offset`, counting into the
 /// given counter.
 pub(super) type BodyFactory<'a> = dyn Fn(u64, u64, Arc<AtomicU64>) -> SdkBody + Sync + 'a;
+
+/// Where the bytes of an object being written come from.
+#[derive(Clone, Copy)]
+pub(super) enum PartSource<'a> {
+    /// Sent by Bucklane.
+    Stream(&'a BodyFactory<'a>),
+    /// Copied by the provider from another object on the same connection;
+    /// nothing passes through Bucklane.
+    Server(CopySource<'a>),
+}
 
 /// The conflict was resolved when queued; re-check so a retry or a
 /// concurrent change never silently replaces an object.
@@ -150,11 +157,22 @@ pub(super) async fn write_object(
     version: Option<&str>,
     progress: &Progress,
     tuning: UploadTuning,
-    body: &BodyFactory<'_>,
+    source: PartSource<'_>,
 ) -> Result<(), AppError> {
     if size < tuning.threshold {
-        // A kept multipart upload is useless for a single PUT.
+        // A kept multipart upload is useless for a single request.
         discard_upload(client, repo, t).await?;
+        let body = match source {
+            PartSource::Stream(body) => body,
+            PartSource::Server(from) => {
+                // A single copy carries the source's headers over.
+                S3StorageProvider::new(client.clone())
+                    .copy_object(from, &t.bucket, &t.object_key)
+                    .await?;
+                progress.counter().store(size, Ordering::Relaxed);
+                return Ok(());
+            }
+        };
         client
             .put_object()
             .bucket(&t.bucket)
@@ -174,7 +192,7 @@ pub(super) async fn write_object(
     } else {
         let part_size = part_size_for(size, tuning.part_size);
         multipart(
-            client, repo, t, size, part_size, headers, version, progress, body,
+            client, repo, t, size, part_size, headers, version, progress, source,
         )
         .await
     }
@@ -198,13 +216,6 @@ fn user_metadata(headers: &ObjectHeaders) -> Option<std::collections::HashMap<St
     (!headers.metadata.is_empty()).then(|| headers.metadata.clone().into_iter().collect())
 }
 
-/// Part size ≥ the preferred size, large enough to stay within 10,000
-/// parts, and rounded up to a whole MiB.
-pub(super) fn part_size_for(size: u64, preferred: u64) -> u64 {
-    let needed = size.div_ceil(MAX_PARTS);
-    needed.max(preferred).max(MIN_PART_SIZE).div_ceil(MIB) * MIB
-}
-
 #[allow(clippy::too_many_arguments)]
 async fn multipart(
     client: &Client,
@@ -215,7 +226,7 @@ async fn multipart(
     headers: &ObjectHeaders,
     version: Option<&str>,
     progress: &Progress,
-    body: &BodyFactory<'_>,
+    source: PartSource<'_>,
 ) -> Result<(), AppError> {
     let part_count = size.div_ceil(part_size);
     let kept = kept_parts(client, repo, t, size, part_size, version).await?;
@@ -267,7 +278,7 @@ async fn multipart(
         .map(|n| {
             let offset = (n - 1) * part_size;
             let len = part_size.min(size - offset);
-            let body = body(offset, len, progress.counter());
+            let counter = progress.counter();
             let (bucket, key, upload_id, transfer_id) = (
                 bucket.clone(),
                 key.clone(),
@@ -276,21 +287,38 @@ async fn multipart(
             );
             async move {
                 let part_number = i32::try_from(n).expect("at most 10,000 parts");
-                let output = client
-                    .upload_part()
-                    .bucket(&bucket)
-                    .key(&key)
-                    .upload_id(&upload_id)
-                    .part_number(part_number)
-                    .content_length(i64::try_from(len).unwrap_or(i64::MAX))
-                    .body(ByteStream::new(body))
-                    .send()
-                    .await
-                    .map_err(|e| map_sdk_error(e, ErrorCode::BucketNotFound))?;
-                let etag = output
-                    .e_tag()
-                    .ok_or_else(|| AppError::internal("The provider did not return a part ETag."))?
-                    .to_owned();
+                let etag = match source {
+                    PartSource::Stream(body) => client
+                        .upload_part()
+                        .bucket(&bucket)
+                        .key(&key)
+                        .upload_id(&upload_id)
+                        .part_number(part_number)
+                        .content_length(i64::try_from(len).unwrap_or(i64::MAX))
+                        .body(ByteStream::new(body(offset, len, counter)))
+                        .send()
+                        .await
+                        .map_err(|e| map_sdk_error(e, ErrorCode::BucketNotFound))?
+                        .e_tag()
+                        .map(str::to_owned),
+                    PartSource::Server(from) => {
+                        let part = S3StorageProvider::new(client.clone())
+                            .upload_part_copy(
+                                from,
+                                &bucket,
+                                &key,
+                                &upload_id,
+                                part_number,
+                                offset,
+                                len,
+                            )
+                            .await?;
+                        // Copied in one step; count it when it's done.
+                        counter.store(len, Ordering::Relaxed);
+                        part.e_tag().map(str::to_owned)
+                    }
+                }
+                .ok_or_else(|| AppError::internal("The provider did not return a part ETag."))?;
                 repo.add_part(
                     &transfer_id,
                     part_number,
@@ -472,20 +500,5 @@ mod tests {
         assert!(!parts_fit(&[part(4, MIB)], size, 5 * MIB));
         assert!(!parts_fit(&[part(2, MIB)], size, 5 * MIB));
         assert!(!parts_fit(&[part(0, 5 * MIB)], size, 5 * MIB));
-    }
-
-    #[test]
-    fn part_size_respects_s3_limits() {
-        let preferred = 16 * MIB;
-        assert_eq!(part_size_for(100 * MIB, preferred), preferred);
-        // Never below the S3 minimum, whatever the preference.
-        assert_eq!(part_size_for(100 * MIB, MIB), MIN_PART_SIZE);
-        // 1 TiB / 10,000 parts ≈ 105 MiB → rounded up to whole MiB.
-        let tib = 1024 * 1024 * MIB;
-        let size = part_size_for(tib, preferred);
-        assert!(tib.div_ceil(size) <= MAX_PARTS);
-        assert_eq!(size % MIB, 0);
-        // 5 TiB (S3 maximum object size) still fits.
-        assert!((5 * tib).div_ceil(part_size_for(5 * tib, preferred)) <= MAX_PARTS);
     }
 }

@@ -15,7 +15,7 @@ use crate::domain::object::{
 };
 use crate::errors::{AppError, ErrorCode};
 use crate::providers::s3_provider::S3StorageProvider;
-use crate::providers::storage_provider::{ListQuery, StorageProvider};
+use crate::providers::storage_provider::{CopySource, ListQuery, StorageProvider};
 use crate::services::connection_service::ConnectionService;
 use crate::services::delete_plans::{DeletePlanRegistry, PLAN_TTL};
 use crate::services::relocate_plans::{RelocateItem, RelocatePlanRegistry};
@@ -23,9 +23,6 @@ use crate::services::relocate_plans::{RelocateItem, RelocatePlanRegistry};
 const DEFAULT_DELIMITER: &str = "/";
 /// S3 keys are at most 1024 bytes.
 const MAX_KEY_LEN: usize = 1024;
-/// Largest object a single CopyObject request may copy; larger objects need
-/// multipart copy, which the MVP does not perform (TSD §9.6).
-const MAX_SINGLE_COPY_BYTES: i64 = 5 * 1024 * 1024 * 1024;
 /// Largest folder Bucklane copies or moves at once. Each object costs a few
 /// requests, so this is lower than the delete limit.
 const MAX_PREFIX_RELOCATE_OBJECTS: usize = 10_000;
@@ -236,13 +233,6 @@ impl<'a> ObjectService<'a> {
                 "The file changed on the server since you opened it. Reload it and try again.",
             ));
         }
-        if current.size.unwrap_or(0) > MAX_SINGLE_COPY_BYTES {
-            return Err(AppError::new(
-                ErrorCode::OperationUnsupported,
-                "The metadata of objects larger than 5 GiB can't be edited yet.",
-            ));
-        }
-
         provider
             .replace_metadata(bucket, &input.key, &input.etag, &headers)
             .await?;
@@ -483,14 +473,6 @@ impl<'a> ObjectService<'a> {
                 "This folder is empty, so there is nothing to copy or move.",
             ));
         }
-        if let Some(big) = objects.iter().find(|o| o.size > MAX_SINGLE_COPY_BYTES) {
-            return Err(AppError::new(
-                ErrorCode::OperationUnsupported,
-                "This folder contains an object larger than 5 GiB, which Bucklane cannot copy or move yet.",
-            )
-            .with_details(big.key.clone()));
-        }
-
         // Existing destination keys, to report conflicts up front.
         let existing: HashSet<String> =
             list_everything(&provider, bucket, destination, MAX_PREFIX_DELETE_OBJECTS)
@@ -675,12 +657,6 @@ impl<'a> ObjectService<'a> {
 
         let provider = self.provider(&input.connection_id, bucket).await?;
         let source = provider.head_object(bucket, &input.source_key).await?;
-        if source.size.unwrap_or(0) > MAX_SINGLE_COPY_BYTES {
-            return Err(AppError::new(
-                ErrorCode::OperationUnsupported,
-                "Objects larger than 5 GiB cannot be copied, moved, or renamed yet.",
-            ));
-        }
         Ok((provider, source))
     }
 
@@ -714,10 +690,14 @@ async fn copy_and_verify(
     let bucket = input.bucket.trim();
     provider
         .copy_object(
+            CopySource {
+                bucket,
+                key: &input.source_key,
+                etag: source.etag.as_deref(),
+                size: source.size.unwrap_or(0),
+            },
             bucket,
-            &input.source_key,
             &input.destination_key,
-            source.etag.as_deref(),
         )
         .await?;
 
@@ -752,10 +732,14 @@ async fn relocate_item(
 ) -> ItemOutcome {
     if let Err(err) = provider
         .copy_object(
+            CopySource {
+                bucket,
+                key: &item.source,
+                etag: item.etag.as_deref(),
+                size: item.size,
+            },
             bucket,
-            &item.source,
             &item.destination,
-            item.etag.as_deref(),
         )
         .await
     {

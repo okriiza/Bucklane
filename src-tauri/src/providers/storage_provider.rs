@@ -18,6 +18,17 @@ pub struct ListQuery<'a> {
     pub page_size: Option<u32>,
 }
 
+/// The object a server-side copy reads.
+#[derive(Debug, Clone, Copy)]
+pub struct CopySource<'a> {
+    pub bucket: &'a str,
+    pub key: &'a str,
+    /// The copy fails if the source no longer has this ETag.
+    pub etag: Option<&'a str>,
+    /// Decides between a single copy and a multipart copy.
+    pub size: i64,
+}
+
 /// Provider-agnostic storage operations (TSD §5.1). Streaming and multipart
 /// operations are added with the transfer engine.
 #[async_trait]
@@ -33,14 +44,13 @@ pub trait StorageProvider: Send + Sync {
     /// Creates an empty object; used for folder markers.
     async fn put_empty_object(&self, bucket: &str, key: &str) -> Result<(), AppError>;
 
-    /// Server-side copy within a bucket. With `if_match`, the copy fails if
-    /// the source changed since its ETag was read.
+    /// Server-side copy to `bucket`/`key` on the same connection. Objects
+    /// over 5 GiB, the limit of a single copy, are copied in parts.
     async fn copy_object(
         &self,
+        source: CopySource<'_>,
         bucket: &str,
-        source_key: &str,
-        destination_key: &str,
-        if_match: Option<&str>,
+        key: &str,
     ) -> Result<(), AppError>;
 
     /// Replaces the object's headers and user metadata with a server-side

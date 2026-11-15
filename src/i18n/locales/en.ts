@@ -268,10 +268,10 @@ export default {
     folderHint: "Leave empty for the bucket root. Folders are created as needed.",
     sameAsSource: "That's where these items already are. Choose another bucket or folder.",
     intoItself: "A folder can't be moved into itself. Choose another folder.",
-    note: "Files are streamed through this computer and appear in Transfers. Content type, caching headers, and custom metadata are copied too; nothing is deleted from the original.",
+    note: "Files appear in Transfers. Within one connection the provider copies them directly; otherwise they're streamed through this computer. Content type, caching headers, and custom metadata are copied too; nothing is deleted from the original.",
     submit: "Copy",
     moveNote:
-      "Files are streamed through this computer and appear in Transfers. Each original is deleted only after its copy is verified, and only if it didn't change in the meantime; otherwise it's kept and flagged in Transfers.",
+      "Files appear in Transfers. Within one connection the provider copies them directly; otherwise they're streamed through this computer. Each original is deleted only after its copy is verified, and only if it didn't change in the meantime; otherwise it's kept and flagged in Transfers.",
     moveSubmit: "Move",
   },
   metadata: {
@@ -282,7 +282,7 @@ export default {
     value: "Value",
     add: "Add field",
     remove: "Remove field",
-    note: "Saving rewrites the object's headers with a server-side copy. The contents stay the same, but its last-modified time changes. Files over 5 GiB aren't supported yet.",
+    note: "Saving rewrites the object's headers with a server-side copy. The contents stay the same, but its last-modified time changes.",
     save: "Save",
     saving: "Saving…",
     saved: "Metadata saved",

@@ -6,21 +6,25 @@ use crate::domain::object::ObjectHeaders;
 use crate::domain::transfer::{StoredTransfer, TransferSource};
 use crate::errors::{AppError, ErrorCode};
 use crate::providers::s3_provider::S3StorageProvider;
-use crate::providers::storage_provider::StorageProvider;
+use crate::providers::storage_provider::{CopySource, StorageProvider};
 use crate::repositories::transfer_repository::TransferRepository;
 
 use super::body::{ObjectRange, counting_object_body};
-use super::upload::{self, UploadTuning};
+use super::upload::{self, PartSource, UploadTuning};
 use super::{Progress, SOURCE_KEPT_CODE};
 
-/// Copies one object to another bucket or connection (TSD §9.5). Bytes are
-/// streamed from ranged GETs straight into the destination's PUT or
-/// multipart parts; nothing is written to disk and at most one chunk per
-/// part is held in memory. A move then deletes the source if it is
-/// unchanged; otherwise the source is kept and the reason recorded on `t`.
+/// Copies one object to another bucket or connection (TSD §9.5). Within
+/// one connection the provider copies it server-side. Otherwise, or if the
+/// provider can't, bytes are streamed from ranged GETs straight into the
+/// destination's PUT or multipart parts; nothing is written to disk and at
+/// most one chunk per part is held in memory. A move then deletes the
+/// source if it is unchanged; otherwise the source is kept and the reason
+/// recorded on `t`.
+#[allow(clippy::too_many_arguments)]
 pub(super) async fn run(
     source: &Client,
     destination: &Client,
+    same_connection: bool,
     repo: &TransferRepository,
     t: &mut StoredTransfer,
     progress: &Progress,
@@ -54,6 +58,37 @@ pub(super) async fn run(
         content_language: metadata.content_language,
         metadata: metadata.metadata,
     };
+    if same_connection {
+        let server_copy = CopySource {
+            bucket: &from.bucket,
+            key: &from.key,
+            etag: etag.as_deref(),
+            size: i64::try_from(size).unwrap_or(i64::MAX),
+        };
+        let copied = upload::write_object(
+            destination,
+            repo,
+            t,
+            size,
+            &headers,
+            etag.as_deref(),
+            progress,
+            tuning,
+            PartSource::Server(server_copy),
+        )
+        .await;
+        match copied {
+            // Some providers can't copy between buckets server-side.
+            Err(err) if err.code == ErrorCode::OperationUnsupported => {
+                tracing::info!(transfer_id = %t.id, "server-side copy unsupported; streaming instead");
+            }
+            copied => {
+                copied?;
+                return finish(source, &provider, t, &from, etag.as_deref(), size).await;
+            }
+        }
+    }
+
     let failure = Arc::new(Mutex::new(None));
     let body = |offset, len, counter| {
         counting_object_body(
@@ -81,7 +116,7 @@ pub(super) async fn run(
         etag.as_deref(),
         progress,
         tuning,
-        &body,
+        PartSource::Stream(&body),
     )
     .await;
     if let Err(err) = written {
@@ -91,8 +126,20 @@ pub(super) async fn run(
             AppError::new(e.code, format!("Reading the source failed: {}", e.message))
         }));
     }
+    finish(source, &provider, t, &from, etag.as_deref(), size).await
+}
+
+/// Verifies the written copy and, for a move, deletes the original.
+async fn finish(
+    source: &Client,
+    provider: &S3StorageProvider,
+    t: &mut StoredTransfer,
+    from: &TransferSource,
+    etag: Option<&str>,
+    size: u64,
+) -> Result<(), AppError> {
     upload::verify_size(
-        &provider,
+        provider,
         t,
         size,
         "The copy's size does not match the original.",
@@ -110,7 +157,7 @@ pub(super) async fn run(
     })?;
 
     if from.delete_after_copy
-        && let Some(reason) = delete_source(source, &from, etag.as_deref()).await
+        && let Some(reason) = delete_source(source, from, etag).await
     {
         tracing::warn!(transfer_id = %t.id, "move kept its original");
         t.error_code = Some(SOURCE_KEPT_CODE.to_owned());
