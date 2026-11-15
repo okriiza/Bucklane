@@ -230,7 +230,7 @@ Uninstalling leaves your local data and keychain entries in place. To remove sec
 - Click a **connection** in the sidebar to see its buckets, then click a **bucket** to open it.
 - Click a **folder** to open it. Use the **breadcrumb** or the **↑** button to go back up.
 - Click a **file** to see its details: size, content type, caching and download headers, last modified, ETag, storage class, and custom metadata.
-- To change those headers, click **Edit metadata** in the details panel or the **⋯** menu. Edit Content-Type, Cache-Control, Content-Disposition, Content-Encoding, Content-Language, or custom fields, then click **Save**. The file isn't uploaded again and its contents stay the same; only its last-modified time changes. Files over 5 GiB aren't supported yet.
+- To change those headers, click **Edit metadata** in the details panel or the **⋯** menu. Edit Content-Type, Cache-Control, Content-Disposition, Content-Encoding, Content-Language, or custom fields, then click **Save**. The file isn't uploaded again and its contents stay the same; only its last-modified time changes. This works for files of any size.
 - Large folders show their first 100 items right away (adjustable in Settings) and load the rest in the background, up to 10,000 items, so every subfolder ends up on top and sorting and filtering cover the whole folder. Past 10,000, click **Load more** at the bottom.
 - Click a **column header** (Name, Size, Last modified) to sort; click again to reverse. Folders stay on top, and the order is remembered.
 - Typing in the **search** box filters the items already loaded. Press **Enter** to search the whole folder on the server for names that **start with** your text — S3 only matches the beginning of a name, and the match is case-sensitive.
@@ -273,7 +273,7 @@ Nothing is ever overwritten without your confirmation.
 - Open the **⋯** menu on a file or folder and choose **Copy to another bucket…** or **Move to another bucket…**, or tick several items and click **Copy or move to…**. You can switch between copy and move in the dialog.
 - Pick the destination **connection** and **bucket** (or type a bucket name your keys can't list), and optionally a **folder**. A copied folder keeps its name and structure inside that folder.
 - If objects already exist at the destination, you choose to skip, keep both, or replace them.
-- Each file is streamed through your computer, from the source straight to the destination, and shows up in **Transfers** with its progress; cancel or retry it there. Nothing is saved to disk.
+- Each file shows up in **Transfers** with its progress; pause, cancel, or retry it there. Within one connection the provider copies it directly, so nothing passes through your computer. Between connections it's streamed through your computer, from the source straight to the destination, and nothing is saved to disk.
 - **Copy** never changes the originals. **Move** deletes each original only after its copy is verified, and only if the original didn't change in the meantime. Otherwise the original is kept and the transfer shows why, in amber.
 - Content type, caching and download headers, and custom metadata are copied. Storage class, permissions (ACLs), and encryption settings are not; the destination's defaults apply.
 
@@ -390,8 +390,7 @@ Still stuck? Open **About → Report a problem**: **Copy diagnostics** gives a s
 
 - A single folder rename, copy, or move is limited to **10,000** objects, and so is a folder copy or move to another bucket.
 - A single folder upload or download is limited to **10,000** files. Empty folders aren't uploaded.
-- Renaming, copying, or moving objects larger than **5 GB** within a bucket isn't supported yet. **Copy or move to another bucket** handles any size, and works within the same bucket too.
-- Copying or moving to another bucket streams every file through your computer, even when both buckets are on the same connection, so it's limited by your connection speed.
+- Copying or moving to a bucket on **another connection** streams every file through your computer, so it's limited by your connection speed. (Within one connection the provider copies directly; if it can't, Bucklane falls back to streaming.)
 - A single folder delete is limited to **100,000** objects.
 - Uploads, copies, and moves below the multipart threshold (64 MB by default) start over when resumed; larger ones continue from the parts already stored. A paused or failed upload keeps its stored parts on the provider until it is resumed, canceled, or cleared from the list.
 - Installers aren't code-signed yet (see [Download and install](#download-and-install)).

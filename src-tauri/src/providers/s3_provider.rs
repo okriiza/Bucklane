@@ -1,15 +1,19 @@
 use std::error::Error as StdError;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use async_trait::async_trait;
 use aws_sdk_s3::Client;
 use aws_sdk_s3::config::http::HttpResponse;
 use aws_sdk_s3::error::{ProvideErrorMetadata, SdkError};
+use aws_sdk_s3::operation::create_multipart_upload::builders::CreateMultipartUploadFluentBuilder;
 use aws_sdk_s3::presigning::PresigningConfig;
 use aws_sdk_s3::primitives::ByteStream;
 use aws_sdk_s3::primitives::{DateTime, DateTimeFormat};
 use aws_sdk_s3::types::{
-    CommonPrefix, Delete, MetadataDirective, Object, ObjectCannedAcl, ObjectIdentifier, Permission,
+    CommonPrefix, CompletedMultipartUpload, CompletedPart, Delete, MetadataDirective, Object,
+    ObjectCannedAcl, ObjectIdentifier, Permission,
 };
+use futures_util::{StreamExt, stream};
 
 use crate::domain::bucket::BucketInfo;
 use crate::domain::object::{
@@ -17,7 +21,31 @@ use crate::domain::object::{
     StorageObject,
 };
 use crate::errors::{AppError, ErrorCode};
-use crate::providers::storage_provider::{ListQuery, StorageProvider};
+use crate::providers::storage_provider::{CopySource, ListQuery, StorageProvider};
+
+const MIB: u64 = 1024 * 1024;
+/// S3 limits: parts ≥ 5 MiB (except the last), at most 10,000 parts, and at
+/// most 5 GiB per part or single copy.
+const MIN_PART_SIZE: u64 = 5 * MIB;
+const MAX_PARTS: u64 = 10_000;
+const MAX_SINGLE_COPY_BYTES: i64 = 5 * 1024 * 1024 * 1024;
+/// Parts of a multipart server-side copy: large, as nothing passes through
+/// Bucklane, yet small enough for each request to finish well within the
+/// read timeout.
+const COPY_PART_SIZE: u64 = 256 * MIB;
+/// Parts copied concurrently within one multipart copy.
+const COPY_CONCURRENCY: usize = 4;
+
+fn copy_part_size(size: i64) -> u64 {
+    part_size_for(u64::try_from(size).unwrap_or(0), COPY_PART_SIZE)
+}
+
+/// Part size ≥ the preferred size, large enough to stay within 10,000
+/// parts, and rounded up to a whole MiB.
+pub(crate) fn part_size_for(size: u64, preferred: u64) -> u64 {
+    let needed = size.div_ceil(MAX_PARTS);
+    needed.max(preferred).max(MIN_PART_SIZE).div_ceil(MIB) * MIB
+}
 
 /// The single S3 adapter used for every provider in the MVP (ADR-005).
 pub struct S3StorageProvider {
@@ -27,6 +55,135 @@ pub struct S3StorageProvider {
 impl S3StorageProvider {
     pub fn new(client: Client) -> Self {
         Self { client }
+    }
+
+    /// Copies `source` to `bucket`/`key` in parts of `part_size`, starting
+    /// the multipart upload with `create`, which carries the destination's
+    /// headers. The upload is aborted if any part fails.
+    async fn multipart_copy(
+        &self,
+        source: CopySource<'_>,
+        bucket: &str,
+        key: &str,
+        create: CreateMultipartUploadFluentBuilder,
+        part_size: u64,
+    ) -> Result<(), AppError> {
+        let created = create
+            .send()
+            .await
+            .map_err(|e| map_sdk_error(e, ErrorCode::BucketNotFound))?;
+        let upload_id = created
+            .upload_id()
+            .ok_or_else(|| AppError::internal("The provider did not return an upload ID."))?
+            .to_owned();
+
+        let size = u64::try_from(source.size).unwrap_or(0);
+        // After a failure no new part starts, but the ones in flight finish:
+        // a part still being copied could otherwise land after the abort
+        // and leave the upload behind.
+        let failed = AtomicBool::new(false);
+        let upload_id_ref = upload_id.as_str();
+        let results: Vec<Option<Result<CompletedPart, AppError>>> =
+            stream::iter(1..=size.div_ceil(part_size))
+                .map(|n| {
+                    let failed = &failed;
+                    async move {
+                        if failed.load(Ordering::SeqCst) {
+                            return None;
+                        }
+                        let offset = (n - 1) * part_size;
+                        let len = part_size.min(size - offset);
+                        let part_number = i32::try_from(n).expect("at most 10,000 parts");
+                        let part = self
+                            .upload_part_copy(
+                                source,
+                                bucket,
+                                key,
+                                upload_id_ref,
+                                part_number,
+                                offset,
+                                len,
+                            )
+                            .await;
+                        if part.is_err() {
+                            failed.store(true, Ordering::SeqCst);
+                        }
+                        Some(part)
+                    }
+                })
+                .buffer_unordered(COPY_CONCURRENCY)
+                .collect()
+                .await;
+        // Skipped parts (`None`) only follow a failure, which is reported.
+        let copied: Result<Vec<CompletedPart>, AppError> = results.into_iter().flatten().collect();
+        let completed = match copied {
+            Ok(mut parts) => {
+                // Completion requires parts in ascending order.
+                parts.sort_by_key(|p| p.part_number());
+                self.client
+                    .complete_multipart_upload()
+                    .bucket(bucket)
+                    .key(key)
+                    .upload_id(&upload_id)
+                    .multipart_upload(
+                        CompletedMultipartUpload::builder()
+                            .set_parts(Some(parts))
+                            .build(),
+                    )
+                    .send()
+                    .await
+                    .map(|_| ())
+                    .map_err(|e| map_sdk_error(e, ErrorCode::BucketNotFound))
+            }
+            Err(err) => Err(err),
+        };
+        if completed.is_err() {
+            let _ = self
+                .client
+                .abort_multipart_upload()
+                .bucket(bucket)
+                .key(key)
+                .upload_id(&upload_id)
+                .send()
+                .await;
+        }
+        completed
+    }
+
+    /// Copies `len` bytes of `source` from `offset` into part `part_number`
+    /// of a multipart upload, without the bytes passing through Bucklane.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) async fn upload_part_copy(
+        &self,
+        source: CopySource<'_>,
+        bucket: &str,
+        key: &str,
+        upload_id: &str,
+        part_number: i32,
+        offset: u64,
+        len: u64,
+    ) -> Result<CompletedPart, AppError> {
+        let output = self
+            .client
+            .upload_part_copy()
+            .bucket(bucket)
+            .key(key)
+            .upload_id(upload_id)
+            .part_number(part_number)
+            .copy_source(copy_source(source.bucket, source.key))
+            .copy_source_range(format!("bytes={offset}-{}", offset + len - 1))
+            .set_copy_source_if_match(source.etag.map(str::to_owned))
+            .send()
+            .await
+            .map_err(|e| map_sdk_error(e, ErrorCode::ObjectNotFound))?;
+        let etag = output
+            .copy_part_result()
+            .and_then(|r| r.e_tag())
+            .ok_or_else(|| AppError::internal("The provider did not return a part ETag."))?;
+        Ok(CompletedPart::builder()
+            .part_number(part_number)
+            .e_tag(etag)
+            .build())
     }
 }
 
@@ -152,21 +309,47 @@ impl StorageProvider for S3StorageProvider {
 
     async fn copy_object(
         &self,
+        source: CopySource<'_>,
         bucket: &str,
-        source_key: &str,
-        destination_key: &str,
-        if_match: Option<&str>,
+        key: &str,
     ) -> Result<(), AppError> {
-        self.client
-            .copy_object()
-            .bucket(bucket)
-            .key(destination_key)
-            .copy_source(copy_source(bucket, source_key))
-            .set_copy_source_if_match(if_match.map(str::to_owned))
+        if source.size <= MAX_SINGLE_COPY_BYTES {
+            return self
+                .client
+                .copy_object()
+                .bucket(bucket)
+                .key(key)
+                .copy_source(copy_source(source.bucket, source.key))
+                .set_copy_source_if_match(source.etag.map(str::to_owned))
+                .send()
+                .await
+                .map(|_| ())
+                .map_err(|e| map_sdk_error(e, ErrorCode::ObjectNotFound));
+        }
+        // A multipart copy doesn't carry the headers over like a single
+        // copy does; set them from the source.
+        let current = self
+            .client
+            .head_object()
+            .bucket(source.bucket)
+            .key(source.key)
+            .set_if_match(source.etag.map(str::to_owned))
             .send()
             .await
-            .map(|_| ())
-            .map_err(|e| map_sdk_error(e, ErrorCode::ObjectNotFound))
+            .map_err(|e| map_sdk_error(e, ErrorCode::ObjectNotFound))?;
+        let create = self
+            .client
+            .create_multipart_upload()
+            .bucket(bucket)
+            .key(key)
+            .set_content_type(current.content_type().map(str::to_owned))
+            .set_cache_control(current.cache_control().map(str::to_owned))
+            .set_content_disposition(current.content_disposition().map(str::to_owned))
+            .set_content_encoding(current.content_encoding().map(str::to_owned))
+            .set_content_language(current.content_language().map(str::to_owned))
+            .set_metadata(current.metadata().cloned());
+        self.multipart_copy(source, bucket, key, create, copy_part_size(source.size))
+            .await
     }
 
     async fn get_bytes(
@@ -265,6 +448,41 @@ impl StorageProvider for S3StorageProvider {
             }),
             Err(_) => false,
         };
+
+        let size = current.content_length().unwrap_or(0);
+        if size > MAX_SINGLE_COPY_BYTES {
+            // Too large for one copy: copy it onto itself in parts, with
+            // the same settings a single copy would get.
+            let create = self
+                .client
+                .create_multipart_upload()
+                .bucket(bucket)
+                .key(key)
+                .set_content_type(headers.content_type.clone())
+                .set_cache_control(headers.cache_control.clone())
+                .set_content_disposition(headers.content_disposition.clone())
+                .set_content_encoding(headers.content_encoding.clone())
+                .set_content_language(headers.content_language.clone())
+                .set_metadata(Some(headers.metadata.clone().into_iter().collect()))
+                .set_expires(expires)
+                .set_website_redirect_location(
+                    current.website_redirect_location().map(str::to_owned),
+                )
+                .set_storage_class(current.storage_class().cloned())
+                .set_server_side_encryption(current.server_side_encryption().cloned())
+                .set_ssekms_key_id(current.ssekms_key_id().map(str::to_owned))
+                .set_bucket_key_enabled(current.bucket_key_enabled())
+                .set_acl(public_read.then_some(ObjectCannedAcl::PublicRead));
+            let source = CopySource {
+                bucket,
+                key,
+                etag: Some(etag),
+                size,
+            };
+            return self
+                .multipart_copy(source, bucket, key, create, copy_part_size(source.size))
+                .await;
+        }
 
         self.client
             .copy_object()
@@ -556,6 +774,21 @@ mod tests {
     use super::*;
 
     #[test]
+    fn part_size_respects_s3_limits() {
+        let preferred = 16 * MIB;
+        assert_eq!(part_size_for(100 * MIB, preferred), preferred);
+        // Never below the S3 minimum, whatever the preference.
+        assert_eq!(part_size_for(100 * MIB, MIB), MIN_PART_SIZE);
+        // 1 TiB / 10,000 parts ≈ 105 MiB → rounded up to whole MiB.
+        let tib = 1024 * 1024 * MIB;
+        let size = part_size_for(tib, preferred);
+        assert!(tib.div_ceil(size) <= MAX_PARTS);
+        assert_eq!(size % MIB, 0);
+        // 5 TiB (S3 maximum object size) still fits.
+        assert!((5 * tib).div_ceil(part_size_for(5 * tib, preferred)) <= MAX_PARTS);
+    }
+
+    #[test]
     fn maps_common_service_errors() {
         let cases = [
             (
@@ -661,5 +894,102 @@ mod tests {
             "invalid peer certificate: UnknownIssuer"
         ));
         assert!(!looks_like_tls_error("Connection refused (os error 61)"));
+    }
+}
+
+/// Runs against an S3-compatible server when `BUCKLANE_S3_TEST_ENDPOINT` is
+/// set; skipped otherwise.
+#[cfg(test)]
+mod s3_integration_tests {
+    use super::*;
+    use crate::domain::connection::{ProviderType, ResolvedConfig};
+    use crate::providers::s3_client_factory::build_client;
+    use crate::security::SecretString;
+
+    #[tokio::test]
+    async fn multipart_copy_assembles_parts_and_cleans_up_on_failure() {
+        let Ok(endpoint) = std::env::var("BUCKLANE_S3_TEST_ENDPOINT") else {
+            eprintln!("skipped: BUCKLANE_S3_TEST_ENDPOINT not set");
+            return;
+        };
+        let client = build_client(
+            &ResolvedConfig {
+                provider: ProviderType::Minio,
+                endpoint: Some(endpoint),
+                region: "us-east-1".into(),
+                access_key_id: "bucklane-test".into(),
+                force_path_style: true,
+                allow_insecure_http: true,
+            },
+            &SecretString::new("bucklane-test-secret"),
+        );
+        let provider = S3StorageProvider::new(client.clone());
+        let bucket = format!("bucklane-mpcopy-{}", uuid::Uuid::now_v7().simple());
+        client.create_bucket().bucket(&bucket).send().await.unwrap();
+        let data: Vec<u8> = (0..12 * MIB as u32).map(|i| (i % 251) as u8).collect();
+        let put = client
+            .put_object()
+            .bucket(&bucket)
+            .key("source.bin")
+            .body(data.clone().into())
+            .send()
+            .await
+            .unwrap();
+        let source = CopySource {
+            bucket: &bucket,
+            key: "source.bin",
+            etag: put.e_tag(),
+            size: data.len() as i64,
+        };
+
+        // 5 MiB parts: three ranged part copies, the last one short.
+        let create = client
+            .create_multipart_upload()
+            .bucket(&bucket)
+            .key("copy.bin")
+            .content_type("video/mp4");
+        provider
+            .multipart_copy(source, &bucket, "copy.bin", create, 5 * MIB)
+            .await
+            .unwrap();
+        let copy = client
+            .get_object()
+            .bucket(&bucket)
+            .key("copy.bin")
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(copy.content_type(), Some("video/mp4"));
+        let bytes = copy.body.collect().await.unwrap().into_bytes();
+        assert!(bytes[..] == data[..], "copied bytes differ");
+
+        // A changed source fails the copy and leaves no upload behind.
+        let stale = CopySource {
+            etag: Some("\"stale\""),
+            ..source
+        };
+        let create = client
+            .create_multipart_upload()
+            .bucket(&bucket)
+            .key("stale.bin");
+        provider
+            .multipart_copy(stale, &bucket, "stale.bin", create, 5 * MIB)
+            .await
+            .unwrap_err();
+        // Filtered by key: MinIO may list other tests' uploads too.
+        let uploads = client
+            .list_multipart_uploads()
+            .bucket(&bucket)
+            .prefix("stale.bin")
+            .send()
+            .await
+            .unwrap();
+        assert!(
+            uploads
+                .uploads()
+                .iter()
+                .all(|u| u.key() != Some("stale.bin")),
+            "the failed upload was aborted"
+        );
     }
 }
