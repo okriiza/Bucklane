@@ -197,8 +197,8 @@ function transfer(
     error: error
       ? { code: "ENDPOINT_UNREACHABLE", message: error, details: null, retryable: true }
       : null,
-    // An interrupted download keeps its partial file and can resume.
-    resumableBytes: direction === "DOWNLOAD" && status === "FAILED" && done > 0 ? done : null,
+    // An interrupted transfer keeps what it did and can resume.
+    resumableBytes: status === "FAILED" && done > 0 ? done : null,
     paused: false,
     sourceKept: false,
     createdAt: ago(minutes),
@@ -292,19 +292,23 @@ const transfers = [
     3_221_225_472,
     "FAILED",
     30,
-    "Bucklane was closed before this download finished. Resume to continue where it stopped.",
+    "Bucklane was closed before this transfer finished. Resume to continue where it stopped.",
   ),
-  transfer(
-    "t5",
-    "UPLOAD",
-    "dumps/db-2026-10-14.sql.gz",
-    "backups-cold",
-    52_114_003,
-    8_421_000,
-    "FAILED",
-    48,
-    "Could not reach the storage endpoint.",
-  ),
+  {
+    ...transfer(
+      "t5",
+      "UPLOAD",
+      "dumps/db-2026-10-14.sql.gz",
+      "backups-cold",
+      52_114_003,
+      8_421_000,
+      "FAILED",
+      48,
+      "Could not reach the storage endpoint.",
+    ),
+    // Below the multipart threshold: one request, nothing kept to resume.
+    resumableBytes: null,
+  },
   transfer(
     "t6",
     "UPLOAD",

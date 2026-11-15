@@ -178,8 +178,9 @@ export type AppSettings = {
 	/**  Look for a new release on startup. Manual checks always work. */
 	checkForUpdates: boolean,
 	/**
-	 *  Continue interrupted downloads when Bucklane starts, instead of
-	 *  waiting for the user to click Resume.
+	 *  Continue interrupted transfers when Bucklane starts, instead of
+	 *  waiting for the user to click Resume. (Named before uploads could
+	 *  resume; the stored setting keeps its name.)
 	 */
 	resumeDownloadsAutomatically: boolean,
 };
@@ -632,7 +633,7 @@ export type TransferDto = {
 	status: TransferStatus,
 	retryCount: number,
 	error: AppError | null,
-	/**  A failed download that can continue from this many bytes. */
+	/**  A failed transfer that can continue from this many bytes. */
 	resumableBytes: number | null,
 	/**  Stopped by the user with Pause (status is FAILED with code PAUSED). */
 	paused: boolean,

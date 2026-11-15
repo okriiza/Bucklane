@@ -2,6 +2,12 @@
 
 Installers are built by GitHub Actions (`.github/workflows/release.yml`) and attached to a **draft** GitHub release. Nothing is published until you publish the draft.
 
+## 0. Check ignored advisories
+
+`src-tauri/.cargo/audit.toml` lists advisories that CI's `cargo audit` ignores because no fix can be taken yet. Before each release, check whether one can be taken now and, if so, upgrade and remove the entry:
+
+- **RUSTSEC-2026-0459** (bundled SQLite < 3.54.0): needs `libsqlite3-sys` ≥ 0.39, which `sqlx-sqlite` 0.9.0 doesn't allow. Run `cargo update -p sqlx --dry-run` in `src-tauri`, then check that `cargo tree -i libsqlite3-sys` shows 0.39 or later after updating.
+
 ## 1. Bump the version
 
 The version must match in three files:

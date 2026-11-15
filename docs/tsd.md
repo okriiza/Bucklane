@@ -822,8 +822,8 @@ The upload conflict check is best-effort, not atomic, because conditional writes
 ### 6.5.2 Retry & History
 
 - `retry_transfer` applies only to the `FAILED` status. The same transfer moves to `QUEUED`, `retry_count` is incremented, and the error is cleared.
-- For multipart uploads, retry attempts `AbortMultipartUpload` on the old upload ID (best-effort), deletes the related `transfer_parts`, then starts the upload from the beginning.
-- `clear_transfer_history` deletes only transfers in a terminal status (`COMPLETED`, `FAILED`, `CANCELED`). Transfers with a multipart upload that has not been successfully cleaned up are not deleted.
+- A failed or paused multipart upload or copy keeps its upload ID and `transfer_parts`; retry continues it when it is still valid (§9.3) and otherwise aborts it (best-effort) and starts over.
+- `clear_transfer_history` deletes only transfers in a terminal status (`COMPLETED`, `FAILED`, `CANCELED`), and keeps paused ones. It first discards what failed transfers kept for resuming (a download's temporary file, an upload's multipart upload). Transfers with a multipart upload that could not be aborted are not deleted.
 
 ## 6.6 Settings Commands
 
@@ -1048,9 +1048,15 @@ Multipart sequence:
 5. CompleteMultipartUpload.
 6. Validate final result.
 
-If a permanent failure occurs before completion, attempt AbortMultipartUpload.
+**Resume.** A failed or paused multipart upload (or copy) is not aborted. Its upload ID stays in `transfers.multipart_upload_id`, each stored part in `transfer_parts`, and their total in `transfers.resume_offset`. `transfers.resume_etag` records the source version the parts belong to: `file:<size>:<mtime ns>` of the local file for an upload, the source object's ETag for a copy. A retry continues the upload only if:
 
-If the abort fails, record the upload ID safely for cleanup/recovery.
+- the source version is unchanged,
+- every stored part has the size the current part layout gives it (the part size setting may have changed), and
+- `ListParts` confirms the provider still has the upload (it may have been aborted elsewhere or expired by a lifecycle rule).
+
+It then uploads only the missing parts and completes with the stored and new ETags. Otherwise it aborts the old upload (best-effort; a failure is logged, as the provider expires it) and starts over. Single-request uploads have nothing to keep and start over.
+
+Cancel aborts the multipart upload. If the abort fails, the upload ID is kept and aborted again at the next startup.
 
 The part size must satisfy S3 limits, including the minimum size of non-final parts and the maximum number of parts.
 
@@ -1071,9 +1077,8 @@ A download must never overwrite an important file directly before the operation 
 - At the start, the object's ETag is stored in `transfers.resume_etag`.
 - Every 2 seconds the download flushes and `fsync`s the file, then stores the byte count in `transfers.resume_offset`. Bytes after the checkpoint may never have reached the disk, so they are not trusted.
 - On retry, the download continues from `resume_offset` only if the temp file is at least that long and a fresh HEAD returns the same ETag. The file is truncated to the checkpoint, and the request uses `Range: bytes=<offset>-` with `If-Match`. If the server ignores the range (no `Content-Range`), the download restarts from zero. If the ETag differs or is missing, the download restarts from zero so versions are never mixed.
-- After a restart, interrupted downloads are marked `FAILED` (`INTERRUPTED`). `TransferDto.resumableBytes` tells the UI to offer **Resume**. With the `transfers.resume_automatically` setting they are re-queued immediately.
-- **Pause** (`pause_transfer`, downloads only) cancels the run like Cancel, but keeps the temporary file. The row becomes `FAILED` with error code `PAUSED` (`TransferDto.paused`), so the status schema is unchanged. The UI shows it as Paused with **Resume**, it is not counted as failed, and clearing history keeps it. Cancel still deletes the temporary file. `retry_transfer` also accepts `CANCELED` rows, which start over.
-- Uploads are not resumed yet; an interrupted multipart upload is aborted and retried from the start.
+- After a restart, interrupted transfers are marked `FAILED` (`INTERRUPTED`). `TransferDto.resumableBytes` tells the UI to offer **Resume**. With the `transfers.resume_automatically` setting, downloads with a checkpoint and uploads or copies with a kept multipart upload (§9.3) are re-queued immediately.
+- **Pause** (`pause_transfer`, any direction) cancels the run like Cancel, but keeps the temporary file (or, for uploads and copies, the multipart upload). The row becomes `FAILED` with error code `PAUSED` (`TransferDto.paused`), so the status schema is unchanged. The UI shows it as Paused with **Resume**, it is not counted as failed, and clearing history keeps it. Cancel still deletes the temporary file. `retry_transfer` also accepts `CANCELED` rows, which start over.
 
 ## 9.5 Copy Between Buckets and Connections
 
@@ -1090,7 +1095,7 @@ The bytes are streamed through Bucklane; there is no server-side copy between co
 5. Verify the destination size.
 6. Move only (`source_delete_after_copy = 1`): HEAD the source again and delete it only if its ETag still equals the one from step 1. If it changed, has no ETag, or cannot be deleted, the original is kept: the transfer still completes (the copy is valid) with `error_code = 'SOURCE_KEPT'` and the reason, shown as a warning (`sourceKept` in the DTO). A source that is already gone counts as moved.
 
-Content-Type, Cache-Control, Content-Disposition, Content-Encoding, Content-Language, and user metadata are copied. Storage class, ACLs, encryption settings, and tags belong to the source provider and are not. A failing source surfaces in the SDK only as a generic send error, so the body records the source's own error and the transfer reports that instead. Cancel and failure abort the multipart upload like an upload does; copies cannot be paused. Deleting either connection sets its column to NULL; a copy whose source connection is gone cannot be retried, and deleting a connection is blocked while a copy reads from or writes to it.
+Content-Type, Cache-Control, Content-Disposition, Content-Encoding, Content-Language, and user metadata are copied. Storage class, ACLs, encryption settings, and tags belong to the source provider and are not. A failing source surfaces in the SDK only as a generic send error, so the body records the source's own error and the transfer reports that instead. Pause, failure, and cancel treat the multipart upload like an upload does (§9.3); a kept upload continues only while the source still has the ETag it was copied from. Deleting either connection sets its column to NULL; a copy whose source connection is gone cannot be retried, and deleting a connection is blocked while a copy reads from or writes to it.
 
 ## 9.6 Copy / Move / Rename Safety
 

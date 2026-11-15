@@ -73,10 +73,9 @@ struct ActiveTransfer {
     connection_id: Option<String>,
     /// Copy only: the connection it reads from.
     source_connection_id: Option<String>,
-    direction: TransferDirection,
     token: CancellationToken,
     /// Set before `token` is canceled when the user paused rather than
-    /// canceled, so the run keeps the partial download.
+    /// canceled, so the run keeps its partial work.
     pause: Arc<AtomicBool>,
 }
 
@@ -214,8 +213,10 @@ impl TransferManager {
         Ok(())
     }
 
-    /// Stops a queued or running download but keeps its partial file, so
-    /// Resume continues from the last checkpoint. Uploads cannot be paused.
+    /// Stops a queued or running transfer but keeps what it has done, so
+    /// Resume continues from there: a download's partial file, or the parts
+    /// a multipart upload or copy has stored. A single-request upload or
+    /// copy starts over.
     pub fn pause(&self, id: &str) -> Result<(), AppError> {
         let active = self.inner.active.lock().expect("active transfers poisoned");
         let transfer = active.get(id).ok_or_else(|| {
@@ -224,21 +225,15 @@ impl TransferManager {
                 "This transfer is no longer active.",
             )
         })?;
-        if transfer.direction != TransferDirection::Download {
-            return Err(AppError::new(
-                ErrorCode::OperationUnsupported,
-                "Only downloads can be paused. Cancel this transfer instead.",
-            ));
-        }
         transfer.pause.store(true, Ordering::SeqCst);
         transfer.token.cancel();
         Ok(())
     }
 
     /// FAILED or CANCELED → QUEUED on the same row (TSD §6.5.2). A failed
-    /// or paused download continues from its last checkpoint when possible;
-    /// a canceled one starts over. A multipart upload is restarted from
-    /// scratch after aborting the previous attempt.
+    /// or paused transfer continues from what it kept when the source is
+    /// unchanged (see `upload::write_object`, `download::run`); a canceled
+    /// one starts over.
     pub async fn retry(&self, id: &str) -> Result<TransferDto, AppError> {
         let mut t = self.inner.repo.get(id).await?.ok_or_else(not_found)?;
         if !matches!(t.status, TransferStatus::Failed | TransferStatus::Canceled) {
@@ -256,7 +251,6 @@ impl TransferManager {
         if t.source.as_ref().is_some_and(|s| s.connection_id.is_none()) {
             return Err(source_deleted());
         }
-        self.inner.abort_multipart(&mut t).await;
 
         t.status = TransferStatus::Queued;
         t.bytes_transferred = 0;
@@ -301,10 +295,13 @@ impl TransferManager {
             })
     }
 
-    /// Also deletes the temporary files kept for resuming failed downloads.
+    /// Also discards what failed transfers kept for resuming: a download's
+    /// temporary file, or an upload's or copy's stored parts. Paused
+    /// transfers stay.
     pub async fn clear_history(&self) -> Result<u64, AppError> {
-        for t in self.inner.repo.failed_downloads().await? {
-            download::remove_temp_file(&t).await;
+        for mut t in self.inner.repo.failed_unpaused().await? {
+            self.inner.cleanup(&mut t).await;
+            self.inner.repo.update(&t).await?;
         }
         self.inner.repo.clear_history().await
     }
@@ -609,12 +606,17 @@ impl TransferManager {
             };
             let mut to_resume = Vec::new();
             for mut t in unfinished {
-                let resumable = t.direction == TransferDirection::Download && t.resume_offset > 0;
+                let resumable = match t.direction {
+                    TransferDirection::Download => t.resume_offset > 0,
+                    TransferDirection::Upload | TransferDirection::Copy => {
+                        t.multipart_upload_id.is_some()
+                    }
+                };
                 t.status = TransferStatus::Failed;
                 t.error_code = Some("INTERRUPTED".to_owned());
                 t.error_message = Some(
                     if resumable {
-                        "Bucklane was closed before this download finished. Resume to continue where it stopped."
+                        "Bucklane was closed before this transfer finished. Resume to continue where it stopped."
                     } else {
                         "Bucklane was closed before this transfer finished."
                     }
@@ -700,7 +702,6 @@ impl TransferManager {
                 ActiveTransfer {
                     connection_id: t.connection_id.clone(),
                     source_connection_id: t.source.as_ref().and_then(|s| s.connection_id.clone()),
-                    direction: t.direction,
                     token: token.clone(),
                     pause: pause.clone(),
                 },
@@ -744,10 +745,15 @@ impl Inner {
                 let _activity = activity::TransferActivity::begin();
                 t.status = TransferStatus::Running;
                 t.started_at = Some(now());
-                // A resuming download starts at its checkpoint, so the speed
+                // A resuming transfer starts at what it kept, so the speed
                 // estimate doesn't see the earlier bytes as an instant jump.
                 t.bytes_transferred = match t.direction {
                     TransferDirection::Download => t.resume_offset,
+                    TransferDirection::Upload | TransferDirection::Copy
+                        if t.multipart_upload_id.is_some() =>
+                    {
+                        t.resume_offset
+                    }
                     TransferDirection::Upload | TransferDirection::Copy => 0,
                 };
                 if let Err(err) = self.repo.update(&t).await {
@@ -770,17 +776,20 @@ impl Inner {
             }
         };
 
-        // Reload: the task may have recorded a multipart upload ID.
+        // Reload: the task may have recorded a multipart upload and its
+        // parts, which a canceled run left behind in `t`.
         if let Ok(Some(saved)) = self.repo.get(&t.id).await {
             t.multipart_upload_id = saved.multipart_upload_id;
             t.bytes_total = t.bytes_total.or(saved.bytes_total);
+            if t.direction != TransferDirection::Download {
+                t.resume_etag = saved.resume_etag;
+                t.resume_offset = saved.resume_offset;
+            }
         }
         match outcome {
-            Outcome::Completed => {}
-            // A failed or paused download keeps its temporary file so it
-            // can resume.
-            Outcome::Failed(_) | Outcome::Paused if t.direction == TransferDirection::Download => {}
-            Outcome::Failed(_) | Outcome::Paused | Outcome::Canceled => self.cleanup(&mut t).await,
+            // A failed or paused transfer keeps its partial work to resume.
+            Outcome::Completed | Outcome::Failed(_) | Outcome::Paused => {}
+            Outcome::Canceled => self.cleanup(&mut t).await,
         }
 
         t.completed_at = Some(now());
@@ -878,6 +887,8 @@ impl Inner {
         match upload::abort(&client, &t.bucket, &t.object_key, &upload_id).await {
             Ok(()) => {
                 t.multipart_upload_id = None;
+                t.resume_etag = None;
+                t.resume_offset = 0;
                 let _ = self.repo.delete_parts(&t.id).await;
             }
             Err(err) => {
@@ -1712,6 +1723,186 @@ mod s3_integration_tests {
             .unwrap();
 
         assert_eq!(std::fs::read(&target).unwrap(), data);
+    }
+
+    const MIB: usize = 1024 * 1024;
+
+    /// 5 MiB parts from 5 MiB up, so a 12 MiB file has three parts.
+    fn small_parts() -> upload::UploadTuning {
+        upload::UploadTuning {
+            threshold: 5 * MIB as u64,
+            part_size: 5 * MIB as u64,
+        }
+    }
+
+    /// An upload of `local` whose first part an earlier attempt stored as
+    /// `first_part`, recorded for the file version `version`.
+    async fn kept_upload(
+        f: &Fixture,
+        key: &str,
+        local: &std::path::Path,
+        first_part: Vec<u8>,
+        version: Option<String>,
+    ) -> StoredTransfer {
+        let mut t = f
+            .transfer(TransferDirection::Upload, key, local, false)
+            .await;
+        let created = f
+            .client
+            .create_multipart_upload()
+            .bucket(&f.bucket)
+            .key(key)
+            .send()
+            .await
+            .unwrap();
+        let upload_id = created.upload_id().unwrap().to_owned();
+        let len = first_part.len() as i64;
+        let part = f
+            .client
+            .upload_part()
+            .bucket(&f.bucket)
+            .key(key)
+            .upload_id(&upload_id)
+            .part_number(1)
+            .body(first_part.into())
+            .send()
+            .await
+            .unwrap();
+        t.multipart_upload_id = Some(upload_id);
+        t.resume_etag = version;
+        f.repo.update(&t).await.unwrap();
+        f.repo
+            .add_part(&t.id, 1, part.e_tag().unwrap(), len)
+            .await
+            .unwrap();
+        f.repo.get(&t.id).await.unwrap().unwrap()
+    }
+
+    async fn object_bytes(f: &Fixture, key: &str) -> Vec<u8> {
+        let out = f
+            .client
+            .get_object()
+            .bucket(&f.bucket)
+            .key(key)
+            .send()
+            .await
+            .unwrap();
+        out.body.collect().await.unwrap().into_bytes().to_vec()
+    }
+
+    fn twelve_mib_file(f: &Fixture, name: &str) -> (std::path::PathBuf, Vec<u8>, Option<String>) {
+        let path = f.dir.join(name);
+        let data = vec![b'a'; 12 * MIB];
+        std::fs::write(&path, &data).unwrap();
+        let version = upload::file_version(&std::fs::metadata(&path).unwrap());
+        (path, data, version)
+    }
+
+    #[tokio::test]
+    async fn paused_upload_continues_with_its_stored_parts() {
+        let Some(f) = Fixture::new().await else {
+            return;
+        };
+        let (path, data, version) = twelve_mib_file(&f, "resume.bin");
+        // The stored part differs from the file on purpose: if it ends up in
+        // the object, it was kept rather than uploaded again.
+        let marker = vec![b'z'; 5 * MIB];
+        let mut up = kept_upload(&f, "resume.bin", &path, marker.clone(), version).await;
+        assert_eq!(
+            TransferDto::from(&up).resumable_bytes,
+            None,
+            "not failed yet"
+        );
+        assert_eq!(
+            up.resume_offset,
+            5 * MIB as i64,
+            "parts count as kept bytes"
+        );
+
+        let progress = Progress::default();
+        upload::run(&f.client, &f.repo, &mut up, &progress, small_parts())
+            .await
+            .unwrap();
+
+        let stored = object_bytes(&f, "resume.bin").await;
+        assert_eq!(stored[..5 * MIB], marker[..], "kept part reused");
+        assert_eq!(stored[5 * MIB..], data[5 * MIB..]);
+        assert_eq!(progress.total(), data.len() as i64);
+        let saved = f.repo.get(&up.id).await.unwrap().unwrap();
+        assert_eq!(saved.multipart_upload_id, None);
+        assert_eq!(saved.resume_offset, 0);
+        assert!(f.repo.parts(&up.id).await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn changed_file_starts_the_upload_over() {
+        let Some(f) = Fixture::new().await else {
+            return;
+        };
+        let (path, data, _) = twelve_mib_file(&f, "changed.bin");
+        let mut up = kept_upload(
+            &f,
+            "changed.bin",
+            &path,
+            vec![b'z'; 5 * MIB],
+            Some("file:1:1".into()),
+        )
+        .await;
+        let old_upload = up.multipart_upload_id.clone().unwrap();
+
+        upload::run(
+            &f.client,
+            &f.repo,
+            &mut up,
+            &Progress::default(),
+            small_parts(),
+        )
+        .await
+        .unwrap();
+
+        assert!(
+            object_bytes(&f, "changed.bin").await == data,
+            "nothing kept"
+        );
+        let old_parts = f
+            .client
+            .list_parts()
+            .bucket(&f.bucket)
+            .key("changed.bin")
+            .upload_id(&old_upload)
+            .send()
+            .await;
+        assert!(old_parts.is_err(), "the stale upload was aborted");
+    }
+
+    #[tokio::test]
+    async fn upload_gone_from_the_provider_starts_over() {
+        let Some(f) = Fixture::new().await else {
+            return;
+        };
+        let (path, data, version) = twelve_mib_file(&f, "expired.bin");
+        let mut up = kept_upload(&f, "expired.bin", &path, vec![b'z'; 5 * MIB], version).await;
+        // Expired by a lifecycle rule, or aborted elsewhere.
+        upload::abort(
+            &f.client,
+            &f.bucket,
+            "expired.bin",
+            up.multipart_upload_id.as_deref().unwrap(),
+        )
+        .await
+        .unwrap();
+
+        upload::run(
+            &f.client,
+            &f.repo,
+            &mut up,
+            &Progress::default(),
+            small_parts(),
+        )
+        .await
+        .unwrap();
+
+        assert!(object_bytes(&f, "expired.bin").await == data);
     }
 
     #[tokio::test]

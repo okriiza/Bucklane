@@ -77,6 +77,8 @@ pub(super) async fn run(
         t,
         size,
         &headers,
+        // A kept upload continues only from the same source version.
+        etag.as_deref(),
         progress,
         tuning,
         &body,
