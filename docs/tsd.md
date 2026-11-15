@@ -602,7 +602,7 @@ The preview content type is determined by the preview kind, not by the object's 
 
 `get_public_url` returns an object's unsigned URL. If the bucket has a base URL (`set_bucket_public_url`, stored in `bucket_public_urls`), the URL is the base plus the percent-encoded key. Otherwise the backend presigns a GET locally and strips the query string, so the address matches the SDK's own addressing (path or virtual-hosted style, and the bucket's region on AWS). Supabase URLs are rewritten from `/storage/v1/s3/` to its public object path `/storage/v1/object/public/`. Cloudflare R2 returns no URL without a base, because its S3 endpoint never serves public reads. Base URLs must be `http(s)` with a host and no credentials, query, or fragment. Whether the object is actually public is not checked.
 
-`update_object_metadata` replaces an object's Content-Type, Cache-Control, Content-Disposition, Content-Encoding, Content-Language, and user metadata with `CopyObject` onto itself (`MetadataDirective: REPLACE`). The request carries the ETag the editor loaded: the backend compares it to a fresh HEAD and sends it as `x-amz-copy-source-if-match`, so nothing is saved if the content changed meanwhile (a `412` maps to a "changed on the server" error). Because a REPLACE copy resets what it is not given, the copy carries over the storage class, server-side encryption settings (SSE-S3/SSE-KMS key and bucket key), `Expires`, and website redirect, and re-applies `public-read` if `GetObjectAcl` shows an `AllUsers` read grant (providers without ACLs skip this). Values must be printable ASCII (no CR/LF); metadata names are lowercased, may use letters, digits, `-`, `_`, and `.`, and must total at most 2 KB with their values. Objects over 5 GiB are rejected (single-request copy limit). Tags are kept by S3's default `TaggingDirective: COPY`.
+`update_object_metadata` replaces an object's Content-Type, Cache-Control, Content-Disposition, Content-Encoding, Content-Language, and user metadata with `CopyObject` onto itself (`MetadataDirective: REPLACE`). The request carries the ETag the editor loaded: the backend compares it to a fresh HEAD and sends it as `x-amz-copy-source-if-match`, so nothing is saved if the content changed meanwhile (a `412` maps to a "changed on the server" error). Because a REPLACE copy resets what it is not given, the copy carries over the storage class, server-side encryption settings (SSE-S3/SSE-KMS key and bucket key), `Expires`, and website redirect, and re-applies `public-read` if `GetObjectAcl` shows an `AllUsers` read grant (providers without ACLs skip this). Values must be printable ASCII (no CR/LF); metadata names are lowercased, may use letters, digits, `-`, `_`, and `.`, and must total at most 2 KB with their values. Objects over 5 GiB, the limit of a single copy, are copied onto themselves in parts instead (§9.6): `CreateMultipartUpload` with the same headers and carried-over settings, then `UploadPartCopy` ranges of the object pinned to the ETag, then `CompleteMultipartUpload`. Tags are kept by S3's default `TaggingDirective: COPY` for single copies; a multipart copy does not carry tags.
 
 Rename is `move_object` with the same bucket and a new destination key; there is no separate rename command.
 
@@ -617,7 +617,7 @@ type ObjectOperationOutcome =
 
 Copy uses `x-amz-copy-source-if-match` with the source ETag so that a source changed mid-operation is not copied. Move deletes the source only after the destination is verified (same size) and the source ETag is rechecked as unchanged; when in doubt, the result is `sourceKept`.
 
-`copy_object` and `move_object` apply only to single objects in the MVP. Folder (prefix) copy/move is Post-MVP. Objects larger than 5 GiB are rejected with `OPERATION_UNSUPPORTED` because they require multipart copy (see §9.6).
+`copy_object` and `move_object` apply to single objects; folders use the prefix relocate commands below. Objects larger than 5 GiB are copied in parts (see §9.6).
 
 ListObjectsRequest:
 
@@ -697,7 +697,7 @@ cancel_prefix_relocate(planId)
 ```
 
 - Rename is a move within the same parent folder. In the UI, Move and Copy ask for the folder to put it *in* (empty for the bucket root) and append the folder's name, matching drag & drop.
-- `prepare` snapshots every object under the source (at most 10,000; the folder's own marker object is included if it exists) and the destination keys, so conflicts are reported before anything changes. It refuses empty folders, a destination equal to or inside the source, a destination that contains the source (that would pour the folder's contents into an ancestor), and objects larger than 5 GiB (no multipart copy yet). Plans are single-use, in memory only, and expire after 10 minutes.
+- `prepare` snapshots every object under the source (at most 10,000; the folder's own marker object is included if it exists) and the destination keys, so conflicts are reported before anything changes. It refuses empty folders, a destination equal to or inside the source, and a destination that contains the source (that would pour the folder's contents into an ancestor). Objects larger than 5 GiB are copied in parts (§9.6). Plans are single-use, in memory only, and expire after 10 minutes.
 - `execute` copies 8 objects in parallel. Each object is copied with `If-Match` on the snapshotted ETag and verified by size. For a move, the original is deleted (in batches) only if a fresh HEAD shows it unchanged; otherwise it is kept and reported in `sourcesKept`. Objects that already exist at the destination are skipped or replaced according to `existing`.
 - Progress is emitted as `folder-relocate-progress { planId, done, total }`, throttled to about 150 ms. `cancel` stops new objects from starting; objects already in flight finish, and the rest are counted as `canceled`.
 - Partial results are normal: the UI never reports full success while `failed` or `sourcesKept` is non-empty.
@@ -1086,7 +1086,9 @@ A download must never overwrite an important file directly before the operation 
 
 Planning mirrors downloads: a folder key is listed recursively (at most `MAX_FOLDER_FILES` objects) and recreated inside the destination folder, so `media/brand/logo.svg` copied into `archive/` becomes `archive/brand/logo.svg`. Folder markers are copied too, including the folder's own marker (which listings leave out), so empty folders survive and a move leaves nothing behind. Existing destinations follow the transfer conflict policy (`ASK`, `SKIP`, `OVERWRITE`, `RENAME`); folder plans gather the destination's keys once instead of one HEAD per object. Copying an object onto itself, moving a folder into itself, and destination keys longer than 1,024 bytes are rejected per item.
 
-The bytes are streamed through Bucklane; there is no server-side copy between connections, because the two connections have different credentials and may be different providers:
+**Within one connection** (source and destination share `connection_id`) the provider copies the object server-side, through the same write path as below: below the multipart threshold one `CopyObject` (which carries the headers over), otherwise a multipart upload whose parts are `UploadPartCopy` ranges of the source, with `x-amz-copy-source-if-match` on the ETag. Progress advances per completed part, and pause, resume, and cancel work like an upload's (§9.3). If the provider answers `NotImplemented`/`MethodNotAllowed` (`OPERATION_UNSUPPORTED`), the copy falls back to streaming.
+
+**Between connections** the bytes are streamed through Bucklane, because the two connections have different credentials and may be different providers:
 
 1. HEAD the source for its size, ETag, and headers.
 2. Re-check that the destination is still free unless the user chose to overwrite.
@@ -1111,9 +1113,7 @@ Safe move sequence:
 6. Delete source only after successful verification.
 7. Refresh explorer.
 
-For large objects, the provider may require multipart copy.
-
-The MVP must block copy/move for sizes or providers that are not yet safely supported, instead of attempting risky operations. MVP limit: objects above 5 GiB (the single-request CopyObject limit) are rejected with `OPERATION_UNSUPPORTED`; the size is checked through HeadObject before copying.
+A single `CopyObject` copies at most 5 GiB. Larger objects (size from HeadObject) are copied in parts (`S3StorageProvider::multipart_copy`): `CreateMultipartUpload` at the destination with the source's headers (a multipart copy doesn't carry them over), then `UploadPartCopy` of 256 MiB ranges (raised to stay within 10,000 parts), 4 in flight, each pinned to the source ETag with `x-amz-copy-source-if-match`, then `CompleteMultipartUpload`. If any part or the completion fails, the upload is aborted. Tags are not carried by a multipart copy.
 
 An object ETag must not always be assumed to be an MD5 hash of the content.
 

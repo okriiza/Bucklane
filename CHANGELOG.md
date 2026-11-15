@@ -7,6 +7,11 @@ Notable changes to Bucklane. Versions follow [Semantic Versioning](https://semve
 ### Added
 
 - **Pause and resume uploads, copies, and moves.** Every transfer now has a pause button, not just downloads. A large upload, copy, or move that is paused, cut off, or interrupted by closing Bucklane continues from the parts the provider already stored instead of starting over. If the file changed in the meantime, it starts over so old and new data are never mixed. Files below the multipart threshold (64 MB by default) start over. **Resume interrupted transfers automatically** in Settings now covers uploads and copies too.
+- **Files over 5 GB.** Rename, copy, and move files larger than 5 GB within a bucket, copy or move folders that contain them, and edit their metadata. The provider copies them in parts; nothing is downloaded.
+
+### Changed
+
+- **Faster copies within one connection.** Copying or moving to another bucket on the same connection is now done by the provider itself, so nothing passes through your computer and your internet speed doesn't matter. Progress, pause, and resume work as before. Copies between different connections are still streamed through your computer.
 
 ## 0.9.1 — 2026-11-02
 
